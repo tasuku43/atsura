@@ -312,11 +312,24 @@ snapshots, transcripts, and agent reasoning are absent.
 - Artifact-journey fixtures own execution of the exact `atr` file extracted
   from a release archive. They use a native credential- and provider-network-
   free source fixture, an isolated user-config root, and an append-only attempt
-  log. Before source inspection they verify schema-8 root help and the four
-  exact scoped authoring/runtime contracts. The non-shipped harness may seed
-  one exact receipt through the production trust-store adapter; this proves
-  receipt consumption, not human consent. Controlling-terminal full-digest
-  confirmation remains separate required production-adapter evidence.
+  log. Before source inspection they verify schema-8 root help and five exact
+  scoped authoring/runtime contracts, including complete nested field
+  inventories and declared recovery. The non-shipped harness may seed an exact
+  receipt through the production trust-store adapter for each tested bundle;
+  this proves receipt consumption, not human consent. Controlling-terminal
+  full-digest confirmation remains separate required production-adapter
+  evidence.
+- Artifact-evidence aggregation owns the exact five-target set. Each native
+  job uploads one bounded document containing target and observed host,
+  revision, archive, command, bundle, and command-specific plan identities,
+  fixed attempt/fault counts, and leak booleans. A dependent job pairs those
+  documents with the five actual candidate archives, recomputes their hashes,
+  strictly rejects missing, extra, duplicate, symlinked, malformed, or
+  cross-revision inputs,
+  and emits a path-free unattested digest index. The release linter pins the
+  aggregator to one exact verifier command plus an allowlist of checkout, Go
+  setup, artifact download, and artifact upload actions; no candidate rebuild
+  or replay step is admitted.
 - Architecture and public guards own dependency direction and secret-free
   repository state.
 
@@ -334,7 +347,7 @@ tree:
 5. compatibility-admitted GitHub CLI `issue list` and `pr list` transformation execution
    covers exact selector encoding, preview/execute plan-digest equality,
    selected/renamed typed JSON, no raw-output leak, and exactly one source
-   attempt;
+   attempt per command;
 6. unsupported runtime combinations and every pre-start contract failure record
    zero attempts, while post-start failures record one and are non-retryable;
 7. retired authorization schemas fail with zero source attempts and legacy
@@ -344,10 +357,13 @@ tree:
    installed-artifact journey;
 9. `task release:check` replays the host-native exact archive, and CI defines
    required native jobs for Linux amd64/arm64, macOS amd64/arm64, and Windows
-   amd64; the release publish job depends on all five replays;
+   amd64; a dependent aggregation job verifies the exact five evidence
+   documents and five candidate archive hashes, and the release publish job
+   depends on that aggregate;
 10. `task check` passes;
-11. `task security` passes; and
-12. repository search finds no live source-wrapper requirement for
+11. `task security` passes;
+12. `task public:check` passes; and
+13. repository search finds no live source-wrapper requirement for
    allow/confirm/deny, source read/create/write, or source target/impact outside
    explicit migration and superseded-history contexts.
 

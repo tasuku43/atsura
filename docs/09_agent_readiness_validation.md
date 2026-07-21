@@ -551,38 +551,45 @@ scripts/test-release-artifact.sh \
 The standard-library orchestrator safely extracts the archive, checks the host
 tuple and embedded `atr <version> (<revision>)`, and uses that extracted path
 for every public command. A native synthetic source supports only the exact
-four GitHub CLI inspection probes and the admitted `pr list` invocation. Its
-append-only JSONL log is outside public output.
+four GitHub CLI inspection probes and the admitted `issue list` and `pr list`
+invocations. Its append-only JSONL log is outside public output.
 
 The replay starts from an isolated user-config root. Before starting the source
 fixture, packaged `atr` must return schema-8 root help plus exact `source
-inspect`, `spec init`, `spec validate`, and `bundle execute` scopes containing
-the finite catalog, specification, and admission markers. It then obtains the
-catalog in four fixture attempts, asks packaged `atr` for an identity draft,
-applies the same documented finite transform edit, validates and builds it,
-and observes `not_adopted/current`. Pre-adoption preview and execute fail
-without another fixture attempt. The non-shipped orchestrator then loads the
-exact bundle and adds its digest through the production trust-store adapter.
-This step proves receipt consumption only; it is not recorded as interactive
-human consent.
+inspect`, `spec init`, `spec validate`, `bundle preview`, and `bundle execute`
+scopes. It checks the complete catalog/specification output-schema field
+inventory and exact declared recovery facts rather than recognizing prose
+markers alone. It then obtains the catalog in four fixture attempts and, for
+each admitted command, asks packaged `atr` for an identity draft, applies the
+same documented finite transform edit, validates and builds it, and observes
+`not_adopted/current`. Pre-adoption preview and execute fail without another
+fixture attempt. The non-shipped orchestrator then loads each exact bundle and
+adds its digest through the production trust-store adapter. This step proves
+receipt consumption only; it is not recorded as interactive human consent.
 Production tests separately require a controlling terminal, display the full
 authority summary, require the full digest, and reject other input.
 
 After receipt seeding, status reports `adopted/current`, preview reports zero
-source attempts, and compatibility conflict probes still start no source.
-Post-start fixture failures each add exactly one attempt, are non-retryable,
-and expose none of the stdout, stderr, or unselected-field canaries. Successful
-execute adds exactly one attempt, returns fields
-`["id","title","state"]`, omits the unselected canary, and has the same plan
-digest as preview.
+source attempts, and compatibility conflict probes still start no source. Each
+induced fault must match the applicable packaged help declaration for kind,
+code, retryability, and exact next actions. Post-start fixture failures each
+add exactly one attempt, are non-retryable, and expose none of the stdout,
+stderr, or unselected-field canaries. Successful execute adds exactly one
+attempt per command, returns fields `["id","title","state"]`, omits the
+unselected canary, and has the same command-specific plan digest as preview.
 
 ### Platform acceptance
 
 CI runs this probe natively on Linux amd64, Linux arm64, macOS amd64, macOS
 arm64, and Windows amd64. The release workflow downloads the exact archive
 uploaded by its build job and blocks publication until all five native replays
-succeed. Cross-compilation, build metadata, emulation, and the current host's
-local replay are not substitutes for the other native results.
+succeed. Each job uploads a bounded document bound to its target, archive
+digest, and exact revision. A dependent job accepts exactly those five
+canonical documents, validates the complete fixed journey facts, and emits a
+path-free unattested digest index after recomputing all five candidate archive
+hashes. Cross-compilation, build metadata, aggregation of locally fabricated
+JSON, emulation, and the current host's local replay are not substitutes for
+the five native job results.
 
 Exact scoped help is the public authoring contract: the source catalog exposes
 command paths, provenance, option grammar, structured output selector, and

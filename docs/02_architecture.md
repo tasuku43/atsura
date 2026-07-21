@@ -278,6 +278,16 @@ consent. Release archive member allowlists prove that neither the journey
 runner nor source fixture ships, and architecture checks prevent production
 `cmd` or `internal` packages from importing harness tools.
 
+`tools/artifactevidence` is the separate test-only aggregation boundary. It
+does not execute or rebuild a candidate. It strictly consumes exactly one
+bounded journey document and the corresponding candidate archive from each
+canonical native target, binds all five to one tag and revision, recomputes
+each archive SHA-256, rejects missing, extra, duplicated, symlinked, or
+contract-incomplete inputs, and emits only a bounded digest index explicitly
+marked as unattested. The GitHub workflow's matrix dependency and artifact
+service establish which native jobs supplied those documents; JSON
+aggregation alone is not proof of native execution.
+
 Each claimed release target must replay the same bounded journey natively.
 Cross-compilation proves that an artifact can be built; it does not prove that
 the target can execute it. Platform evidence therefore belongs to the CI and

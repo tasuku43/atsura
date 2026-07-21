@@ -243,6 +243,18 @@ stable fault codes, and boolean leak checks. Native replay is required on each
 claimed release target so an emulation or cross-build cannot silently replace
 runtime security evidence.
 
+Each native replay emits one bounded journey document. The aggregation tool
+accepts exactly the five canonical evidence filenames and five matching
+candidate archive filenames as regular non-symlink files, strictly binds each
+target, observed host, archive name and recomputed SHA-256, tag-derived
+version, full revision, command set, digests, counters, fault set, and leak
+booleans, and rejects every extra or missing input. Its summary contains no
+filesystem path, raw output, environment value, receipt, bundle digest, or
+plan digest and labels itself `workflow_index_unattested`. A syntactically
+valid document is not independently attested evidence: the workflow dependency
+and GitHub artifact provenance must still show that the matching native matrix
+job produced it.
+
 ## Known limitations
 
 - Hiding commands and options does not prevent invocation outside Atsura.

@@ -141,10 +141,14 @@ The release workflow follows this order:
 4. Download each build artifact on its matching native runner and replay the
    installed-artifact transform journey with no provider credentials or
    provider network.
-5. Verify archive names, contents, version, commit, and native executable behavior.
-6. Generate and verify `checksums.txt`.
-7. Publish one GitHub Release only after all five native replays succeed.
-8. For a stable tag, render the checksum-pinned Homebrew Formula and open a Formula update pull request.
+5. Aggregate exactly five bounded native evidence documents and verify their
+   target, archive digest, version, revision, journey counts, fault set, plan
+   identities, and leak checks.
+6. Verify archive names, contents, version, commit, and native executable behavior.
+7. Generate and verify `checksums.txt`.
+8. Publish one GitHub Release only after the five native replays and their
+   aggregate succeed.
+9. For a stable tag, render the checksum-pinned Homebrew Formula and open a Formula update pull request.
 
 The workflow uses a public GitHub Release path. It must not embed private asset URLs, personal access tokens, authorization headers, or organization-specific package infrastructure in Formula content.
 
@@ -229,15 +233,17 @@ The current executable runtime claim is limited to all of the following:
 The credential- and provider-network-free synthetic GitHub-compatible native
 fixture runs through the exact archived `atr`, production composition,
 verifier, runner, parser, transformer, and renderer and is the canonical
-automated artifact gate. It first verifies schema-8 root help and the four
-exact scoped authoring/runtime contracts. Its append-only log proves four
-inspection attempts, zero preview attempts, and one success attempt;
-channel-specific canaries prove that raw failure data and unselected fields do
-not reach public output or isolated state. The non-shipped harness seeds one
-exact receipt into its ephemeral user-config root through the production
-trust-store adapter. This is
-explicitly receipt-consumption evidence, not evidence that automation provided
-human consent. Full-digest controlling-terminal success and redirected-input
+automated artifact gate. It first verifies schema-8 root help and five exact
+scoped authoring/runtime contracts, including the complete nested catalog and
+specification field inventories and the exact recovery facts used by every
+induced fault. Its append-only log proves four inspection attempts, zero
+preview attempts, and exactly one success attempt for each of `issue list` and
+`pr list`; channel-specific canaries prove that raw failure data and
+unselected fields do not reach public output or isolated state. The
+non-shipped harness seeds each exact receipt into its ephemeral user-config
+root through the production trust-store adapter. This is explicitly
+receipt-consumption evidence, not evidence that automation provided human
+consent. Full-digest controlling-terminal success and redirected-input
 rejection are proven separately by production-adapter and application tests.
 
 The accepted major-2 range is a maintained compatibility decision, not a claim
@@ -246,8 +252,18 @@ is optional supporting evidence and must not persist account, repository,
 pull-request, or raw source data. Packaging metadata and cross-compilation do
 not prove runtime behavior. The release workflow blocks publication on exact-
 archive native replay for Linux amd64/arm64, macOS amd64/arm64, and Windows
-amd64. If a native runner is unavailable, the release fails or the platform
-claim must be revised; emulation is not substituted.
+amd64. Each replay uploads one bounded JSON document, and a separate job
+requires the exact five-document, five-candidate-archive, one-revision set,
+recomputes every archive digest, and emits an explicitly unattested index
+before publication. That job does not rebuild or rerun a binary. If a native
+runner is unavailable, the release fails or the platform claim must be
+revised; emulation is not substituted.
+
+Matrix artifacts use stable, target-unique names and explicit replacement of
+the prior same-name artifact. Candidate archives, native journey evidence, and
+aggregate summaries use disjoint prefixes. This avoids immutable-name
+collisions on a rerun while strict revision, filename, target, and digest
+checks still fail closed on any absent or stale input.
 
 There is no current release claim for identity-wrapper execution, argv-only
 transforms, nonempty successful source stderr, raw execution, arbitrary
