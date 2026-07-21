@@ -67,6 +67,14 @@
   prior same-name artifact. The workflow therefore uses stable target-unique
   names with explicit replacement and disjoint archive/evidence/summary
   prefixes rather than binding downloads to only the latest run attempt.
+- The first exact-SHA native run, GitHub Actions run `29869300072`, proved the
+  four Linux and macOS rows and both general gates, then exposed a production
+  Windows defect before packaging: `trustfile.ensurePrivateDirectory` treated
+  synthesized Windows `FileMode` permission bits as POSIX ACL evidence and
+  rejected every newly created trust directory. The aggregate correctly
+  skipped, and no Windows or aggregate artifact was emitted. The fix retains
+  shape, confinement, and identity checks on Windows while applying the
+  owner-only mode check only where Unix mode bits are meaningful.
 
 ## Unknowns
 

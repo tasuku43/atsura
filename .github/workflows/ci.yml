@@ -89,6 +89,7 @@ jobs:
       - name: Run native source-process and recovery contracts
         run: |
           go test -count=1 ./internal/infra/sourceexec
+          go test -count=1 ./internal/infra/trustfile
           go test -count=1 ./internal/infra/bundlejson -run '^TestFileFaultMapsEveryLocalFileFailureToExactPublicContract$'
           go test -count=1 ./internal/cli -run '^(TestBundlePreviewProductionCompositionCoversEveryRecovery|TestBundleExecuteProductionCompositionCoversEveryPreAndPostStartRecovery)$'
 

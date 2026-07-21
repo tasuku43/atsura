@@ -238,7 +238,10 @@ func ensurePrivateDirectory(path string) error {
 	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return localfile.ErrUnsafe
 	}
-	if info.Mode().Perm()&0o077 != 0 {
+	// Windows FileMode permission bits do not represent the directory ACL.
+	// Keep the portable shape and confinement checks there, but require the
+	// owner-only mode that the platform can actually prove on Unix.
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
 		return localfile.ErrUnsafe
 	}
 	return nil

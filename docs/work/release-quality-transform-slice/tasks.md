@@ -29,6 +29,8 @@
 - [x] Add five-target CI and release workflow replay.
 - [x] Add strict per-target evidence upload and five-target aggregation.
 - [x] Update durable product, architecture, security, harness, release, and agent-readiness documents.
+- [x] Correct the Windows trust-directory mode assumption exposed by the first
+  native run and pin the production trust-store tests in every native CI row.
 
 ## Verify
 

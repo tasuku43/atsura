@@ -81,6 +81,16 @@ content never inherits adoption. Repository-controlled paths cannot select or
 replace receipts silently. Trust-store create/write operations remain
 Atsura-owned mutations and cross the central mutation invoker.
 
+The trust-store adapter rejects symbolic links and non-directory/non-regular
+shapes, confines creation and replacement to one verified directory, and
+revalidates directory identity before replacement. On Unix it additionally
+requires owner-only directory and file modes. Windows `FileMode` permission
+bits do not represent the directory or file ACL, so the portable adapter makes
+no ACL-ownership claim there; it retains the shape and confinement checks and
+relies on the user configuration directory's inherited operating-system ACL.
+A stronger Windows ACL guarantee requires a separate platform-specific policy
+and implementation.
+
 ### Host adapters
 
 Host payloads, shell-like strings, settings files, working directories, and

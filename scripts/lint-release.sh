@@ -271,6 +271,7 @@ expected_release_evidence_run="go run ./tools/artifactevidence \\
   --revision \"\${{ needs.preflight.outputs.revision }}\" \\
   >native-evidence-summary.json"
 expected_native_recovery_run="go test -count=1 ./internal/infra/sourceexec
+go test -count=1 ./internal/infra/trustfile
 go test -count=1 ./internal/infra/bundlejson -run '^TestFileFaultMapsEveryLocalFileFailureToExactPublicContract$'
 go test -count=1 ./internal/cli -run '^(TestBundlePreviewProductionCompositionCoversEveryRecovery|TestBundleExecuteProductionCompositionCoversEveryPreAndPostStartRecovery)$'"
 if [[ $(printf '%s\n' "$artifact_job" | native_matrix_rows) != "$expected_native_matrix" ]]; then

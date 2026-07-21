@@ -333,10 +333,10 @@ snapshots, transcripts, and agent reasoning are absent.
   this proves receipt consumption, not human consent. Controlling-terminal
   full-digest confirmation remains separate required production-adapter
   evidence.
-- Each native CI artifact row runs the full production source-runner tests, the
-  exact bundle-file fault mapping, and the complete CLI recovery matrix before
-  packaging and replay. The release linter pins that exact step as well as the
-  five runner/target tuples.
+- Each native CI artifact row runs the full production source-runner and
+  trust-store tests, the exact bundle-file fault mapping, and the complete CLI
+  recovery matrix before packaging and replay. The release linter pins that
+  exact step as well as the five runner/target tuples.
 - Artifact-evidence aggregation owns the exact five-target set. Each native
   job uploads one bounded document containing target and observed host,
   revision, archive, command, bundle, and command-specific plan identities,
