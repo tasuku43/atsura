@@ -1,9 +1,8 @@
 # Product Contract
 
 This contract defines Atsura's current product vocabulary and intended user
-experience. `atr plan preview` is executable today. ADR 0002 selects
-`atr run` as the finite v0.1 release-quality boundary; it is supported only
-after its implementation and all required gates land together.
+experience. `atr plan preview` and the finite v0.1 `atr run` outcome are
+executable today. ADR 0002 defines the supported local-run boundary.
 
 ## Product statement
 
@@ -50,13 +49,13 @@ deterministic execution plan
                        before -> invoke -> output -> after
 ```
 
-The execution and hook protocols remain undecided. The current preview path is:
+The host-hook protocol remains undecided. The preview path is:
 
 ```text
 atr plan preview --config <path> -- <source-command> [args...]
 ```
 
-It returns schema-1 JSON under `plan` and starts no source process. The selected
+It returns schema-1 JSON under `plan` and starts no source process. The local
 execution path is:
 
 ```text
@@ -134,11 +133,11 @@ policy independently. It executes the ordered stages and reports stage-specific
 results or failures.
 
 The v0.1 wrapper accepts only an allowed read plan. It resolves and fingerprints
-one regular executable, revalidates it immediately before and after execution,
-passes executable and argv directly without a shell, supplies EOF stdin,
-inherits the caller's current directory and environment, and starts at most one
-direct source process. Children created by the source CLI are source-owned
-behavior and are not additional Atsura attempts.
+one non-empty regular executable of at most 512 MiB, revalidates it immediately
+before and after execution, passes executable and argv directly without a
+shell, supplies EOF stdin, inherits the caller's current directory and
+environment, and starts at most one direct source process. Children created by
+the source CLI are source-owned behavior and are not additional Atsura attempts.
 
 ### Invocation transformation
 

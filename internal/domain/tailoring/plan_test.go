@@ -4,6 +4,8 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+
+	"github.com/tasuku43/atsura/internal/domain/operation"
 )
 
 func TestCompileBuildsDeterministicAllowPlan(t *testing.T) {
@@ -23,6 +25,9 @@ func TestCompileBuildsDeterministicAllowPlan(t *testing.T) {
 	}
 	if !first.Executable || first.Decision != DecisionAllow {
 		t.Fatalf("decision = %q, executable = %t", first.Decision, first.Executable)
+	}
+	if first.Effect != operation.EffectRead {
+		t.Fatalf("effect = %s", first.Effect)
 	}
 	wantOriginal := []string{"gh", "pr", "list", "--state", "open"}
 	wantTransformed := []string{"gh", "pr", "list", "--state", "open", "--json=number,title,state"}
@@ -68,6 +73,8 @@ func TestCompileRejectsInvocationMismatch(t *testing.T) {
 func TestPolicyValidationFailsClosed(t *testing.T) {
 	tests := map[string]func(*Policy){
 		"schema":           func(policy *Policy) { policy.SchemaVersion = 2 },
+		"effect missing":   func(policy *Policy) { policy.Effect = operation.EffectUnknown },
+		"effect write":     func(policy *Policy) { policy.Effect = operation.EffectWrite },
 		"executable":       func(policy *Policy) { policy.Executable = "" },
 		"prefix nil":       func(policy *Policy) { policy.ArgsPrefix = nil },
 		"decision":         func(policy *Policy) { policy.Decision = "confirm" },
@@ -115,6 +122,7 @@ func TestCompileReturnsDetachedPlan(t *testing.T) {
 func validPolicy() Policy {
 	return Policy{
 		SchemaVersion: 1,
+		Effect:        operation.EffectRead,
 		Executable:    "gh",
 		ArgsPrefix:    []string{"pr", "list"},
 		Decision:      DecisionAllow,

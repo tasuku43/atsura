@@ -11,11 +11,16 @@ planning and enforcement are deterministic and do not require a language model.
 
 ## Project status
 
-Atsura now has one testable, execution-free MVP: `atr plan preview` strictly
-loads one schema-1 per-command YAML file and compiles an attempted source
-invocation into deterministic JSON. It does not inspect or start the source
-CLI, install hooks, transform source output, or activate repository policy.
-The preview command and schema remain experimental.
+Atsura has one release-quality local tailoring outcome. `atr run` strictly
+loads one explicitly selected schema-1 policy, admits only an `allow` decision
+with `effect: read`, starts one bounded source process without a shell, and
+returns selected and renamed records from successful JSON output. `atr plan
+preview` compiles the same policy and invocation with zero source-process
+attempts.
+
+This v0.1 boundary does not inspect source help, install hooks, hide commands,
+activate repository policy implicitly, execute mutations, or provide raw
+fallback. The command and schema remain pre-release interfaces.
 
 The current `atr` binary still contains the foundry's `doctor` and synthetic
 `sample` commands as executable architecture and harness examples. They are
@@ -48,7 +53,7 @@ per-command YAML + attempted command + source evidence
   -> wrapper: built-in before -> source CLI -> built-in output/after
 ```
 
-## Try the MVP
+## Try the local slice
 
 The repository includes an example policy. Previewing it does not require
 `gh` to be installed because Atsura makes zero source-process attempts:
@@ -64,6 +69,18 @@ the matched command and reason, a typed output reshape, and
 `source_process_attempts: 0`. Use `atr help plan preview` for the complete
 machine-readable command contract.
 
+Run the same kind of plan against the repository's synthetic JSON source:
+
+```sh
+go run ./cmd/atr run \
+  --config examples/run-local.yaml \
+  -- go run ./tools/sourcefixture --limit=2
+```
+
+The result contains only `id`, `title`, and `state`, reports
+`source_process_attempts: 1`, and needs no provider account. Run this from the
+repository root with the exact Go version declared in `go.mod`.
+
 The following decisions remain open and require later research or a vertical
 slice:
 
@@ -73,10 +90,10 @@ slice:
 - Claude Code hook responsibilities;
 - wrapper or hook integration mechanism;
 - exact allow, confirm, and deny semantics;
-- built-in processing and output-transform vocabulary;
+- output-transform vocabulary beyond schema-1 select and rename;
 - usage-history collection;
 - jq, RTK, plugin, or external-transformer boundaries; and
-- source failure, transform failure, raw output, and fallback behavior.
+- behavior beyond v0.1's fail-closed source and transform boundary.
 
 See [Project Theses](docs/00_theses.md), [Product Contract](docs/01_product_contract.md),
 [Architecture](docs/02_architecture.md), and [Security Model](docs/03_security_model.md).
@@ -126,12 +143,12 @@ belong to the exact required installation.
 Commands, arguments, help output, source output, generated catalogs, YAML, and
 hook payloads are treated as untrusted. Repository-provided configuration is
 not implicitly user-trusted. Initial YAML processing is limited to typed
-Atsura built-ins rather than arbitrary shell. Atsura does not currently acquire
-or store provider credentials or raw confidential source output.
+Atsura built-ins rather than arbitrary shell. Atsura does not acquire or store
+provider credentials or persist source output. The source process inherits the
+caller's environment, so its own credential handling remains authoritative.
 
-No release is created or promised by the bootstrap. See [Release Model](docs/06_release.md)
-for the inherited packaging foundation and decisions still required before an
-Atsura release.
+No Atsura release has been published. See [Release Model](docs/06_release.md)
+for the reviewed v0.1 packaging boundary and the remaining first-tag controls.
 
 For contributions and help, see [CONTRIBUTING.md](CONTRIBUTING.md),
 [SUPPORT.md](SUPPORT.md), and [SECURITY.md](SECURITY.md).

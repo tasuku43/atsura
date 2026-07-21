@@ -650,6 +650,10 @@ func TestEveryCatalogCommandDispatchesThroughItsSpec(t *testing.T) {
 		if spec.Path == "plan preview" {
 			args = append(args, "--config", planPath, "--", "gh", "pr", "list")
 		}
+		if spec.Path == "run" {
+			t.Setenv(sourceHelperModeEnvironment, "success")
+			args = runSourceArgs(runPolicyFile(t, "allow"))
+		}
 		if code := runCLI(command, args); code != ExitOK {
 			t.Errorf("Run(%q) code = %d, stderr = %q", spec.Path, code, stderr.String())
 		}

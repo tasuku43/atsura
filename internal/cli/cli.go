@@ -10,9 +10,12 @@ import (
 	"github.com/tasuku43/atsura/internal/app/doctorcmd"
 	"github.com/tasuku43/atsura/internal/app/planpreview"
 	"github.com/tasuku43/atsura/internal/app/samplecmd"
+	"github.com/tasuku43/atsura/internal/app/tailorrun"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
 	"github.com/tasuku43/atsura/internal/infra/sampledata"
+	"github.com/tasuku43/atsura/internal/infra/sourceexec"
+	"github.com/tasuku43/atsura/internal/infra/sourcejson"
 	"github.com/tasuku43/atsura/internal/infra/systemdoctor"
 	"github.com/tasuku43/atsura/internal/infra/tailoringyaml"
 )
@@ -28,6 +31,7 @@ type CLI struct {
 	catalog Catalog
 	doctor  *doctorcmd.Service
 	plans   *planpreview.Service
+	runs    *tailorrun.Service
 	samples *samplecmd.Service
 }
 
@@ -62,6 +66,7 @@ func newCLIWithSamples(
 		catalog: catalog,
 		doctor:  doctorcmd.New(inspector),
 		plans:   planpreview.New(tailoringyaml.New()),
+		runs:    tailorrun.New(tailoringyaml.New(), sourceexec.New(), sourcejson.New()),
 		samples: samplecmd.New(repository),
 	}
 }

@@ -31,7 +31,7 @@ func previewIntent() operation.Intent {
 
 func validPolicy() tailoring.Policy {
 	return tailoring.Policy{
-		SchemaVersion: 1, Executable: "gh", ArgsPrefix: []string{"pr", "list"},
+		SchemaVersion: 1, Effect: operation.EffectRead, Executable: "gh", ArgsPrefix: []string{"pr", "list"},
 		Decision: tailoring.DecisionAllow, Reason: "Keep the response focused.",
 		AppendArgs: []string{"--json=number,title,state"},
 		Output:     tailoring.OutputPlan{Input: tailoring.InputJSON, Select: []string{"number"}, Rename: []tailoring.Rename{}, Render: tailoring.RenderCompactJSON},

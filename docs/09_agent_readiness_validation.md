@@ -196,10 +196,11 @@ measurements were 1,517 bytes for root agent help, 5,359 bytes for exact
 `sample read` help, and 8,359 bytes for the `sample` namespace. The 512-byte
 limit continues to bound each root selection entry.
 
-With schema 6, measured on 2026-07-19, the current root remains 1,517 bytes,
-exact `sample read` help is 5,909 bytes, and the `sample` namespace is 8,814
-bytes. The scoped increase records executable input types, cardinality,
-defaults, and relations while the root remains selection-only.
+With schema 6, measured on 2026-07-21 after adding the two tailoring commands,
+the current root is 2,045 bytes, exact `sample read` help is 5,845 bytes, the
+`sample` namespace is 8,734 bytes, and exact `run` help is 10,529 bytes. The
+root increase is limited to selection entries; invocation and failure detail
+remain scoped.
 
 Schema 6 retains the fixed derived-scale regression with six selected commands, 18
 producer endpoints, 18 consumer endpoints, and 324 implicit same-kind edges.
@@ -261,6 +262,50 @@ stdout, and names `help plan preview` as its next action.
 
 This scenario validates plan inspection only. It does not validate source
 discovery, hook interception, execution, or actual output transformation.
+
+## Scenario D: Atsura local tailored run
+
+### Outcome
+
+Given one explicitly selected schema-1 policy, a maintainer can run one
+declared read-only JSON-producing source command and consume only its selected
+and renamed records without an undeclared parser.
+
+### Runnable probe
+
+From the repository root:
+
+```sh
+go run ./cmd/atr help --format agent
+go run ./cmd/atr help run --format agent
+go run ./cmd/atr plan preview --config examples/run-local.yaml -- go run ./tools/sourcefixture --limit=2
+go run ./cmd/atr run --config examples/run-local.yaml -- go run ./tools/sourcefixture --limit=2
+```
+
+The root index plus exact scoped help meets the two-invocation unknown-surface
+bound. Known-path discovery takes one scoped-help invocation. The preview makes
+zero source attempts and exposes the exact appended `--format=json` argument.
+The run makes exactly one direct attempt and returns schema-1 `execution` JSON
+whose `records` contain only ordered `id`, `title`, and `state` fields. Reading
+those declared fields is direct consumption, so the routine-success external
+processing count is zero.
+
+### Recovery probes
+
+- A deny policy returns `rejected` / `policy_rejected` before process start.
+- A command-prefix mismatch returns `not_found` / `plan_rule_not_matched`
+  before process start and points to `plan preview`.
+- An absent executable returns `not_found` / `source_executable_not_found` with
+  no attempt.
+- Nonzero exit, timeout, cancellation, identity drift, capture overflow,
+  malformed or duplicate JSON, and transform mismatch produce no success
+  stdout, no raw fallback, and no Atsura retry.
+- Successful bounded source stderr is visibly escaped on Atsura stderr and
+  cannot alter the JSON success structure.
+
+This scenario validates only the generic local read boundary. It makes no
+claim about vendor CLI compatibility, source-help discovery, hook interception,
+mutations, implicit trust, or raw execution.
 
 ## Review record
 

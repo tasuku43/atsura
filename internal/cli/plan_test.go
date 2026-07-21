@@ -10,6 +10,7 @@ import (
 )
 
 const planPreviewYAML = `schema_version: 1
+effect: read
 command:
   executable: gh
   args_prefix: [pr, list]

@@ -1,12 +1,12 @@
 schema_version: 1
 effect: read
 command:
-  executable: gh
-  args_prefix: [pr, list]
+  executable: go
+  args_prefix: [run, ./tools/sourcefixture]
 decision: allow
-reason: Return only pull request identity and status.
+reason: Return only synthetic task identity and status.
 invoke:
-  append_args: ["--json=number,title,state"]
+  append_args: ["--format=json"]
 output:
   input: json
   select: [number, title, state]

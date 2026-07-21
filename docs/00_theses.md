@@ -215,12 +215,12 @@ Success evidence includes:
 - a nontrivial output reshape is fully described by typed built-in actions; and
 - a maintainer can identify every change without reading implementation source.
 
-`atr run` is the next evidence step. It must compile the same policy and
-invocation, reject any non-read or deny plan before execution, resolve and
-revalidate one source executable, perform at most one direct attempt, and apply
-the declared transform only to bounded successful JSON. Nonzero exit, timeout,
-cancellation, drift, overflow, or transform failure produces no raw success and
-no automatic retry.
+`atr run` is the executed evidence step. It compiles the same policy and
+invocation, rejects any non-read or deny plan before execution, resolves and
+revalidates one source executable, performs at most one direct attempt, and
+applies the declared transform only to bounded successful JSON. Nonzero exit,
+timeout, cancellation, drift, overflow, or transform failure produces no raw
+success and no automatic retry.
 
 ## Current non-goals
 

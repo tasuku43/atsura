@@ -13,6 +13,7 @@ import (
 )
 
 const validYAML = `schema_version: 1
+effect: read
 command:
   executable: gh
   args_prefix: [pr, list]
@@ -65,6 +66,7 @@ func TestLoadRejectsUntrustedYAMLShapes(t *testing.T) {
 		"unknown field":        strings.Replace(validYAML, "decision: allow", "unknown: value\ndecision: allow", 1),
 		"duplicate key":        strings.Replace(validYAML, "decision: allow", "decision: deny\ndecision: allow", 1),
 		"unsupported decision": strings.Replace(validYAML, "decision: allow", "decision: confirm", 1),
+		"unsupported effect":   strings.Replace(validYAML, "effect: read", "effect: write", 1),
 		"multiple documents":   validYAML + "---\n" + validYAML,
 		"alias":                strings.Replace(validYAML, "select: [number, title, state]", "select: &fields [number, title, state]\n  rename: *fields", 1),
 	}

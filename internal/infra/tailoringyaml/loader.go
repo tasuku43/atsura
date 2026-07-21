@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/tasuku43/atsura/internal/domain/fault"
+	"github.com/tasuku43/atsura/internal/domain/operation"
 	"github.com/tasuku43/atsura/internal/domain/tailoring"
 	"go.yaml.in/yaml/v3"
 )
@@ -29,6 +30,7 @@ func New() *Loader { return &Loader{} }
 
 type document struct {
 	SchemaVersion int      `yaml:"schema_version"`
+	Effect        string   `yaml:"effect"`
 	Command       *command `yaml:"command"`
 	Decision      string   `yaml:"decision"`
 	Reason        string   `yaml:"reason"`
@@ -150,6 +152,7 @@ func decode(raw []byte) (tailoring.Policy, error) {
 	}
 	policy := tailoring.Policy{
 		SchemaVersion: value.SchemaVersion,
+		Effect:        parseEffect(value.Effect),
 		Executable:    value.Command.Executable,
 		ArgsPrefix:    append([]string(nil), value.Command.ArgsPrefix...),
 		Decision:      tailoring.Decision(value.Decision),
@@ -166,6 +169,14 @@ func decode(raw []byte) (tailoring.Policy, error) {
 		return tailoring.Policy{}, err
 	}
 	return policy, nil
+}
+
+func parseEffect(value string) operation.Effect {
+	var effect operation.Effect
+	if err := effect.UnmarshalText([]byte(value)); err != nil {
+		return operation.EffectUnknown
+	}
+	return effect
 }
 
 func validateNode(node *yaml.Node, depth int, count *int) error {

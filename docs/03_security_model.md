@@ -1,8 +1,7 @@
 # Security Model
 
 This model covers the YAML-to-plan-to-wrapper boundary. The current binary
-previews plans; ADR 0002 defines the security conditions that the v0.1 local
-read-only runner must satisfy before execution is supported.
+previews plans and implements ADR 0002's bounded v0.1 local read-only runner.
 
 ## Security objective
 
@@ -82,10 +81,10 @@ execution-time revalidation
 bounded wrapper: before -> source -> output -> after
 ```
 
-Preview has no process or filesystem side effects. Execution cannot treat an
-old preview as authority; it revalidates the trusted YAML, catalog/source
-evidence, executable identity, and relevant environment immediately before the
-wrapper begins.
+Preview reads only the explicitly selected policy and starts no source process;
+it has no mutating side effect. Execution cannot treat an old preview as
+authority: it reloads and recompiles the selected policy and revalidates source
+executable identity at the process boundary.
 
 ## YAML policy boundary
 
@@ -135,8 +134,9 @@ semantics, dependency integrity, and recovery.
 
 Catalog and plan evidence must be bound to the source executable they describe.
 For v0.1 run, the adapter resolves a PATH name or explicit path, follows it to
-one absolute regular executable, hashes its bytes with SHA-256, and compares
-the same resolved identity immediately before and after the direct attempt.
+one absolute non-empty regular executable of at most 512 MiB, hashes its bytes
+with SHA-256, and compares the same resolved identity immediately before and
+after the direct attempt.
 Preview remains usable without an installed source and does not claim resolved
 identity. PATH precedence, plugins, aliases, interpreters, dynamic libraries,
 source-created children, and a compromised OS remain outside this evidence.
@@ -148,7 +148,7 @@ The executor resolves and revalidates the executable immediately before launch.
 
 ## Process execution boundary
 
-The v0.1 executor must:
+The v0.1 executor:
 
 - accept an exact executable and argv vector, never an interpolated shell
   program;
@@ -231,9 +231,9 @@ never uses shell interpretation merely for convenience.
 - A future direct API or external transformer requires revised authentication,
   egress, bounded-call, fixture, and dependency contracts.
 
-## First-slice controls and required evidence
+## Preview controls and required evidence
 
-`atr plan preview` currently accepts only an explicit local path, refuses
+`atr plan preview` accepts only an explicit local path, refuses
 symlinks and non-regular files, rechecks opened-file identity, bounds reads to
 64 KiB, permits exactly one YAML document, rejects aliases and unknown fields,
 and validates the finite schema in the domain before plan construction. The

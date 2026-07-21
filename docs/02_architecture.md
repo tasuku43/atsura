@@ -5,8 +5,8 @@ configuration, deterministic planning, process execution, and output
 transformation from collapsing into an unrestricted wrapper.
 
 This document assigns intended responsibilities. The current binary implements
-the no-execution YAML-to-plan preview boundary. ADR 0002 selects the bounded
-read-only local run below as the next release-quality boundary.
+both the no-execution YAML-to-plan preview and the bounded read-only local run
+selected by ADR 0002.
 
 ## Dependency direction
 
@@ -143,12 +143,13 @@ Infrastructure reports observations and typed failures. It does not decide
 which source capability is visible, allowed, or confirmed, and it does not
 interpret a generic shell string from YAML.
 
-The v0.1 process adapter resolves a PATH name or explicit path to one regular
-executable, records an absolute resolved path and SHA-256 digest, revalidates
-that evidence immediately before and after a direct `os/exec` attempt, and
-captures stdout/stderr in memory under fixed byte and time bounds. The JSON
-adapter converts bounded source bytes into domain JSON values while rejecting
-duplicate keys and excessive nesting, nodes, fields, or records.
+The v0.1 process adapter resolves a PATH name or explicit path to one non-empty
+regular executable of at most 512 MiB, records an absolute resolved path and
+SHA-256 digest, revalidates that evidence immediately before and after a direct
+`os/exec` attempt, and captures stdout/stderr in memory under fixed byte and
+time bounds. The JSON adapter converts bounded source bytes into domain JSON
+values while rejecting duplicate keys and excessive nesting, nodes, fields, or
+records.
 
 ### CLI
 
@@ -181,9 +182,9 @@ v0.1 local execution path. No hook-installation command is selected.
 | Output transformation | Domain typed actions; application result policy | Infrastructure JSON parse mechanics; CLI render | v0.1 object/array select and rename |
 | External transformer | Future reviewed port | Future infrastructure adapter | jq, RTK, plugins, and scripts excluded initially |
 
-## First vertical boundary
+## Preview boundary
 
-The implemented first slice stops before source execution:
+The first slice stops before source execution:
 
 ```text
 synthetic source evidence
@@ -199,7 +200,8 @@ The fixture should describe a substantial built-in output reshape so the plan
 model is not accidentally limited to argv rewriting or line shortening.
 
 The slice makes zero source-process attempts and only describes its output
-transformation. It does not prove execution, hook, or transformation behavior.
+transformation. The local-run boundary below supplies execution and
+transformation evidence; neither slice proves hook behavior.
 
 ## v0.1 release-quality boundary
 

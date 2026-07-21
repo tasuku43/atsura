@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 type successFormat string
@@ -22,6 +23,23 @@ func parseSuccessFormat(value string) (successFormat, error) {
 	default:
 		return successFormatTSV, fmt.Errorf("--format must be tsv or json")
 	}
+}
+
+// safeExternalBytes preserves valid UTF-8 while making invalid bytes and
+// structural runes visible. Source stderr is not assumed to be UTF-8.
+func safeExternalBytes(value []byte) string {
+	var output strings.Builder
+	for len(value) > 0 {
+		r, size := utf8.DecodeRune(value)
+		if r == utf8.RuneError && size == 1 {
+			fmt.Fprintf(&output, "\\x%02X", value[0])
+			value = value[1:]
+			continue
+		}
+		writeExternalRune(&output, r, true)
+		value = value[size:]
+	}
+	return output.String()
 }
 
 // safeExternalText makes structural runes visible without interpreting the

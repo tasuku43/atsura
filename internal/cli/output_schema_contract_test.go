@@ -17,6 +17,7 @@ import (
 // It fails whether a renderer drifts alone or its catalog declaration drifts
 // without a matching public output change.
 func TestJSONOutputMatchesCatalogContract(t *testing.T) {
+	t.Setenv(sourceHelperModeEnvironment, "success")
 	type probe struct {
 		path  string
 		args  []string
@@ -41,6 +42,7 @@ func TestJSONOutputMatchesCatalogContract(t *testing.T) {
 		},
 		{path: "help", args: []string{"help", "--format=agent"}, build: newDefault, view: "index"},
 		{path: "plan preview", args: []string{"plan", "preview", "--config", planPath, "--", "gh", "pr", "list"}, build: newDefault},
+		{path: "run", args: runSourceArgs(runPolicyFile(t, "allow")), build: newDefault},
 		{path: "sample list", args: []string{"sample", "list", "--format=json"}, build: newDefault},
 		{path: "sample read", args: []string{"sample", "read", "--id", "smp_2f4a6c8e0b1d", "--format=json"}, build: newDefault},
 	}

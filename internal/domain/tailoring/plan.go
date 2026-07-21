@@ -8,6 +8,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/tasuku43/atsura/internal/domain/operation"
 )
 
 const (
@@ -59,6 +61,7 @@ type OutputPlan struct {
 // Policy is one validated per-command policy decoded from schema-1 YAML.
 type Policy struct {
 	SchemaVersion int
+	Effect        operation.Effect
 	Executable    string
 	ArgsPrefix    []string
 	Decision      Decision
@@ -77,6 +80,7 @@ type Invocation struct {
 // zero because this package has no execution boundary.
 type Plan struct {
 	Decision              Decision
+	Effect                operation.Effect
 	Executable            bool
 	SourceExecutable      string
 	MatchedCommand        string
@@ -92,6 +96,9 @@ type Plan struct {
 func (p Policy) Validate() error {
 	if p.SchemaVersion != 1 {
 		return invalidPolicy("schema_version must be 1")
+	}
+	if p.Effect != operation.EffectRead {
+		return invalidPolicy("effect must be read in schema 1")
 	}
 	if err := validateArgument(p.Executable); err != nil {
 		return invalidPolicy("command executable: %v", err)
@@ -175,6 +182,12 @@ func (o OutputPlan) validate() error {
 	return nil
 }
 
+// Validate proves that an output plan contains only the schema-1 typed
+// transformation vocabulary.
+func (o OutputPlan) Validate() error {
+	return o.validate()
+}
+
 // Compile matches one attempted invocation and returns a detached preview.
 // It performs no source discovery, process execution, or output transformation.
 func Compile(policy Policy, invocation Invocation) (Plan, error) {
@@ -202,6 +215,7 @@ func Compile(policy Policy, invocation Invocation) (Plan, error) {
 	matched := append([]string{policy.Executable}, policy.ArgsPrefix...)
 	return Plan{
 		Decision:              policy.Decision,
+		Effect:                policy.Effect,
 		Executable:            executable,
 		SourceExecutable:      policy.Executable,
 		MatchedCommand:        strings.Join(matched, " "),

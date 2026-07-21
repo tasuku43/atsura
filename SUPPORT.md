@@ -1,9 +1,8 @@
 # Support
 
-Atsura is pre-release and maintained on a best-effort basis. Source-CLI
-tailoring is not implemented yet, so support currently covers repository
-bootstrap, the inherited executable scaffold, documented product decisions, and
-the verification harness.
+Atsura is pre-release and maintained on a best-effort basis. Support covers the
+documented schema-1 `plan preview` and read-only local `run` outcome, repository
+development, and the verification harness.
 
 ## Where to ask
 
@@ -24,10 +23,13 @@ output, or embargoed details in issues, discussions, or pull requests.
 
 ## Current boundary
 
-The project does not yet support a real source CLI, policy file, wrapper, hook,
-output transformation, history integration, RTK integration, or release
-installation. Requests in those areas are product proposals, not support
-requests for an existing capability.
+The supported tailoring boundary requires an explicitly selected policy and a
+local JSON-producing source executable. It supports exact prefix matching,
+allow/deny, appended arguments, and built-in select/rename output. Source-help
+inspection, vendor-specific compatibility, hooks, implicit policy activation,
+mutations, confirmation, raw fallback, history, RTK or external transformers,
+and published release installation are product proposals rather than existing
+capabilities.
 
 Before requesting help, read [README.md](README.md), [AGENTS.md](AGENTS.md), and
 the [documentation map](docs/README.md), then run the smallest relevant

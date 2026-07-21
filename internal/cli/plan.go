@@ -18,6 +18,7 @@ type planDocument struct {
 
 type planPayload struct {
 	Decision              string            `json:"decision"`
+	Effect                string            `json:"effect"`
 	Executable            bool              `json:"executable"`
 	SourceExecutable      string            `json:"source_executable"`
 	MatchedCommand        string            `json:"matched_command"`
@@ -58,7 +59,7 @@ func renderPlan(plan tailoring.Plan) ([]byte, error) {
 		renames[index] = planRenamePayload{From: value.From, To: value.To}
 	}
 	document := planDocument{SchemaVersion: 1, Plan: planPayload{
-		Decision: string(plan.Decision), Executable: plan.Executable,
+		Decision: string(plan.Decision), Effect: plan.Effect.String(), Executable: plan.Executable,
 		SourceExecutable: plan.SourceExecutable, MatchedCommand: plan.MatchedCommand,
 		OriginalArgv:    append([]string(nil), plan.OriginalArgv...),
 		TransformedArgv: append(make([]string, 0, len(plan.TransformedArgv)), plan.TransformedArgv...),

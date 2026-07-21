@@ -1,8 +1,8 @@
 # Security Policy
 
-Atsura is pre-release and does not yet execute or transform a source CLI. Its
-current security boundary is the identity-bootstrap repository, inherited
-harness, and product/security design recorded in
+Atsura is pre-release. Its current tailoring boundary can execute one
+explicitly configured read-only source command and transform bounded successful
+JSON. The exact controls and limitations are recorded in
 [the Security Model](docs/03_security_model.md).
 
 ## Supported versions
@@ -40,19 +40,20 @@ Include, when possible:
 - A controlling policy or source-identity decision that cannot be evaluated
   must produce no source-process attempt.
 - Arbitrary shell code is not an accepted default policy mechanism.
-- Future process execution must use an exact executable and argv vector without
-  shell interpolation.
+- Process execution uses an exact executable and argv vector without shell
+  interpolation, with one direct attempt and fixed time and byte bounds.
 - Output optimization failure must not change argv, run a different command,
   repeat execution, or select raw execution automatically.
-- Atsura currently acquires and stores no OAuth token, PAT, provider credential,
-  usage history, or raw confidential source output.
+- Atsura acquires and stores no OAuth token, PAT, provider credential, usage
+  history, or raw confidential source output. A source process still inherits
+  the caller's environment.
 - A future raw route must be explicit and must state that Atsura policy is
   bypassed.
 
 The inherited harness checks architecture, repository hygiene, secrets,
-contracts, and public boundaries. Those checks do not prove that a future
-source-CLI adapter, policy, hook, or executor is secure; each requires a revised
-threat model and executable negative tests.
+contracts, and public boundaries. Those checks bound the current synthetic
+local-run outcome; they do not prove a particular vendor source CLI, future
+hook, mutation policy, or extension mechanism is secure.
 
 ## Out of scope
 

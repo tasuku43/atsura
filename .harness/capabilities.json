@@ -23,5 +23,10 @@
     "id": "tailoring.preview",
     "status": "public",
     "reason": ""
+  },
+  {
+    "id": "tailoring.execute",
+    "status": "public",
+    "reason": ""
   }
 ]
