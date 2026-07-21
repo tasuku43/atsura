@@ -13,6 +13,7 @@ export GOWORK=off
 bash -n \
   scripts/check.sh \
   scripts/package-release.sh \
+  scripts/test-release-artifact.sh \
   scripts/release-archive-entries.sh \
   scripts/render-formula.sh \
   scripts/audit-formula.sh \
@@ -106,7 +107,7 @@ grep -qF 'go build -buildvcs=false -trimpath -o bin/' Taskfile.yml || {
 for required in \
   'export GO111MODULE=on' 'export GOENV=off' 'export GOEXPERIMENT=' 'export GOFIPS140=off' \
   'export GOFLAGS=' 'export GOTOOLCHAIN=local' 'export GOWORK=off'; do
-  for go_boundary in scripts/check.sh scripts/package-release.sh; do
+  for go_boundary in scripts/check.sh scripts/package-release.sh scripts/test-release-artifact.sh; do
     if ! grep -qFx "$required" "$go_boundary"; then
       echo "$go_boundary does not neutralize ambient Go configuration: $required" >&2
       exit 1
@@ -126,11 +127,101 @@ done
 for required in \
   './scripts/check.sh full' './scripts/check.sh security' './scripts/check.sh release' \
   './scripts/check.sh public' './scripts/package-release.sh' 'checksums.txt' \
-  'gh release create' 'Formula/' 'scripts/render-formula.sh'; do
+  'gh release create' 'Formula/' 'scripts/render-formula.sh' \
+  'runtime-replay:' 'actions/download-artifact@' 'scripts/test-release-artifact.sh' \
+  'needs: [preflight, build, runtime-replay]'; do
   grep -qF "$required" .github/workflows/release.yml || {
     echo "release workflow is missing: $required" >&2
     exit 1
   }
+done
+
+for workflow in .github/workflows/ci.yml .github/workflows/release.yml; do
+  for forbidden_runtime in 'continue-on-error:' 'qemu' 'QEMU' 'rosetta' 'Rosetta'; do
+    if grep -qF "$forbidden_runtime" "$workflow"; then
+      echo "$workflow must not substitute optional or emulated execution for native artifact replay: $forbidden_runtime" >&2
+      exit 1
+    fi
+  done
+done
+
+workflow_job() {
+  local workflow=$1
+  local job=$2
+  awk -v heading="  ${job}:" '
+    $0 == heading { in_job=1 }
+    in_job && $0 != heading && /^  [A-Za-z0-9_-]+:/ { exit }
+    in_job { print }
+  ' "$workflow"
+}
+
+native_matrix_rows() {
+  awk '
+    /^[[:space:]]+- runner:/ {
+      runner=$0; sub(/^.*runner:[[:space:]]*/, "", runner)
+      goos=""; goarch=""; extension=""
+    }
+    /^[[:space:]]+goos:/ { goos=$0; sub(/^.*goos:[[:space:]]*/, "", goos) }
+    /^[[:space:]]+goarch:/ { goarch=$0; sub(/^.*goarch:[[:space:]]*/, "", goarch) }
+    /^[[:space:]]+extension:/ {
+      extension=$0; sub(/^.*extension:[[:space:]]*/, "", extension)
+      print runner "|" goos "|" goarch "|" extension
+    }
+  '
+}
+
+expected_native_matrix='ubuntu-24.04|linux|amd64|tar.gz
+ubuntu-24.04-arm|linux|arm64|tar.gz
+macos-15-intel|darwin|amd64|tar.gz
+macos-15|darwin|arm64|tar.gz
+windows-2025|windows|amd64|zip'
+artifact_job=$(workflow_job .github/workflows/ci.yml artifact)
+runtime_replay_job=$(workflow_job .github/workflows/release.yml runtime-replay)
+ci_revision_literal="revision=\"\${GITHUB_SHA}\""
+release_revision_literal="\${{ needs.preflight.outputs.revision }}"
+release_ref_literal="ref: $release_revision_literal"
+release_artifact_name_literal="name: release-\${{ matrix.goos }}-\${{ matrix.goarch }}"
+release_archive_literal="archive=\"dist/\${binary}_\${GITHUB_REF_NAME}_\${{ matrix.goos }}_\${{ matrix.goarch }}.\${{ matrix.extension }}\""
+release_tag_argument_literal="\"\${GITHUB_REF_NAME}\""
+release_revision_argument_literal="\"$release_revision_literal\""
+if [[ $(printf '%s\n' "$artifact_job" | native_matrix_rows) != "$expected_native_matrix" ]]; then
+  echo "CI artifact job must contain the exact five native runner/target/archive tuples" >&2
+  exit 1
+fi
+if [[ $(printf '%s\n' "$runtime_replay_job" | native_matrix_rows) != "$expected_native_matrix" ]]; then
+  echo "release runtime-replay job must contain the exact five native runner/target/archive tuples" >&2
+  exit 1
+fi
+for required in \
+  'Native artifact journey' \
+  "$ci_revision_literal" \
+  'scripts/package-release.sh' \
+  'scripts/test-release-artifact.sh'; do
+  if ! printf '%s\n' "$artifact_job" | grep -qF "$required"; then
+    echo "CI artifact job is missing native artifact evidence: $required" >&2
+    exit 1
+  fi
+done
+for required in \
+  'needs: [preflight, build]' \
+  "$release_ref_literal" \
+  'actions/download-artifact@' \
+  "$release_artifact_name_literal" \
+  'path: dist' \
+  "$release_archive_literal" \
+  "$release_tag_argument_literal" \
+  "$release_revision_argument_literal" \
+  'scripts/test-release-artifact.sh'; do
+  if ! printf '%s\n' "$runtime_replay_job" | grep -qF "$required"; then
+    echo "release runtime-replay job is missing exact downloaded-artifact evidence: $required" >&2
+    exit 1
+  fi
+done
+for forbidden_rebuild in 'scripts/package-release.sh' 'go build' 'go run ./cmd/atr' './cmd/atr'; do
+  if printf '%s\n' "$runtime_replay_job" | grep -qF "$forbidden_rebuild"; then
+    echo "release runtime-replay job must not rebuild atr: $forbidden_rebuild" >&2
+    exit 1
+  fi
 done
 
 formula_job=$(awk '
@@ -362,6 +453,25 @@ for target in "${targets[@]}"; do
     fi
   done
 done
+
+host_os=$(go env GOHOSTOS)
+host_arch=$(go env GOHOSTARCH)
+host_extension=
+case "$host_os/$host_arch" in
+  linux/amd64|linux/arm64|darwin/amd64|darwin/arm64) host_extension=tar.gz ;;
+  windows/amd64) host_extension=zip ;;
+  *)
+    echo "release gate requires one claimed native host; running on $host_os/$host_arch" >&2
+    exit 1
+    ;;
+esac
+host_asset=${binary}_${release_tag}_${host_os}_${host_arch}.${host_extension}
+scripts/test-release-artifact.sh \
+  "$release_tag" \
+  "$release_revision" \
+  "$host_os" \
+  "$host_arch" \
+  "$dist/$host_asset" >/dev/null
 if ! go mod verify >/dev/null; then
   echo "module inputs changed or failed verification during the primary archive pass" >&2
   exit 1

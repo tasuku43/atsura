@@ -138,10 +138,13 @@ The release workflow follows this order:
 1. Validate tag syntax and resolve its exact source revision.
 2. Run source, security, release, and public-boundary gates required by policy.
 3. Build the complete pure-Go platform matrix from that revision.
-4. Verify archive names, contents, executable behavior, version, and commit.
-5. Generate and verify `checksums.txt`.
-6. Publish one GitHub Release from the reviewed tag.
-7. For a stable tag, render the checksum-pinned Homebrew Formula and open a Formula update pull request.
+4. Download each build artifact on its matching native runner and replay the
+   installed-artifact transform journey with no provider credentials or
+   provider network.
+5. Verify archive names, contents, version, commit, and native executable behavior.
+6. Generate and verify `checksums.txt`.
+7. Publish one GitHub Release only after all five native replays succeed.
+8. For a stable tag, render the checksum-pinned Homebrew Formula and open a Formula update pull request.
 
 The workflow uses a public GitHub Release path. It must not embed private asset URLs, personal access tokens, authorization headers, or organization-specific package infrastructure in Formula content.
 
@@ -199,9 +202,10 @@ task public:check
 Then review the exact commit that will receive the tag. A clean local run does not authorize tagging a different revision.
 
 Before a first release is approved, release preparation must replay the current
-public artifact, adoption, `bundle preview`, and `bundle execute` scenarios
-against the exact release artifacts. Preview must require the adopted current
-bundle, reproduce its canonical plan digest, and report
+public artifact, adoption-receipt consumption, `bundle preview`, and `bundle
+execute` scenarios against the exact release artifacts on matching native
+runners. Preview must require the adopted current bundle, reproduce its
+canonical plan digest, and report
 `source_process_attempts: 0`. Execute must rebuild the same plan, report the
 same digest, and report exactly one attempt only after compatibility succeeds.
 
@@ -222,15 +226,28 @@ The current executable runtime claim is limited to all of the following:
   or public inclusion of raw stdout, raw stderr, or unselected fields; and
 - non-retryable classification for every post-start or final-output failure.
 
-The credential- and network-free synthetic GitHub-compatible self-process
-fixture runs through the production verifier, runner, parser, transformer, and
-renderer and is the canonical automated gate. The accepted major-2 range is a
-maintained compatibility decision, not a claim that one fixture proves every
-future 2.x release. A live GitHub CLI observation is optional supporting
-evidence and must not persist account, repository, pull-request, or raw source
-data. Packaging checks alone do not prove source-runtime compatibility on every
-target platform; the first-tag review must record exact-artifact scenario
-evidence for each platform on which this runtime behavior is claimed.
+The credential- and provider-network-free synthetic GitHub-compatible native
+fixture runs through the exact archived `atr`, production composition,
+verifier, runner, parser, transformer, and renderer and is the canonical
+automated artifact gate. It first verifies schema-8 root help and the four
+exact scoped authoring/runtime contracts. Its append-only log proves four
+inspection attempts, zero preview attempts, and one success attempt;
+channel-specific canaries prove that raw failure data and unselected fields do
+not reach public output or isolated state. The non-shipped harness seeds one
+exact receipt into its ephemeral user-config root through the production
+trust-store adapter. This is
+explicitly receipt-consumption evidence, not evidence that automation provided
+human consent. Full-digest controlling-terminal success and redirected-input
+rejection are proven separately by production-adapter and application tests.
+
+The accepted major-2 range is a maintained compatibility decision, not a claim
+that one fixture proves every future 2.x release. A live GitHub CLI observation
+is optional supporting evidence and must not persist account, repository,
+pull-request, or raw source data. Packaging metadata and cross-compilation do
+not prove runtime behavior. The release workflow blocks publication on exact-
+archive native replay for Linux amd64/arm64, macOS amd64/arm64, and Windows
+amd64. If a native runner is unavailable, the release fails or the platform
+claim must be revised; emulation is not substituted.
 
 There is no current release claim for identity-wrapper execution, argv-only
 transforms, nonempty successful source stderr, raw execution, arbitrary

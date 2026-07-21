@@ -309,6 +309,14 @@ snapshots, transcripts, and agent reasoning are absent.
   runs through the production compatibility verifier, identity-bound process
   runner, parser, transformer, and result renderer without provider credentials
   or network effects.
+- Artifact-journey fixtures own execution of the exact `atr` file extracted
+  from a release archive. They use a native credential- and provider-network-
+  free source fixture, an isolated user-config root, and an append-only attempt
+  log. Before source inspection they verify schema-8 root help and the four
+  exact scoped authoring/runtime contracts. The non-shipped harness may seed
+  one exact receipt through the production trust-store adapter; this proves
+  receipt consumption, not human consent. Controlling-terminal full-digest
+  confirmation remains separate required production-adapter evidence.
 - Architecture and public guards own dependency direction and secret-free
   repository state.
 
@@ -331,15 +339,27 @@ tree:
    zero attempts, while post-start failures record one and are non-retryable;
 7. retired authorization schemas fail with zero source attempts and legacy
    `plan preview` remains migration-only;
-8. `task check` passes;
-9. `task security` passes; and
-10. repository search finds no live source-wrapper requirement for
+8. exact scoped agent help publishes the finite source-catalog,
+   specification-authoring, and runtime-admission contracts used by the
+   installed-artifact journey;
+9. `task release:check` replays the host-native exact archive, and CI defines
+   required native jobs for Linux amd64/arm64, macOS amd64/arm64, and Windows
+   amd64; the release publish job depends on all five replays;
+10. `task check` passes;
+11. `task security` passes; and
+12. repository search finds no live source-wrapper requirement for
    allow/confirm/deny, source read/create/write, or source target/impact outside
    explicit migration and superseded-history contexts.
 
+Local `task release:check` proves archive mechanics, workflow structure, and
+the current host's native replay. It cannot stand in for the other four native
+jobs; an exact commit has complete platform evidence only after the required CI
+matrix succeeds. Emulation and cross-build metadata do not count as native
+runtime evidence.
+
 The gate does not claim identity-wrapper or argv-only-transform execution, raw
 execution, host installation, arbitrary transformer integration, support for a
-source CLI beyond an accepted adapter contract, or publication readiness.
+source CLI beyond an accepted adapter contract, or publication authorization.
 
 ## Evidence discipline
 

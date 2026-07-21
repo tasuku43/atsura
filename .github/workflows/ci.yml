@@ -47,3 +47,61 @@ jobs:
         run: |
           ./scripts/check.sh security
           ./scripts/check.sh public
+
+  artifact:
+    name: Native artifact journey (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            goos: linux
+            goarch: amd64
+            extension: tar.gz
+          - runner: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+            extension: tar.gz
+          - runner: macos-15-intel
+            goos: darwin
+            goarch: amd64
+            extension: tar.gz
+          - runner: macos-15
+            goos: darwin
+            goarch: arm64
+            extension: tar.gz
+          - runner: windows-2025
+            goos: windows
+            goarch: amd64
+            extension: zip
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Package and replay the native artifact
+        shell: bash
+        run: |
+          tag=v0.0.0
+          revision="${GITHUB_SHA}"
+          binary=$(go run ./tools/projectmeta --field binary_name)
+          bash scripts/package-release.sh \
+            "${tag}" \
+            "${revision}" \
+            "${{ matrix.goos }}" \
+            "${{ matrix.goarch }}" \
+            dist
+          archive="dist/${binary}_${tag}_${{ matrix.goos }}_${{ matrix.goarch }}.${{ matrix.extension }}"
+          bash scripts/test-release-artifact.sh \
+            "${tag}" \
+            "${revision}" \
+            "${{ matrix.goos }}" \
+            "${{ matrix.goarch }}" \
+            "${archive}"

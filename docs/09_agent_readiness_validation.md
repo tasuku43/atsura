@@ -196,12 +196,13 @@ measurements were 1,517 bytes for root agent help, 5,359 bytes for exact
 `sample read` help, and 8,359 bytes for the `sample` namespace. The 512-byte
 limit continues to bound each root selection entry.
 
-With schema 8, measured on 2026-07-21 for the transform-runtime catalog, the
-current root is 5,489 bytes, exact `sample read` help is 5,845 bytes, and the
+With schema 8, measured on 2026-07-22 for the transform-runtime catalog, the
+current root is 5,589 bytes, exact `sample read` help is 5,845 bytes, and the
 `sample` namespace is 8,734 bytes. Exact artifact contracts remain scoped:
-`spec validate` is 8,967 bytes, `bundle build` is 8,386 bytes, `bundle status`
-is 7,527 bytes, `bundle trust` is 8,743 bytes, `bundle preview` is 16,654
-bytes, and `bundle execute` is 14,655 bytes. Preview's larger scoped contract
+`source inspect` is 11,178 bytes, `spec init` is 10,491 bytes, `spec validate`
+is 11,683 bytes, `bundle build` is 8,386 bytes, `bundle status` is 7,527 bytes,
+`bundle trust` is 8,743 bytes, `bundle preview` is 16,654 bytes, and `bundle
+execute` is 15,411 bytes. Preview's larger scoped contract
 includes the versioned `wrapper-plan` JSON-pointer field/type inventory. The
 root contains selection entries rather than those complete invocation and
 failure contracts.
@@ -487,10 +488,10 @@ absent. Interpreting these declared fields requires no custom parser, join,
 source inspection, provider-notation decoding, or external model call.
 
 The runnable live probe uses the caller's GitHub CLI authentication and current
-repository context. It is supporting observation only. The canonical gate is a
-credential- and network-free synthetic GitHub-compatible plan and self-process
-fixture that runs through the production compatibility verifier,
-identity-bound runner, parser, transformer, and CLI renderer.
+repository context. It is supporting observation only. The in-process
+credential- and network-free synthetic GitHub-compatible fixture is the fast
+production-composition gate. Scenario G separately proves the exact packaged
+executable on every claimed native platform.
 
 ### Recovery probes
 
@@ -528,6 +529,67 @@ plus that scoped contract. Preview starts zero source processes, successful
 execute starts exactly one, and both identify the same canonical plan. Routine
 external interpretation count is zero, and every recovery action comes from a
 structured fault rather than from raw source data.
+
+## Scenario G: Exact installed-artifact transform journey
+
+### Outcome
+
+The same `atr` executable that would be published for a claimed target can be
+extracted from its immutable archive and can close the finite GitHub CLI
+transform journey on that target without a repository-built replacement
+binary, provider credential, provider network call, or undeclared parser.
+
+### Automated probe
+
+For a target-native host, the release harness runs:
+
+```sh
+scripts/test-release-artifact.sh \
+  <tag> <revision> <goos> <goarch> <exact-archive>
+```
+
+The standard-library orchestrator safely extracts the archive, checks the host
+tuple and embedded `atr <version> (<revision>)`, and uses that extracted path
+for every public command. A native synthetic source supports only the exact
+four GitHub CLI inspection probes and the admitted `pr list` invocation. Its
+append-only JSONL log is outside public output.
+
+The replay starts from an isolated user-config root. Before starting the source
+fixture, packaged `atr` must return schema-8 root help plus exact `source
+inspect`, `spec init`, `spec validate`, and `bundle execute` scopes containing
+the finite catalog, specification, and admission markers. It then obtains the
+catalog in four fixture attempts, asks packaged `atr` for an identity draft,
+applies the same documented finite transform edit, validates and builds it,
+and observes `not_adopted/current`. Pre-adoption preview and execute fail
+without another fixture attempt. The non-shipped orchestrator then loads the
+exact bundle and adds its digest through the production trust-store adapter.
+This step proves receipt consumption only; it is not recorded as interactive
+human consent.
+Production tests separately require a controlling terminal, display the full
+authority summary, require the full digest, and reject other input.
+
+After receipt seeding, status reports `adopted/current`, preview reports zero
+source attempts, and compatibility conflict probes still start no source.
+Post-start fixture failures each add exactly one attempt, are non-retryable,
+and expose none of the stdout, stderr, or unselected-field canaries. Successful
+execute adds exactly one attempt, returns fields
+`["id","title","state"]`, omits the unselected canary, and has the same plan
+digest as preview.
+
+### Platform acceptance
+
+CI runs this probe natively on Linux amd64, Linux arm64, macOS amd64, macOS
+arm64, and Windows amd64. The release workflow downloads the exact archive
+uploaded by its build job and blocks publication until all five native replays
+succeed. Cross-compilation, build metadata, emulation, and the current host's
+local replay are not substitutes for the other native results.
+
+Exact scoped help is the public authoring contract: the source catalog exposes
+command paths, provenance, option grammar, structured output selector, and
+fields; schema-3 help exposes surface, option, wrapper, select, rename, and
+render constraints; execute help exposes the finite runtime-admission matrix.
+The harness's deterministic YAML edit verifies those artifact contracts but
+does not erase the user's deliberate configuration-authoring step.
 
 ## Review record
 
