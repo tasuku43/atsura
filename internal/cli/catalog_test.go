@@ -266,6 +266,26 @@ func TestArgumentSyntaxRequiredAndAllowedValuesMatchAgentInputs(t *testing.T) {
 	}
 }
 
+func TestArgumentSyntaxPublishesPositionalOnlyMarker(t *testing.T) {
+	valid := utilitySpec("preview")
+	valid.Args = "--config <path> -- <command>"
+	valid.Agent.Inputs = []CommandInput{
+		{Name: "--config", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Configuration path.", AllowedValues: []string{}},
+		{Name: "command", Source: InputSourceArgument, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalityRepeatable, Description: "Source command and argv.", AllowedValues: []string{}},
+	}
+	if err := NewCatalog(valid).Validate(); err != nil {
+		t.Fatalf("valid positional-only grammar: %v", err)
+	}
+
+	for _, args := range []string{"-- <command> --", "[--] <command>", "--config <path> --"} {
+		candidate := cloneCommandSpec(valid)
+		candidate.Args = args
+		if err := NewCatalog(candidate).Validate(); err == nil {
+			t.Errorf("invalid positional-only grammar %q passed validation", args)
+		}
+	}
+}
+
 func TestArgumentSyntaxAllowsOneExactFixedFlagValue(t *testing.T) {
 	valid := utilitySpec("items apply")
 	valid.Args = "--confirm=destructive"

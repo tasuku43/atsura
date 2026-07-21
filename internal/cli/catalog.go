@@ -513,6 +513,66 @@ func DefaultCatalog() Catalog {
 			handler: runHelp,
 		},
 		CommandSpec{
+			Path:    "plan preview",
+			Summary: "Preview how YAML tailors one source command",
+			Args:    "--config <path> -- <command>",
+			Effect:  operation.EffectRead,
+			Role:    RoleUtility,
+			Agent: AgentContract{
+				CapabilityID: "tailoring.preview",
+				Outcome:      "Compile one per-command YAML policy and attempted invocation into an execution-free deterministic plan",
+				Inputs: []CommandInput{
+					{
+						Name: "--config", Source: InputSourceFlag, Required: true,
+						ValueKind: InputValueText, Cardinality: InputCardinalitySingle,
+						Description: "Read one bounded schema-1 YAML policy from this regular-file path.", AllowedValues: []string{},
+					},
+					{
+						Name: "command", Source: InputSourceArgument, Required: true,
+						ValueKind: InputValueText, Cardinality: InputCardinalityRepeatable,
+						Description: "Supply the exact source executable and argv after the positional-only marker.", AllowedValues: []string{},
+					},
+				},
+				Output: CommandOutput{
+					Formats:       []OutputFormat{OutputFormatJSON},
+					DefaultFormat: OutputFormatJSON,
+					Fields: []OutputField{
+						{Name: "decision", Type: OutputFieldTypeString, Description: "Matched allow or deny decision."},
+						{Name: "executable", Type: OutputFieldTypeBoolean, Description: "Whether the plan may proceed to a future execution boundary."},
+						{Name: "source_executable", Type: OutputFieldTypeString, Description: "Exact executable matched by the policy."},
+						{Name: "matched_command", Type: OutputFieldTypeString, Description: "Executable and command prefix matched by the policy."},
+						{Name: "original_argv", Type: OutputFieldTypeArray, Description: "Exact attempted executable and arguments."},
+						{Name: "transformed_argv", Type: OutputFieldTypeArray, Description: "Deterministically transformed argv, or an empty list for deny."},
+						{Name: "reason", Type: OutputFieldTypeString, Description: "Policy reason with unsafe structural runes rendered as visible escapes."},
+						{Name: "output", Type: OutputFieldTypeObject, Description: "Typed built-in output transformation planned after source execution."},
+						{Name: "source_process_attempts", Type: OutputFieldTypeInteger, Description: "Source process starts attempted while producing this preview; always zero."},
+					},
+					Delivery:           OutputDeliveryComplete,
+					CollectionCoverage: CollectionCoverageNotApplicable,
+					JSONEnvelope:       "plan",
+					JSONSchemaVersion:  1,
+				},
+				Prerequisites: []string{"A readable schema-1 per-command YAML file."},
+				Errors: []CommandError{
+					declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help plan preview", "Correct the command arguments."),
+					declaredCommandError(fault.KindNotFound, "plan_configuration_not_found", false, "help plan preview", "Correct the configuration path."),
+					declaredCommandError(fault.KindInvalidInput, "unsafe_plan_configuration", false, "help plan preview", "Use a stable regular file rather than a symbolic link."),
+					declaredCommandError(fault.KindInvalidInput, "plan_configuration_too_large", false, "help plan preview", "Reduce the configuration below its declared bound."),
+					declaredCommandError(fault.KindPermission, "plan_configuration_permission_denied", false, "help plan preview", "Correct local file permissions."),
+					declaredCommandError(fault.KindUnavailable, "plan_configuration_read_failed", true, "help plan preview", "Retry after the local file is readable."),
+					declaredCommandError(fault.KindInvalidInput, "invalid_plan_configuration", false, "help plan preview", "Correct the strict schema-1 YAML policy."),
+					declaredCommandError(fault.KindInvalidInput, "invalid_plan_invocation", false, "help plan preview", "Correct the source executable and argv."),
+					declaredCommandError(fault.KindNotFound, "plan_rule_not_matched", false, "help plan preview", "Use the policy's exact executable and command prefix."),
+					declaredCommandError(fault.KindContract, "output_contract_exceeded", false, "help plan preview", "Reduce the bounded plan output."),
+					declaredCommandError(fault.KindContract, "output_encoding_failed", false, "help plan preview", "Repair the plan JSON projection."),
+					declaredCommandError(fault.KindInternal, "internal_error", false, "help plan preview", "Inspect the configuration adapter and plan compiler."),
+					declaredCommandError(fault.KindInternal, "output_write_failed", true, "help plan preview", "Retry with a writable output stream."),
+					declaredCommandError(fault.KindCanceled, "operation_canceled", true, "help plan preview", "Retry when the caller is ready."),
+				},
+			},
+			handler: runPlanPreview,
+		},
+		CommandSpec{
 			Path:    "sample list",
 			Summary: "Discover offline samples and their opaque IDs",
 			Args:    "[--format tsv|json]",
@@ -1627,9 +1687,20 @@ func parseArgumentSyntaxInputs(syntax string) (map[string]argumentSyntaxInput, [
 	}
 
 	optionalPositionalSeen := false
+	positionalOnlySeen := false
 	for index := 0; index < len(tokens); index++ {
 		token := tokens[index]
+		if token.Value == "--" {
+			if token.Optional || positionalOnlySeen || index == len(tokens)-1 {
+				return nil, nil, fmt.Errorf("argument syntax has an invalid positional-only marker")
+			}
+			positionalOnlySeen = true
+			continue
+		}
 		if strings.HasPrefix(token.Value, "--") {
+			if positionalOnlySeen {
+				return nil, nil, fmt.Errorf("argument syntax flag %q follows the positional-only marker", token.Value)
+			}
 			parts := strings.SplitN(token.Value, "=", 2)
 			name := parts[0]
 			if err := validateInputName(CommandInput{Name: name, Source: InputSourceFlag}); err != nil {

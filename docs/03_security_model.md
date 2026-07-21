@@ -209,9 +209,16 @@ never uses shell interpretation merely for convenience.
 - A future direct API or external transformer requires revised authentication,
   egress, bounded-call, fixture, and dependency contracts.
 
-## Required evidence for the first slice
+## First-slice controls and required evidence
 
-The first no-execution YAML-to-plan slice must prove:
+`atr plan preview` currently accepts only an explicit local path, refuses
+symlinks and non-regular files, rechecks opened-file identity, bounds reads to
+64 KiB, permits exactly one YAML document, rejects aliases and unknown fields,
+and validates the finite schema in the domain before plan construction. The
+application has no source-process port, and every successful preview reports
+`source_process_attempts: 0`.
+
+The no-execution YAML-to-plan slice must continue to prove:
 
 - identical validated inputs yield an identical typed plan;
 - invalid, unknown, ambiguous, or untrusted YAML yields no plan and no source

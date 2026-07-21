@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
@@ -26,6 +28,10 @@ func TestJSONOutputMatchesCatalogContract(t *testing.T) {
 		stderr := &bytes.Buffer{}
 		return New(strings.NewReader(""), stdout, stderr), stdout, stderr
 	}
+	planPath := filepath.Join(t.TempDir(), "plan.yaml")
+	if err := os.WriteFile(planPath, []byte(planPreviewYAML), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	probes := []probe{
 		{
 			path: "doctor", args: []string{"doctor", "--format=json"},
@@ -34,6 +40,7 @@ func TestJSONOutputMatchesCatalogContract(t *testing.T) {
 			},
 		},
 		{path: "help", args: []string{"help", "--format=agent"}, build: newDefault, view: "index"},
+		{path: "plan preview", args: []string{"plan", "preview", "--config", planPath, "--", "gh", "pr", "list"}, build: newDefault},
 		{path: "sample list", args: []string{"sample", "list", "--format=json"}, build: newDefault},
 		{path: "sample read", args: []string{"sample", "read", "--id", "smp_2f4a6c8e0b1d", "--format=json"}, build: newDefault},
 	}

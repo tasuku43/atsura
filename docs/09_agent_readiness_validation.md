@@ -234,6 +234,34 @@ Validation must also cover:
 
 The sample is not evidence that a real API adapter is secure. A derived CLI repeats the scenario with fake adapter fixtures, authentication failures, pagination, cancellation, policy denial, and upstream error mappings before enabling a real network integration.
 
+## Scenario C: Atsura plan preview MVP
+
+### Outcome
+
+Given one reviewed per-command YAML file and an attempted source invocation, a
+maintainer can see the exact decision, argv change, matched command, reason,
+and typed output plan without installing or starting the source CLI.
+
+### Runnable probe
+
+```sh
+go run ./cmd/atr help --format agent
+go run ./cmd/atr help plan preview --format agent
+go run ./cmd/atr plan preview --config examples/plan-preview.yaml -- gh pr list --state open
+go run ./cmd/atr --error-format json plan preview --config examples/plan-preview.yaml -- git status
+```
+
+The first two invocations satisfy the unknown-surface bound of root selection
+plus one scoped contract. A caller that already knows `plan preview` needs only
+the scoped-help invocation. The successful task requires zero external
+reconstruction: `plan` is the declared JSON envelope and contains the exact
+original and transformed argv. It reports `source_process_attempts: 0`. The
+mismatch returns `not_found` with code `plan_rule_not_matched`, emits no success
+stdout, and names `help plan preview` as its next action.
+
+This scenario validates plan inspection only. It does not validate source
+discovery, hook interception, execution, or actual output transformation.
+
 ## Review record
 
 Record the invocation transcript, number of discovery round trips, routine

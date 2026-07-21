@@ -11,9 +11,11 @@ planning and enforcement are deterministic and do not require a language model.
 
 ## Project status
 
-Atsura is identity-bootstrapped but does not yet implement source-CLI
-inspection, policy evaluation, command wrapping, execution, or output
-transformation. Public Atsura commands and configuration schemas are not stable.
+Atsura now has one testable, execution-free MVP: `atr plan preview` strictly
+loads one schema-1 per-command YAML file and compiles an attempted source
+invocation into deterministic JSON. It does not inspect or start the source
+CLI, install hooks, transform source output, or activate repository policy.
+The preview command and schema remain experimental.
 
 The current `atr` binary still contains the foundry's `doctor` and synthetic
 `sample` commands as executable architecture and harness examples. They are
@@ -46,16 +48,27 @@ per-command YAML + attempted command + source evidence
   -> wrapper: built-in before -> source CLI -> built-in output/after
 ```
 
-The recommended first slice is intentionally smaller: strictly decode one
-small YAML fixture and preview a deterministic plan for a synthetic source
-invocation, including exact argv, matched rules, reasons, and a nontrivial
-built-in output transformation, without executing the source process.
+## Try the MVP
+
+The repository includes an example policy. Previewing it does not require
+`gh` to be installed because Atsura makes zero source-process attempts:
+
+```sh
+go run ./cmd/atr plan preview \
+  --config examples/plan-preview.yaml \
+  -- gh pr list --state open
+```
+
+The JSON result shows the allow/deny decision, original and transformed argv,
+the matched command and reason, a typed output reshape, and
+`source_process_attempts: 0`. Use `atr help plan preview` for the complete
+machine-readable command contract.
 
 The following decisions remain open and require later research or a vertical
 slice:
 
 - first source CLI;
-- exact YAML schema, locations, matching, and trust workflow;
+- future YAML schema evolution, locations, inheritance, and trust workflow;
 - command-discovery depth;
 - Claude Code hook responsibilities;
 - wrapper or hook integration mechanism;

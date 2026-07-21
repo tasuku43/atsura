@@ -8,11 +8,13 @@ import (
 	"strings"
 
 	"github.com/tasuku43/atsura/internal/app/doctorcmd"
+	"github.com/tasuku43/atsura/internal/app/planpreview"
 	"github.com/tasuku43/atsura/internal/app/samplecmd"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
 	"github.com/tasuku43/atsura/internal/infra/sampledata"
 	"github.com/tasuku43/atsura/internal/infra/systemdoctor"
+	"github.com/tasuku43/atsura/internal/infra/tailoringyaml"
 )
 
 // CLI contains injected streams and application services.
@@ -25,6 +27,7 @@ type CLI struct {
 
 	catalog Catalog
 	doctor  *doctorcmd.Service
+	plans   *planpreview.Service
 	samples *samplecmd.Service
 }
 
@@ -58,6 +61,7 @@ func newCLIWithSamples(
 		Version: "dev",
 		catalog: catalog,
 		doctor:  doctorcmd.New(inspector),
+		plans:   planpreview.New(tailoringyaml.New()),
 		samples: samplecmd.New(repository),
 	}
 }

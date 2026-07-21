@@ -18,5 +18,10 @@
     "id": "system.diagnostics",
     "status": "public",
     "reason": ""
+  },
+  {
+    "id": "tailoring.preview",
+    "status": "public",
+    "reason": ""
   }
 ]

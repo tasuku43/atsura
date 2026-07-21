@@ -4,8 +4,8 @@ Atsura uses the foundry's four-layer dependency direction to keep YAML
 configuration, deterministic planning, process execution, and output
 transformation from collapsing into an unrestricted wrapper.
 
-This document assigns intended responsibilities. The current binary does not
-yet implement the Atsura pipeline.
+This document assigns intended responsibilities. The current binary implements
+only the no-execution YAML-to-plan preview boundary.
 
 ## Dependency direction
 
@@ -21,6 +21,11 @@ internal/infra does not depend on app or cli.
 ```
 
 `tools/archlint` enforces this direction.
+
+The first slice is concrete: `internal/infra/tailoringyaml` performs bounded
+strict YAML decoding, `internal/app/planpreview` orchestrates it, pure
+`internal/domain/tailoring` validates and compiles the plan, and
+`internal/cli` publishes `atr plan preview` and schema-1 JSON.
 
 ## Runtime flow
 
@@ -149,7 +154,7 @@ by this document.
 |---|---|---|---|
 | Source CLI investigation | Application task and domain evidence | Infrastructure probe | Source and exploration depth unresolved |
 | Command catalog | Domain values; application assembly | Infrastructure persistence; CLI view | Generated evidence, never permission |
-| YAML decoding | Domain policy semantics; application trust validation | Infrastructure strict syntax decoder | YAML selected; schema and paths unresolved |
+| YAML decoding | Domain policy semantics; application trust validation | Infrastructure strict syntax decoder | Experimental schema 1; explicit file path only |
 | Rule matching | Domain pure evaluation | Application supplies validated inputs | Deterministic |
 | Plan construction | Domain invariants; application compiler | CLI preview | One plan logic for preview and execution |
 | Hook interception | Application task boundary | Infrastructure host adapter | Claude Code or similar; exact protocol unresolved |
@@ -160,7 +165,7 @@ by this document.
 
 ## First vertical boundary
 
-The recommended first slice stops before source execution:
+The implemented first slice stops before source execution:
 
 ```text
 synthetic source evidence
@@ -175,8 +180,15 @@ synthetic source evidence
 The fixture should describe a substantial built-in output reshape so the plan
 model is not accidentally limited to argv rewriting or line shortening.
 
-Implementation requires `$add-capability`, a work packet, catalog decisions,
-and contract tests. This thesis change does not implement the slice.
+The slice makes zero source-process attempts and only describes its output
+transformation. It does not prove execution, hook, or transformation behavior.
+
+### YAML decoder dependency
+
+The infrastructure adapter uses `go.yaml.in/yaml/v3` v3.0.4 for YAML 1.2
+decoding and strict known-field checks. It is confined to infrastructure and
+is available under MIT and Apache-2.0 terms. Domain policy validation remains
+independent of that decoder.
 
 ## Unresolved architecture decisions
 

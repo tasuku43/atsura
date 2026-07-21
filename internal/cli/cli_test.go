@@ -639,12 +639,16 @@ func TestE2EDoctorUsesProductionOfflineAdapter(t *testing.T) {
 }
 
 func TestEveryCatalogCommandDispatchesThroughItsSpec(t *testing.T) {
+	planPath := planPolicyFile(t, planPreviewYAML)
 	for _, spec := range DefaultCatalog().Commands() {
 		inspector := passingInspector("test/test")
 		command, _, stderr := newTestCLI(inspector)
 		args := strings.Split(spec.Path, " ")
 		if spec.Path == "sample read" {
 			args = append(args, "--id", "smp_2f4a6c8e0b1d")
+		}
+		if spec.Path == "plan preview" {
+			args = append(args, "--config", planPath, "--", "gh", "pr", "list")
 		}
 		if code := runCLI(command, args); code != ExitOK {
 			t.Errorf("Run(%q) code = %d, stderr = %q", spec.Path, code, stderr.String())

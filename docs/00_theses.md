@@ -1,8 +1,8 @@
 # Atsura Product Theses
 
-These seed theses describe the intended Atsura experience clearly enough to
-choose a first vertical slice. They are hypotheses, not claims that the current
-binary already provides source-CLI tailoring.
+These seed theses describe the intended Atsura experience and govern its first
+vertical slice. They remain hypotheses; the current binary only previews a
+plan and does not yet provide runtime source-CLI tailoring.
 
 ## North star
 
@@ -164,18 +164,19 @@ invocation rewriting, and output transformation are deterministic.
 - Source binary or catalog drift invalidates a controlled plan instead of
   silently inheriting prior permission.
 
-## First hypothesis to test
+## First hypothesis under test
 
 The first vertical slice should provide this result:
 
-**A maintainer can supply a small per-command YAML fixture and preview the
+**A maintainer can supply a small per-command YAML file and preview the
 deterministic plan for one synthetic source invocation, including the decision,
 exact argv, built-in output transformation, matched rules, and reasons, without
 starting the source process.**
 
-This slice tests the YAML-to-plan contract and substantial output-plan
-description without yet choosing a real source CLI, hook implementation, or
-external transformer.
+`atr plan preview` is the first executable test of this hypothesis. Its
+schema-1 vocabulary deliberately supports only one exact executable and argv
+prefix, allow or deny, appended argv, and a typed JSON select/rename/compact
+render description. It does not execute those output actions.
 
 Success evidence includes:
 
@@ -188,13 +189,13 @@ Success evidence includes:
 ## Current non-goals
 
 - Reimplementing a source CLI or its remote APIs.
-- Implementing the YAML schema, hook, wrapper, executor, or transformer during
-  this thesis clarification.
+- Hook installation, wrapper execution, source output parsing, and output
+  transformation.
 - Requiring a language model for routine execution.
 - Allowing arbitrary shell as the initial pre/post or output mechanism.
 - Claiming RTK compatibility before primary-source research.
 - Treating an agent proposal as user authorization.
-- Finalizing public commands or persisted schemas without a vertical slice.
+- Treating the experimental preview command or schema as stable.
 - Publishing or releasing Atsura.
 
 ## Open questions

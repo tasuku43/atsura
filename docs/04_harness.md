@@ -234,6 +234,7 @@ Every strong statement should identify its enforcement path.
 | Bootstrap working-tree paths | Temporary-Git deletion/untracked-destination regression, successful Git enumeration requirement, selected-path no-link/regular-file validation, and full shape scan |
 | Local Go consistency | Gate preflight comparison of required/reported/compiler versions and GOROOT/GOTOOLDIR, with a mixed-installation shell fixture |
 | External text structure | Visible-projection unit/E2E tests plus scoped I/O trust metadata; printable meaning remains explicitly out of scope |
+| Per-command YAML safety | Regular-file and symlink checks, a 64 KiB read bound, strict known fields, alias/multi-document rejection, domain validation, zero-process plan tests, and structured failure contracts |
 | Documentation locale | Versioned project policy, explicit schema-1 migration diagnostic, locale preservation test, and narrow English/Japanese trusted-Markdown fixtures; broader linguistic conformance remains manual |
 | Public capability coverage | Exact bidirectional match between capability ledger and catalog `CapabilityID` values |
 | External schema compatibility | Vendored fixture, generator, and drift test |

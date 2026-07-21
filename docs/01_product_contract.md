@@ -1,8 +1,8 @@
 # Product Contract
 
 This contract defines Atsura's current product vocabulary and intended user
-experience. No Atsura-specific public command, YAML schema, or persisted format
-is stable yet.
+experience. `atr plan preview` and its schema-1 YAML are the first executable,
+experimental contract; neither is stable yet.
 
 ## Product statement
 
@@ -49,7 +49,13 @@ deterministic execution plan
                        before -> invoke -> output -> after
 ```
 
-The exact public commands and hook protocol remain undecided.
+The execution and hook protocols remain undecided. The current preview path is:
+
+```text
+atr plan preview --config <path> -- <source-command> [args...]
+```
+
+It returns schema-1 JSON under `plan` and starts no source process.
 
 ## Working vocabulary
 
@@ -74,8 +80,10 @@ The user-facing configuration direction for tailoring one source command or
 command family. YAML declares policy differences and processing actions rather
 than executable shell text.
 
-The exact schema, matching keys, inheritance, file locations, and trust
-workflow are not stable. Initial actions are typed built-ins known to Atsura.
+Schema 1 is a deliberately narrow experiment: one exact executable and argv
+prefix, an `allow` or `deny` decision with a reason, appended argv, and a typed
+JSON `select`/`rename`/`compact_json` output description. Matching inheritance,
+file locations, activation, and trust workflow are not stable.
 Repository-provided YAML is not automatically user-trusted.
 
 ### Tailored CLI surface
@@ -201,7 +209,7 @@ The following are not yet stable:
 ## Deliberately unsupported now
 
 - A real source-CLI inspector or generated catalog.
-- A production YAML loader or policy engine.
+- Policy activation, precedence, inheritance, or trusted repository loading.
 - Hook installation or command interception.
 - Wrapper execution and output transformation.
 - Arbitrary shell, jq, external-transformer, plugin, or RTK execution.
