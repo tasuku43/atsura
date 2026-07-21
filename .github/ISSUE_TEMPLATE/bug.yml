@@ -14,8 +14,8 @@ body:
     id: version
     attributes:
       label: Version
-      description: Output from `agentic-cli-foundry version`, or the commit SHA.
-      placeholder: agentic-cli-foundry 1.2.3 (0123456789abcdef...)
+      description: Output from `atr version`, or the commit SHA.
+      placeholder: atr 1.2.3 (0123456789abcdef...)
     validations:
       required: true
 

@@ -4,8 +4,8 @@ package pagination
 import (
 	"context"
 
-	"github.com/tasuku43/agentic-cli-foundry/internal/domain/fault"
-	"github.com/tasuku43/agentic-cli-foundry/internal/domain/page"
+	"github.com/tasuku43/atsura/internal/domain/fault"
+	"github.com/tasuku43/atsura/internal/domain/page"
 )
 
 // Budget prevents a CLI from silently traversing an unbounded remote result.

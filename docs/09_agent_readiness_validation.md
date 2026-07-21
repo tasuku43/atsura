@@ -155,11 +155,11 @@ The agent never sends to a room selected implicitly by display name, can identif
 The synthetic sample flow is the executable minimum for these scenarios:
 
 ```sh
-go run ./cmd/agentic-cli-foundry help --format agent
-go run ./cmd/agentic-cli-foundry help sample --format agent
-go run ./cmd/agentic-cli-foundry sample list --format json
-go run ./cmd/agentic-cli-foundry sample read --id smp_2f4a6c8e0b1d --format json
-go run ./cmd/agentic-cli-foundry --error-format json sample read --id smp_000000000000
+go run ./cmd/atr help --format agent
+go run ./cmd/atr help sample --format agent
+go run ./cmd/atr sample list --format json
+go run ./cmd/atr sample read --id smp_2f4a6c8e0b1d --format json
+go run ./cmd/atr --error-format json sample read --id smp_000000000000
 ```
 
 The root agent contract must be schema version 6 with `view: index`, reveal the

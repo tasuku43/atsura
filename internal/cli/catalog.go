@@ -10,14 +10,14 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/tasuku43/agentic-cli-foundry/internal/domain/authn"
-	"github.com/tasuku43/agentic-cli-foundry/internal/domain/fault"
-	"github.com/tasuku43/agentic-cli-foundry/internal/domain/operation"
+	"github.com/tasuku43/atsura/internal/domain/authn"
+	"github.com/tasuku43/atsura/internal/domain/fault"
+	"github.com/tasuku43/atsura/internal/domain/operation"
 )
 
 const (
 	// ProgramName is intentionally a single bootstrap replacement token.
-	ProgramName = "agentic-cli-foundry"
+	ProgramName = "atr"
 
 	// maxAgentIndexEntryBytes bounds the selection-only root help cost per
 	// command. Detailed invocation contracts belong in scoped help.

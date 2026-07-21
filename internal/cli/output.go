@@ -3,8 +3,8 @@ package cli
 import (
 	"context"
 
-	"github.com/tasuku43/agentic-cli-foundry/internal/domain/fault"
-	"github.com/tasuku43/agentic-cli-foundry/internal/domain/operation"
+	"github.com/tasuku43/atsura/internal/domain/fault"
+	"github.com/tasuku43/atsura/internal/domain/operation"
 )
 
 // emitResult performs exactly one checked write after a command has rendered

@@ -3,14 +3,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-test_root=$(mktemp -d "${TMPDIR:-/tmp}/agentic-cli-foundry-audit-test.XXXXXXXX")
+test_root=$(mktemp -d "${TMPDIR:-/tmp}/atr-audit-test.XXXXXXXX")
 cleanup() { rm -rf -- "$test_root"; }
 trap cleanup EXIT
 
 fake_brew=$PWD/scripts/testdata/fake-brew.sh
-formula=$test_root/agentic-cli-foundry.rb
-printf '%s\n' 'class AgenticCliFoundry < Formula' 'end' >"$formula"
-legacy_tap=agentic-cli-foundry-ci/audit
+formula=$test_root/atr.rb
+printf '%s\n' 'class Atsura < Formula' 'end' >"$formula"
+legacy_tap=atr-ci/audit
 
 run_case() {
   expected=$1
@@ -26,7 +26,7 @@ run_case() {
     FAKE_BREW_EXISTING_TAP=$legacy_tap \
     FAKE_BREW_AUDIT_FAIL=$audit_failure \
     BREW_COMMAND=$fake_brew \
-    AUDIT_FORMULA_BINARY=agentic-cli-foundry \
+    AUDIT_FORMULA_BINARY=atr \
     scripts/audit-formula.sh "$formula" >/dev/null 2>&1
   status=$?
   set -e

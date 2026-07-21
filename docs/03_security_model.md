@@ -1,235 +1,204 @@
 # Security Model
 
-This document defines the minimum security reasoning expected from Agentic CLI Foundry and every derived project. It does not claim that the base scaffold makes project-specific integrations secure. Its purpose is to make assets, effects, trust boundaries, and enforcement visible before implementation spreads them across commands.
+This seed model defines the security direction for Atsura before it executes or
+transforms a source command. It does not claim that the bootstrap implements a
+secure wrapper, policy engine, or agent integration.
 
 ## Security objective
 
-The CLI must not perform a side effect broader than the validated user task and declared `operation.Intent` and `operation.Impact`. Invalid, unknown, or inconsistent operation state fails before external I/O. Credentials, confidential identifiers, and private repository history must not enter public source or artifacts.
+Atsura must not cause a source CLI operation that is broader than the exact
+reviewed plan for the selected source executable. If the controlling policy,
+source identity, or plan cannot be evaluated, Atsura does not execute the
+operation. Output optimization must not change the source operation's meaning
+or authorize a retry.
 
-## Assets in the base template
+## Assets
 
-- Integrity of the user's local system and files.
-- Confidentiality of arguments, environment values, and future credentials.
-- Integrity of command selection, effect classification, and target binding.
-- Integrity of source, dependencies, generated files, and release artifacts.
-- Confidentiality of information excluded by the public-repository policy.
-- Availability of a deterministic local verification path.
-
-A derived project must add every remote account, object type, local state file, credential, cache, log, subprocess, network service, and published artifact it introduces.
+- Integrity of the user's local system, files, repositories, and source-CLI
+  accounts.
+- Integrity of source executable selection, command modeling, policy
+  evaluation, transformed argv, and execution-plan provenance.
+- Confidentiality of credentials already managed by source CLIs.
+- Confidentiality of command arguments and raw source stdout/stderr.
+- Integrity and confidentiality of user-trusted policy and any future catalog
+  or non-secret state.
+- The user's ability to distinguish tailored execution, policy rejection, and
+  explicit raw execution.
 
 ## Actors and assumptions
 
-The model distinguishes:
+- A user may make mistakes and is the authority that can trust policy.
+- A coding agent may propose configuration and invoke commands within its
+  granted environment; that is not proof of human authorization.
+- A repository contributor may provide useful or malicious configuration.
+- A source CLI may change, return hostile text, load plugins, access remote
+  systems, or have side effects not evident from a command name.
+- An attacker may influence argv, environment, PATH, configuration, repository
+  files, help output, executable replacement, plugin state, or source output.
 
-- **User:** invokes the CLI and may provide malformed input accidentally.
-- **Coding agent:** can edit files and execute commands within its granted environment; it is not proof of human authorization.
-- **Contributor:** can propose source changes but cannot redefine policy without review.
-- **External system:** returns untrusted data and may fail, drift, rate-limit, or be compromised.
-- **Attacker:** may control input, remote content, a dependency, a copied file, or a proposed patch.
-- **Release owner:** is trusted to follow the reviewed release procedure, not to bypass it manually.
+A successful process launch, TTY presence, parent process, repository checkout,
+or model-generated explanation is not proof that an operation is safe.
 
-The base model does not assume that a TTY, parent process, environment variable, or successful process launch proves human intent.
+## Untrusted inputs
+
+Atsura treats all of the following as untrusted data:
+
+- command names and arguments;
+- source executable paths and PATH resolution;
+- source help, completion, schema, version, and error output;
+- generated command catalogs;
+- policy and configuration files;
+- repository-provided integration files;
+- source stdout and stderr; and
+- coding-agent proposals and hook payloads.
+
+Parsing or visible escaping does not turn external text into instructions.
+Prompt-like text remains data.
 
 ## Trust boundaries
 
 ```text
-untrusted argv / environment / files
-                |
-                v
-       CLI parsing and validation
-                |
-                v
-      application task boundary
-                |
-                v
- Effect + Intent + TargetRef + Impact validation
-                |
-                v
-     controlled side-effect boundary
-                |
-      +---------+----------+
-      |         |          |
- filesystem  process    network / platform service
+untrusted invocation / repository / source observations
+                         |
+                         v
+           bounded decoding and provenance
+                         |
+                         v
+          user-trusted policy selection
+                         |
+                         v
+        deterministic match and plan validation
+                         |
+              +----------+-----------+
+              |                      |
+              v                      v
+       policy rejection        controlled process port
+                                      |
+                                      v
+                              exact source executable
 ```
 
-Remote responses cross the boundary in the opposite direction. They remain untrusted data after parsing, bounding, and safe structural rendering; those steps do not turn remote prose into trusted instructions.
+Coding-agent integrations sit outside the deterministic decision boundary.
+They may request a preview or execution task, but cannot silently mark a
+repository policy as user-trusted or bypass a rejection.
 
-## Effect and intent policy
+## Policy and configuration
 
-| Effect | Required declaration | Base policy |
-|---|---|---|
-| `Read` | Stable task and bounded source | May execute without mutation authorization; still validates input, destination, and output bounds |
-| `Create` | Parent or creation scope in `TargetRef`; complete base `Impact` | Fails closed without complete intent and impact; derived project decides confirmation or human authorization |
-| `Write` | Existing target in `TargetRef`; complete base `Impact` | Fails closed without complete intent and impact; product-specific consequences require additional typed detail |
-| `Unknown` | None | Never executable |
+- Arbitrary shell code is not an allowed default policy mechanism.
+- A policy format must have bounded decoding, explicit schema/version behavior,
+  and deterministic rule precedence before it can control execution.
+- Unknown fields, ambiguous matches, missing decisions, or invalid provenance
+  fail closed for controlled execution.
+- Repository-provided policy and user-trusted policy are distinct sources. A
+  repository checkout alone does not grant trust.
+- The future precedence and approval mechanism must preserve which principal
+  trusted each active policy; it must not copy a repository policy into a
+  trusted store implicitly.
+- An agent-generated policy remains a proposal until the user-controlled trust
+  workflow accepts the exact reviewed bytes or semantic equivalent.
 
-HTTP methods, SDK names, or command verbs do not determine the effect. A query sent with `POST` may be a read; writing a local output file is a side effect even when no network request occurs.
+YAML is neither required nor ruled out by this bootstrap.
 
-The base `Impact` always declares cardinality and whether the operation sends notifications, changes access, or is destructive. When those dimensions cannot explain policy, extend intent with a typed domain model before exposing the command. Examples include:
+## Source executable identity and drift
 
-- multiple targets;
-- irreversible deletion;
-- access or ownership changes;
-- messages or notifications sent to other people;
-- execution of user-provided code;
-- publication outside the user's account or machine.
+A generated catalog and policy decision must eventually bind to evidence about
+the source executable they describe. At minimum, the design must be able to
+detect when the resolved executable or its reported version has changed.
+Symlinks, PATH precedence, plugins, aliases, and self-updating CLIs may require
+stronger evidence; the exact identity model is open.
 
-Do not encode these distinctions only in a human-readable confirmation string.
+A stale or mismatched identity invalidates controlled execution until the
+source is reinspected and the resulting policy impact is reviewed. Atsura must
+not silently regenerate a catalog and preserve old permission decisions as if
+nothing changed.
 
-## Opaque reference boundary
+## Process execution boundary
 
-Discovery output may contain labels controlled by an external system, but action identity comes from the declared opaque reference field. Pass the emitted ID unchanged into the consuming argument.
+No source execution is implemented in this bootstrap. A future executor must:
 
-- Validate the documented shape and length before adapter execution.
-- Do not authorize against a display name, row position, copied URL, or reconstructed resource path.
-- Do not case-fold, decode, unescape, trim, or otherwise normalize an opaque ID unless its domain contract explicitly defines that operation.
-- Bind mutation `TargetRef` to the same validated ID accepted by the action command.
-- Validate a returned reference against the kind required by its semantic field,
-  not only against a shared byte shape. A valid reference of another kind
-  remains a contract violation rather than displayable data.
-- Keep remote labels out of authorization identity and sanitize them separately for display.
-- Reject control/format runes and Unicode line or paragraph separators at opaque transport boundaries where they have no valid protocol role. Validation rejects; it never silently rewrites an ID, cursor, target part, or idempotency key.
+- receive a validated executable and argv vector, never an interpolated shell
+  program;
+- resolve and revalidate the execution target immediately before launch;
+- bound inherited environment, working directory, time, stdout, and stderr
+  according to the task contract;
+- keep credentials out of newly constructed argv, logs, diagnostics, catalogs,
+  policies, and persisted history;
+- perform zero attempts on policy rejection or invalid planning state; and
+- classify cancellation and uncertain mutation outcomes without claiming a
+  retry is safe.
 
-The sample contract accepts only `smp_` followed by twelve lowercase hexadecimal characters. Its negative tests reject alternate forms before the sample adapter runs.
+Source CLI authentication and authorization remain in force. Atsura initially
+does not acquire or store OAuth tokens, PATs, or provider credentials.
 
-A command-bound `tool_local` fixed target is the only no-reference action mode. It is safe only when the command path identifies exactly one CLI-owned local object and the catalog fixes its stable kind, ID, scope, and description. It cannot represent an external object, account choice, arbitrary path, or candidate set. Fixed-target mutations still construct a matching runtime `TargetRef`, complete impact, intent, policy decision, and outcome contract before I/O.
+## Raw or passthrough execution
 
-## Controlled execution boundary
+Raw execution is a possible explicit product route, not a recovery mechanism.
+It must:
 
-All filesystem writes, subprocess execution, credential access, network calls, and platform services must have a bounded construction path. A command or use case must not receive an unrestricted client merely because it is convenient.
+- be visibly selected by the caller;
+- identify the exact executable being invoked;
+- state that Atsura tailoring policy is bypassed;
+- never be chosen automatically after policy parse failure, rejection, stale
+  catalog evidence, or transform failure; and
+- avoid claiming that Atsura approved the source operation.
 
-For a mutation, the boundary performs this order:
+Whether the raw route still applies generic process bounds is a later product
+and security decision. It may never use shell interpretation merely to be
+convenient.
 
-1. Snapshot and validate the operation input.
-2. Validate `Effect`, `Intent`, `TargetRef`, `Impact`, and concrete destination consistency.
-3. Apply project-specific policy such as dry-run, human authorization, or confirmation.
-4. Execute the side effect once.
-5. Return a bounded result and audit event if the product requires one.
+## Output and data handling
 
-A rejection at steps 1–3 must result in zero mutation attempts. Tests use fakes or counters to prove this order.
+- Atsura does not store authentication material or raw confidential source
+  output.
+- Usage history is not collected in the bootstrap and requires a new privacy,
+  retention, and redaction decision before adoption.
+- Output projection and transformation treat source text as untrusted and
+  preserve the structural safety rules inherited by the repository.
+- If output optimization is unavailable or fails, Atsura must not change argv,
+  run a different command, repeat the source command, or report transformed
+  output as complete.
+- A later slice must choose between an explicit intact-output degradation and a
+  typed failure. That choice must consider confidentiality and output bounds;
+  this bootstrap does not select it.
+- Source exit status, stdout/stderr ownership, ordering, truncation, and partial
+  write behavior require explicit contracts before execution is supported.
 
-Cancellation is interpreted relative to that boundary. Before step 4, the invoker can prove zero attempts and may expose retryable `operation_canceled`. After step 4 begins, a valid structured adapter fault remains authoritative and is copied without its private cause. A raw error or cancellation cannot prove rollback; it becomes non-retryable `unclassified_mutation_outcome`, whose catalog recovery must be a read-only reconciliation command. A confirmed nil result is not replaced by a later context cancellation, including at the final CLI write: the effect-aware output finalizer preserves confirmed mutation success, while read output retains the pre-write cancellation check. If that confirmed result cannot be written completely, `mutation_output_write_failed` is non-retryable and also permits only read-only reconciliation.
+## Network and credentials
 
-Provider rate evidence and replay permission are different security facts.
-`retry_after` may carry an authoritative positive wait window on a
-non-retryable `rate_limited` mutation. Only `retryable` authorizes repeating the
-same logical command; timing can guide reconciliation, a different safe read,
-or a later independently authorized operation.
+Atsura selects no direct external API during bootstrap. Any network access is
+performed by the source CLI under its own credential and destination policy.
+Atsura must not capture those credentials from environment or configuration for
+its own use.
 
-Application ports treat both a nil interface and an interface containing a typed nil pointer as missing configuration. The shared port check prevents a dependency-wiring mistake from becoming a panic after validation or policy approval.
+If a future capability calls an external API directly, it requires a revised
+thesis, authentication decision, destination policy, bounded call contract,
+publishable fixtures, and the repository's external-API validation workflow
+before implementation.
 
-## Credentials and secrets
+## Required evidence for the first slice
 
-The base template contains a secret-free authentication contract, an ephemeral non-serialized session binding, an application gate, and a separate provider-neutral store for bounded non-secret user authentication configuration, but no concrete credential acquisition or credential storage implementation. A derived project must document:
+The recommended no-execution planning slice must prove:
 
-- credential issuer and scope;
-- acquisition and refresh flow;
-- storage location and operating-system protection;
-- how secrets are kept out of process arguments, logs, errors, history, and generated files;
-- revocation and expiration behavior;
-- tests and scans that fail on unsafe handling.
+- identical validated inputs yield an identical typed decision;
+- invalid policy and rejection make zero source-process attempts;
+- an allowed plan contains an exact executable/argv representation without a
+  shell string;
+- every decision names the matched rule and trusted policy provenance;
+- repository-origin policy cannot be mistaken for user-trusted policy; and
+- hostile command, argument, reason, and source-description text cannot break
+  machine or terminal output structure.
 
-Secrets must not cross from infrastructure into domain or application values and must not be accepted through command-line arguments when a safer channel is available. Public client identifiers, public redirect URIs, the explicitly selected method, and schema metadata may use the non-secret configuration boundary; token, PAT, refresh token, authorization code, PKCE verifier, and client secret never do. The boundary uses strict bounded decoding, rejects unknown schema, symlinks, and non-regular files, confines replacement through a verified opened directory, revalidates the directory, target, and staged-file identities immediately before replacement, and reports corrupt state read-only rather than repairing or falling back. On Unix it also rejects unsafe owner modes and syncs the replaced directory. Windows still enforces regular shape and confinement, but portable mode bits do not prove ACL ownership and the portable API does not justify an atomicity or durability claim, so an error after replacement begins leaves the active version explicitly uncertain. Do not persist tokens in plaintext configuration or test real credentials in CI. Read [Authentication](07_authentication.md) and [ADR 0001](decisions/0001-oauth-library-boundary.md) before implementing OAuth or PAT support.
+## Open security decisions
 
-## Filesystem, process, and network policy
+- The exact source executable identity and version-drift model.
+- Policy trust establishment, precedence, revocation, and confirmation.
+- Exact allow, confirm, and deny semantics.
+- Process environment and filesystem isolation.
+- Raw execution bounds and user experience.
+- Output fallback, redaction, size, and streaming behavior.
+- History collection, retention, and privacy.
+- Hook or wrapper authorization boundaries.
+- RTK trust and dependency implications if it is considered.
 
-### Filesystem
-
-- Validate output paths and overwrite behavior before writing.
-- Use restrictive permissions for confidential data.
-- Define atomicity, symbolic-link, and partial-write behavior where relevant.
-- Keep caches, state, configuration, and audit data separate.
-
-### Processes
-
-- Prefer in-process APIs.
-- If a subprocess is required, allowlist the executable and fixed argument structure.
-- Keep secrets out of argv and inherited environment unless explicitly justified.
-- Bound output, time, and cancellation behavior.
-
-### Network
-
-- Declare allowed destinations and redirect behavior.
-- Use timeouts, cancellation, and response-size limits.
-- Validate protocol and host before sending credentials or user data.
-- Treat remote names and content as unsafe terminal and machine context.
-
-Machine-readable policy belongs in `.harness/project.json` or a project-specific typed manifest and is checked by `tools/repoguard` or a dedicated contract test.
-
-## Output and terminal safety
-
-Remote or file-derived text may contain terminal controls, format characters, Unicode line/paragraph separators, existing backslash escape-looking sequences, JSON-looking fragments, prompt-like prose, or excessive data. The template's visible projection escapes backslash first, then control/format runes and U+2028/U+2029. Therefore an actual newline remains distinguishable from the two input characters `\n`; JSON encoding applies its own structural escaping afterward. TSV delimiters and record newlines are added only by the renderer.
-
-This projection protects terminal and TSV/JSON structure. It does **not** detect intent in printable text, remove prompt-like content, or prove that a language model will ignore it. Printable text such as `SYSTEM ...` or JSON-looking content remains semantically untrusted data. Agent consumers must keep data fields separate from instructions and apply their own trust policy; the CLI cannot claim semantic prompt-injection prevention.
-
-Scoped agent help publishes this boundary in `io_contract`: `external_text_trust` is `untrusted_data`, `external_text_projection` is `visible_escape`, and `opaque_reference_policy` is `validated_exact_bytes`. A configured documentation locale governs trusted repository and CLI-authored prose only. It never translates stable command paths, flags, environment variables, fault codes, JSON keys, schema values, reference kinds, or provider-controlled text.
-
-A derived project must decide:
-
-- which output modes are stable;
-- the exact collection scope, observation/window/checkpoint, and whether
-  coverage is exhaustive, bounded, differential, or not applicable;
-- how control characters are escaped or rejected;
-- maximum stdout and stderr budgets;
-- whether partial output is ever allowed;
-- how secrets and confidential fields are redacted;
-- which stream carries errors versus data.
-
-Do not let presentation sanitization change the identity used for authorization. Authorization uses validated domain values; display labels/content use a visible projection. Opaque references bypass that projection and retain the exact validated value.
-
-Presentation is also a semantic trust boundary. It must not invent or strengthen
-identity, scope, relationships, completeness, or uncertainty from external
-prose, item order, display names, proximity, quoting, or indentation. A result
-for a scoped task retains that declared scope even when its collection is
-empty; recovering scope from a member would make empty and adversarial
-collections ambiguous. Task-owned tests cover only the request dimensions and
-state distinctions the capability actually carries, rather than assuming one
-universal result shape.
-
-## Supply-chain boundary
-
-- Add a dependency only with a documented purpose and license review.
-- Pin CI actions and security tools according to repository policy.
-- Verify module integrity and known vulnerabilities in the security profile.
-- Review generated changes and prove generation is reproducible.
-- Build releases from reviewed source through the documented workflow.
-- Reopen each completed archive and verify its exact canonical entry set, mode,
-  metadata, and bytes against reviewed executable, license, and optional notice
-  inputs before publication.
-- Decide signing and provenance explicitly; absence of signing is also a release-model decision.
-
-## Required negative tests
-
-Every new side-effect class should include tests for:
-
-- unknown or missing effect;
-- incomplete or mismatched target;
-- malformed input before adapter invocation;
-- alternate, transformed, or ambiguous reference forms before adapter invocation;
-- policy or authorization rejection with zero side-effect attempts;
-- nil and typed-nil external ports with zero downstream calls;
-- cancellation and timeout;
-- structured versus unclassified post-mutation outcomes, including a deadline cause that must not erase the adapter's stable classification;
-- remote error without secret leakage;
-- authentication or scope mismatch with zero downstream calls;
-- incomplete pagination with no partial successful output;
-- unsafe mutation retry or missing idempotency declaration;
-- timeout or attempt configuration above the project's declared maximum;
-- keyed retry that changes key within one logical operation or reuses a key for a different target or payload;
-- oversized or hostile output;
-- raw ESC/newline/bidi/zero-width/U+2028/U+2029 characters, existing backslashes, JSON-looking text, and prompt-like printable data across TSV, JSON, and stderr;
-- actual control characters remaining distinguishable from pre-existing visible escape-looking text;
-- repeated invocation when authorization must not be reused.
-
-## Derived-project threat-model pass
-
-Before implementing a real integration, add a table covering:
-
-| Task | Assets | Inputs | Effect | Target or impact | External boundary | Authorization | Stored data | Enforcement |
-|---|---|---|---|---|---|---|---|---|
-
-Then document credible abuse cases and limits. If a risk is accepted rather than eliminated, record the rationale in an ADR and state what evidence would trigger reconsideration.
-
-## Limits
-
-The template cannot protect a fully compromised developer machine, maintainer account, CI platform, or external service. It cannot infer whether copied source is legally publishable. It narrows accidental bypasses and makes review evidence repeatable; it does not replace independent review for high-impact systems.
+Each must be decided by a concrete vertical slice or primary-source research,
+not by bootstrap speculation.

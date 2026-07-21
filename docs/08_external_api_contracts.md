@@ -1,5 +1,19 @@
 # External API Contracts
 
+## Atsura bootstrap decision
+
+No direct external API is selected for Atsura's first hypothesis. The intended
+external boundary is a bounded local source process, and the source CLI remains
+responsible for its own network destinations, provider protocol, pagination,
+rate limits, retries, and credentials. Atsura must not infer those guarantees
+from help text or capture credential-bearing transport details in a catalog.
+
+Consequently, this bootstrap does not choose API timeouts, retry counts,
+idempotency behavior, pagination limits, provider schemas, or fault mappings.
+If a later user outcome requires direct API access, it must be justified against
+the source-CLI approach and must adopt the contracts below through the
+`$add-capability` workflow before live I/O is enabled.
+
 This document defines the small set of cross-project contracts supplied for API-backed CLIs. It does not turn an upstream API into the public CLI and does not provide a universal HTTP client. The product remains a set of user outcomes; transport is an implementation detail behind those outcomes.
 
 ## Boundary: template decisions versus derived decisions

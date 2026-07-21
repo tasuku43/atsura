@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tasuku43/agentic-cli-foundry/internal/domain/doctor"
-	"github.com/tasuku43/agentic-cli-foundry/internal/domain/fault"
-	"github.com/tasuku43/agentic-cli-foundry/internal/domain/operation"
+	"github.com/tasuku43/atsura/internal/domain/doctor"
+	"github.com/tasuku43/atsura/internal/domain/fault"
+	"github.com/tasuku43/atsura/internal/domain/operation"
 )
 
 type cliInspector struct {
@@ -66,7 +66,7 @@ func TestNoArgsReturnsStructuredUsageFailure(t *testing.T) {
 		t.Fatalf("stdout = %q", stdout.String())
 	}
 	if !strings.Contains(stderr.String(), "kind: invalid_input") || !strings.Contains(stderr.String(), "code: missing_command") ||
-		!strings.Contains(stderr.String(), "next_action: agentic-cli-foundry help") {
+		!strings.Contains(stderr.String(), "next_action: atr help") {
 		t.Fatalf("stderr = %q", stderr.String())
 	}
 }
@@ -88,7 +88,7 @@ func TestVersionOutputContract(t *testing.T) {
 	if code := runCLI(command, []string{"version"}); code != ExitOK {
 		t.Fatalf("Run(version) code = %d, stderr = %q", code, stderr.String())
 	}
-	want := "agentic-cli-foundry v1.2.3 (0123456789abcdef0123456789abcdef01234567)\n"
+	want := "atr v1.2.3 (0123456789abcdef0123456789abcdef01234567)\n"
 	if got := stdout.String(); got != want {
 		t.Fatalf("version output = %q, want %q", got, want)
 	}
@@ -618,7 +618,7 @@ func TestDoctorRejectsArgumentsBeforeInspection(t *testing.T) {
 	if code := runCLI(command, []string{"doctor", "extra"}); code != ExitUsage {
 		t.Fatalf("Run(doctor extra) code = %d, want %d", code, ExitUsage)
 	}
-	if inspector.calls != 0 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "usage: agentic-cli-foundry doctor") {
+	if inspector.calls != 0 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "usage: atr doctor") {
 		t.Fatalf("calls = %d, stdout = %q, stderr = %q", inspector.calls, stdout.String(), stderr.String())
 	}
 }
@@ -657,10 +657,10 @@ func TestRootAliasesUseCatalogCommands(t *testing.T) {
 		args []string
 		want string
 	}{
-		{args: []string{"--help"}, want: "Agentic CLI Foundry\n"},
-		{args: []string{"-h"}, want: "Agentic CLI Foundry\n"},
-		{args: []string{"--version"}, want: "agentic-cli-foundry dev\n"},
-		{args: []string{"-v"}, want: "agentic-cli-foundry dev\n"},
+		{args: []string{"--help"}, want: "Atsura\n"},
+		{args: []string{"-h"}, want: "Atsura\n"},
+		{args: []string{"--version"}, want: "atr dev\n"},
+		{args: []string{"-v"}, want: "atr dev\n"},
 	}
 	for _, test := range tests {
 		command, stdout, stderr := newTestCLI(passingInspector("unused"))

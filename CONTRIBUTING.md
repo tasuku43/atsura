@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for improving Agentic CLI Foundry. Contributions are welcome when they keep the repository runnable, understandable by a new contributor or coding agent, and safe to publish.
+Thank you for improving Atsura. Contributions are welcome when they keep the repository runnable, understandable by a new contributor or coding agent, and safe to publish.
 
 ## Before you begin
 
@@ -21,7 +21,9 @@ task check:fast
 
 The required pre-merge `task check` also runs the complete security, release, and public profiles. Local execution needs ShellCheck 0.9.0 or newer, Ruby, `tar`, `unzip`, either `sha256sum` or `shasum`, plus network access or a pre-populated Go module cache for pinned Go-based linters. Preflight reports missing tools or a mixed Go installation before the long-running profiles begin. See [Harness](docs/04_harness.md) for the composition and diagnostic contract.
 
-The default repository must remain runnable as `github.com/tasuku43/agentic-cli-foundry` with the `agentic-cli-foundry` binary. Identity changes belong in a derived repository through the bootstrap workflow, not in a contribution to the reusable template.
+The repository must remain runnable as `github.com/tasuku43/atsura` with the
+`atr` binary. Identity bootstrap has completed and must not be rerun or replaced
+with manual identity substitutions.
 
 ## Propose the outcome first
 
@@ -34,6 +36,11 @@ For a substantial change, open an issue or include a work packet starting from t
 - objective acceptance criteria.
 
 If the change introduces a durable trade-off or supersedes an earlier decision, add an ADR from [the decision template](docs/decisions/0000-template.md).
+
+Any user-visible Atsura capability must also follow the
+[`$add-capability` workflow](.agents/skills/add-capability/SKILL.md). The first
+such change must remain within the product seed and must not silently settle the
+unknowns recorded in the theses.
 
 ## Implement and verify
 

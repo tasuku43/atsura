@@ -1,4 +1,4 @@
-// Command agentic-cli-foundry is the executable entry point for Agentic CLI Foundry.
+// Command atr is the executable entry point for Atsura.
 package main
 
 import (
@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/tasuku43/agentic-cli-foundry/internal/cli"
+	"github.com/tasuku43/atsura/internal/cli"
 )
 
 // Release builds inject both values with -ldflags.

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tasuku43/agentic-cli-foundry/internal/domain/fault"
-	"github.com/tasuku43/agentic-cli-foundry/internal/domain/page"
+	"github.com/tasuku43/atsura/internal/domain/fault"
+	"github.com/tasuku43/atsura/internal/domain/page"
 )
 
 func testBudget() Budget {

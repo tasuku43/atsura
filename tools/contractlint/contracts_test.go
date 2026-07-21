@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tasuku43/agentic-cli-foundry/internal/cli"
+	"github.com/tasuku43/atsura/internal/cli"
 )
 
 func TestRepositoryContractsMatchDefaultCatalog(t *testing.T) {

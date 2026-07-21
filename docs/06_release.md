@@ -1,5 +1,21 @@
 # Release Model
 
+## Atsura bootstrap decision
+
+Atsura is not published or released by this bootstrap. The repository identity
+is `tasuku43/atsura`, the binary is `atr`, and MIT is the deliberate project
+license. The existing archive and workflow machinery remains inherited,
+executable scaffolding; it is not approval to tag, publish, update a Formula, or
+promise the current platform matrix to users.
+
+Before the first Atsura release, a separate reviewed change must decide the
+supported platforms, compatibility starting point, prerelease ownership,
+package managers, signing or provenance, withdrawal procedure, protected
+workflow environments, and human publication reviewer. That change must also
+review whether the inherited release mechanism fits the actual Atsura product.
+No commit, push, pull request, tag, artifact publication, or release is part of
+the identity bootstrap.
+
 The base template defines byte-for-byte reproducible archives within a pinned pure-Go build contract and a public, reproducible-enough overall release path without private package infrastructure. A derived project must review supported platforms, artifact signing, provenance, package managers, and compatibility promises before its first release.
 
 ## Version contract
@@ -18,7 +34,7 @@ Examples are `v1.2.3` and `v1.2.3-rc.1`. Stable tags may update stable package-m
 The binary reports the embedded version and commit as:
 
 ```text
-agentic-cli-foundry <version> (<commit>)
+atr <version> (<commit>)
 ```
 
 Release checks verify that the displayed values match the tag and source revision.

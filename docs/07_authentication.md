@@ -1,6 +1,21 @@
 # Authentication Foundation
 
-This document defines the reusable OAuth 2.0 and personal access token (PAT) boundary supplied by Agentic CLI Foundry. The template fixes secret-free contracts and fail-closed application behavior. A derived project chooses the actual provider flow, credential source, storage, scopes, and account policy in its thesis and security model.
+## Atsura bootstrap decision
+
+Atsura selects neither OAuth nor PAT for its initial product hypothesis. The
+planned boundary is a local source CLI that continues to own its authentication,
+authorization, credential storage, account selection, and refresh behavior.
+Atsura does not ingest, persist, or render the source CLI's credentials, and no
+direct external API capability is enabled.
+
+The inherited secret-free authentication foundation remains available for a
+future, separately reviewed capability. If Atsura later calls a provider API
+directly, that work must first choose the provider, user outcome, account model,
+credential source and storage, refresh and revocation behavior, and dependency
+boundary in the theses, product contract, security model, and an ADR. It must
+not reuse source-CLI credentials merely because they exist on the machine.
+
+This document defines the reusable OAuth 2.0 and personal access token (PAT) boundary supplied by Atsura. The template fixes secret-free contracts and fail-closed application behavior. A derived project chooses the actual provider flow, credential source, storage, scopes, and account policy in its thesis and security model.
 
 The governing dependency decision is [ADR 0001](decisions/0001-oauth-library-boundary.md): do not implement OAuth protocol machinery from scratch, and do not add an unused OAuth dependency to the template core.
 

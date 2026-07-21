@@ -5,9 +5,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/tasuku43/agentic-cli-foundry/internal/app/portcheck"
-	"github.com/tasuku43/agentic-cli-foundry/internal/domain/fault"
-	"github.com/tasuku43/agentic-cli-foundry/internal/domain/operation"
+	"github.com/tasuku43/atsura/internal/app/portcheck"
+	"github.com/tasuku43/atsura/internal/domain/fault"
+	"github.com/tasuku43/atsura/internal/domain/operation"
 )
 
 // Policy applies the derived project's authorization, confirmation, dry-run,

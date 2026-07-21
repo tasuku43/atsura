@@ -7,9 +7,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/tasuku43/agentic-cli-foundry/internal/app/portcheck"
-	domainauthn "github.com/tasuku43/agentic-cli-foundry/internal/domain/authn"
-	"github.com/tasuku43/agentic-cli-foundry/internal/domain/fault"
+	"github.com/tasuku43/atsura/internal/app/portcheck"
+	domainauthn "github.com/tasuku43/atsura/internal/domain/authn"
+	"github.com/tasuku43/atsura/internal/domain/fault"
 )
 
 // Authenticator resolves an infrastructure-owned credential and returns only

@@ -9,7 +9,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/tasuku43/agentic-cli-foundry/internal/domain/operation"
+	"github.com/tasuku43/atsura/internal/domain/operation"
 )
 
 // Idempotency describes the upstream guarantee for repeated attempts.

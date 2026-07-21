@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-07-20
-- Deciders: Agentic CLI Foundry maintainers
+- Deciders: Atsura maintainers
 - Scope: Local verification, CI, release preflight, and Codex automation
 - Supersedes: None
 - Superseded by: None

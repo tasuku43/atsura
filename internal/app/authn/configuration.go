@@ -3,9 +3,9 @@ package authn
 import (
 	"context"
 
-	"github.com/tasuku43/agentic-cli-foundry/internal/app/portcheck"
-	domainauthn "github.com/tasuku43/agentic-cli-foundry/internal/domain/authn"
-	"github.com/tasuku43/agentic-cli-foundry/internal/domain/fault"
+	"github.com/tasuku43/atsura/internal/app/portcheck"
+	domainauthn "github.com/tasuku43/atsura/internal/domain/authn"
+	"github.com/tasuku43/atsura/internal/domain/fault"
 )
 
 // ConfigurationSource loads one complete non-secret configuration. Present is

@@ -5,9 +5,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/tasuku43/agentic-cli-foundry/internal/app/portcheck"
-	"github.com/tasuku43/agentic-cli-foundry/internal/domain/doctor"
-	"github.com/tasuku43/agentic-cli-foundry/internal/domain/operation"
+	"github.com/tasuku43/atsura/internal/app/portcheck"
+	"github.com/tasuku43/atsura/internal/domain/doctor"
+	"github.com/tasuku43/atsura/internal/domain/operation"
 )
 
 // InspectorPort is the smallest infrastructure capability needed by doctor.

@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/tasuku43/agentic-cli-foundry/internal/cli"
+	"github.com/tasuku43/atsura/internal/cli"
 )
 
 func main() {

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tasuku43/agentic-cli-foundry/internal/domain/authn"
+	"github.com/tasuku43/atsura/internal/domain/authn"
 )
 
 func validConfiguration(method authn.Method) authn.UserConfiguration {

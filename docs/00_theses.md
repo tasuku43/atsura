@@ -1,337 +1,187 @@
-# Project Theses
+# Atsura Product Theses
 
-This is the first document to consult when a design choice is ambiguous. It states why Agentic CLI Foundry exists and the principles from which its product, architecture, security, and harness decisions follow.
+This document is the first decision source when an Atsura design is ambiguous.
+These are seed hypotheses: they are strong enough to choose the first vertical
+slice, but they must change when implementation and user evidence contradict
+them.
 
-A derived project must make these theses concrete. Renaming `agentic-cli-foundry` is not enough. Replace the generic users, outcomes, measures, examples, non-goals, and enforcement references with facts about the new tool. Preserve a template thesis only when it is genuinely true for that product.
+## North star
 
-Each thesis follows one causal chain:
+**A maintainer can turn an existing CLI into a smaller, purpose-specific
+interface for coding agents without reimplementing the source CLI and without
+placing a language model in the routine execution path.**
 
-```text
-North Star or thesis
-  -> consequences for product and engineering choices
-  -> mechanical enforcement that detects regressions
-```
+The primary users are maintainers of coding-agent environments who already rely
+on capable CLIs but need each agent or task to see and exercise only the useful
+part of those CLIs. Their problem is not merely verbose output. A source CLI may
+expose too many commands and options, unsafe defaults, ambiguous behavior, and
+more result data than the agent needs.
 
-If a statement has no observable consequence, it is not yet useful. If an important consequence has no enforcement, it remains an aspiration and must be labeled as such.
+## Thesis 1: Tailoring changes capability, behavior, and presentation
 
-## Thesis lifecycle
+For Atsura, tailoring a CLI is the reviewed application of a small policy
+difference to a discovered source command model. Depending on later validated
+product decisions, that difference may:
 
-The first theses are seeds: the smallest hypotheses needed to choose and review a minimal end-to-end slice. They should be decisive, but they are not assumed to be complete.
+- hide commands or options from an agent-facing surface;
+- classify an operation as allowed, confirmation-required, or rejected;
+- change arguments or defaults deterministically;
+- request a source CLI's own structured-output mode;
+- select only the information required by the agent's task;
+- explain the applied policy and its reason; and
+- offer an explicit path that invokes the source CLI without applying the
+  tailoring policy.
 
-Use this continuous loop:
-
-```text
-seed a north star and minimal theses
-  -> build the smallest vertical slice that can challenge them
-  -> record repeated decisions, user outcomes, agent confusion, and friction as evidence
-  -> revise the thesis before adding a code workaround or exception
-  -> propagate consequences into product, architecture, security, Skills, catalog, and harness
-  -> repeat with the next slice
-```
-
-Early in a project, thesis revisions should be frequent because every real slice reveals missing vocabulary and false assumptions. As the project matures, revisions should become less frequent, not forbidden. User behavior, incidents, compatibility pressure, and maintenance evidence remain valid reasons to change them.
-
-Record evidence in the active work packet. A thesis revision is complete only when:
-
-- the new statement explains the evidence;
-- consequences and non-goals are explicit;
-- affected durable documents and Skills agree;
-- mechanical enforcement detects the old failure or workaround;
-- compatibility and migration impact are reviewed.
-
-Do not keep a thesis unchanged merely because code already exists. Do not change a mature thesis merely because one implementation would be easier without it.
-
-## North Star
-
-**A contributor or coding agent can turn a well-defined CLI idea into a small, safe, public-ready vertical slice without guessing the product vocabulary, architectural boundaries, side-effect policy, or completion gate.**
-
-The template's success is measured by whether a new maintainer can answer, from repository evidence:
-
-- Who is the tool for, and what outcome does it own?
-- Which public commands exist, and how are they discovered?
-- Where may domain, application, infrastructure, and CLI code depend?
-- What can each operation affect, and where is that checked?
-- Which command proves a change is complete?
-- What must be reviewed before source or artifacts become public?
-
-The template does not measure success by the number of included frameworks, commands, or integrations. A small coherent vertical slice is more valuable than a broad collection of optional mechanisms.
+This list is a product hypothesis, not a public command set or configuration
+schema. The first slice need not implement every dimension.
 
 ### Consequences
 
-- The repository is runnable before customization.
-- Documentation is part of the scaffold, not an afterthought.
-- The default capability crosses every architectural layer and has contract tests.
-- Product-specific integrations are omitted until a derived project can state their purpose and trust boundary.
-- One catalog and one gate minimize competing sources of truth.
+- Atsura models a source CLI rather than recreating its business behavior.
+- An output-shortening feature alone does not validate the central hypothesis.
+- A policy decision and its transformed invocation must be inspectable before
+  execution can be considered trustworthy.
 
-### Mechanical enforcement
+### Enforcement status
 
-- `go run ./cmd/agentic-cli-foundry --help`, `doctor`, `sample list`, and `sample read --id` exercise the default utility and discover/act slices.
-- `cli.Catalog` contract tests keep public discovery and routing aligned.
-- `tools/archlint` checks layer boundaries.
-- `./scripts/check.sh full` is the canonical completion path.
-- `./scripts/check.sh public` checks identity, licensing, and public-boundary policy.
+These consequences are aspirational until the first Atsura-specific domain
+types and contract tests replace the inherited scaffold examples.
 
-## Thesis 1: Define the user outcome before the mechanism
+## Thesis 2: Routine execution is deterministic
 
-A CLI command exists to deliver a user outcome, not to mirror a package, protocol, SDK, or vendor API.
+The validated catalog, trusted policy, invocation, and source-binary identity
+must produce the same execution decision without asking a language model.
 
-### Consequences
-
-- Command names use the user's task vocabulary.
-- A single task may compose several adapters.
-- A vendor method may remain internal even when an adapter exists.
-- New transport flexibility is not accepted as a substitute for a missing product decision.
-- Non-goals are recorded so agents do not “complete” the tool by exposing every available method.
-
-### Mechanical enforcement
-
-- Every `cli.CommandSpec` must name a documented public task.
-- Catalog tests reject duplicate or undiscoverable command paths.
-- Application use cases own orchestration; infrastructure adapters cannot register public commands.
-- Work packets require a user outcome and non-goals before implementation tasks.
-
-### Derived-project questions
-
-- What sentence would a user say before reaching for this tool?
-- Which outcome does the tool own from start to finish?
-- Which vendor concepts must remain implementation details?
-- Which superficially related tasks are deliberately unsupported?
-
-## Thesis 2: Close supported outcomes and make them predictable
-
-Humans and agents should be able to discover a command, invoke it, and interpret its result without exploratory network calls or undocumented heuristics.
-
-When a derived product declares an outcome supported, the CLI owns the
-deterministic selection, joining, and interpretation needed for routine
-success. The user may extract a declared JSON or TSV field, but does not need
-an undeclared `jq`/`grep` pipeline, custom parser, source inspection, provider
-notation knowledge, or an additional exploratory API call to reconstruct the
-answer. A deliberately low-level export or transport utility may define a
-narrower promise, but it must be named and classified as such instead of being
-presented as a closed task outcome.
+A coding agent may study a user's purpose or prior work and propose a policy.
+It may also explain trade-offs during configuration. The deterministic Atsura
+core owns parsing validated inputs, matching rules, producing an execution
+plan, and enforcing the selected decision. Agent output is a proposal until a
+user-controlled trust step accepts it.
 
 ### Consequences
 
-- Human root help is a compact command/namespace index; namespace help lists its
-  relative leaves; exact command help contains usage, effect, and the complete
-  executable input contract.
-- Root agent help exposes only outcome-selection facts and a machine-readable scoped-help request; exact-command and namespace help expose invocation, output, authentication, failure, mutation, and workflow details.
-- Help and dispatch derive from the same static catalog.
-- Value kind, single/repeatable cardinality, omission default, numeric bounds,
-  and input dependencies/conflicts derive from the same catalog entry as argv
-  parsing. An omitted value, a catalog default, and an explicitly supplied
-  empty/zero/false value remain distinguishable.
-- Output shape, exit behavior, and error ownership are deliberate public contracts.
-- Deterministic multi-step behavior belongs in an application use case rather than an agent prompt.
-- Domain and application results preserve declared task identity, every request
-  dimension the task carries, and any state distinction, reference kind, or
-  bounded uncertainty that affects interpretation before presentation sees it.
-- Presentation represents typed facts. It does not infer identity,
-  relationships, completeness, or confidence from labels, order, proximity,
-  indentation, or other display details.
+- Policy proposals and runtime policy enforcement are separate tasks.
+- Routine execution cannot depend on model availability, prompt wording, or
+  probabilistic classification.
+- Every applied rule needs stable provenance and a reason suitable for preview
+  and diagnostics.
+- Configuration that embeds arbitrary shell code is outside the initial design.
 
-### Mechanical enforcement
+### Mechanical enforcement target
 
-- Catalog-wide help, typed parsing, and routing contract tests run without
-  external I/O.
-- Parser contract tests exercise text, boolean, integer, repeated, defaulted,
-  bounded, dependent, conflicting, absent, and explicitly empty inputs without
-  a handler-owned parallel registry.
-- Agent-help shape and growth tests reject detailed contracts leaking back into
-  the root index and prove an unknown outcome reaches one selected scoped task
-  contract in at most two help-discovery invocations. A known path needs one
-  scoped-help invocation only when the caller already holds its required
-  references and other task inputs; neither bound includes task execution or
-  later full-contract retrieval for an out-of-scope workflow endpoint.
-- Executable single-shape JSON-output contract tests compare renderer schema
-  versions, envelopes, and item fields with the catalog declarations. Dedicated
-  exact-key tests fix both the catalog-declared root agent index and its
-  input-selected scoped variant.
-- Tests cover stable command paths, effects, examples, and negative input behavior.
-- Use-case tests fix orchestration order and ambiguity handling.
-- Each interpretation-sensitive capability adds task-owned tests for its
-  applicable request dimensions and state distinctions. Scoped collections
-  retain scope when empty; semantic reference fields reject the wrong kind; and
-  relationship-rich outputs include negative canaries for tempting display-only
-  inferences. The template sample mechanically proves exact-ID binding,
-  successful empty output, same-label identity separation, and no partial
-  pagination result; richer capabilities supply their own fixtures.
-- Public-contract changes are called out explicitly in pull requests.
+The first policy-bearing slice must include repeatability fixtures proving that
+identical validated inputs produce an identical plan and that rejected or
+invalid policy makes zero source-process attempts.
 
-### Reviewed evidence
+## Thesis 3: Preserve the source CLI's meaning and safety boundary
 
-- Agent-readiness records the external-processing count for routine success and
-  requires zero undeclared reconstruction steps for a supported outcome. This
-  is reviewed transcript evidence; the harness does not infer or mechanically
-  verify the count from prose.
-
-### Derived-project questions
-
-- What is the cheapest reliable path from root help to a successful command?
-- Which output fields and exit statuses are stable?
-- Which deterministic workflow should be one command rather than several agent steps?
-- How does a user obtain the unique identifier required by an action?
-- What external join, parser, provider notation, or exploratory request would a
-  routine caller otherwise need, and why is it not owned by the supported task?
-- Which facts can be absent, empty, zero, false, unresolved, or bounded, and
-  where are those states typed before rendering?
-
-## Thesis 3: Separate discovery from action and bind one target explicitly
-
-Discovery owns ambiguity. Action owns one uniquely identified target. External or caller-selected targets are bound by an opaque identifier emitted by discovery and accepted unchanged. A command path may instead bind one CLI-owned local singleton when no target choice exists.
+Atsura must not silently broaden a source operation, invent support the source
+CLI does not have, or treat presentation optimization as permission to change
+the operation. Argument rewriting is valid only when the resulting invocation
+has an explicit, reviewable meaning.
 
 ### Consequences
 
-- Every public command has a `CommandRole`: `RoleUtility`, `RoleDiscover`, or `RoleAct`; `RoleUnknown` is invalid.
-- A `discover` command may accept filters, return zero or more candidates, and emit stable opaque IDs.
-- An `act` command uses exactly one target-binding mode: at least one required opaque reference, or one complete catalog-declared fixed target with scope `tool_local`.
-- A fixed target has a stable kind, stable ID, description, and scope; the command path is the selection, so the command produces and consumes no references.
-- Fixed targets are not a shortcut for external resources, multiple candidates, account selection, or caller-provided local paths.
-- An action does not search again, choose the “best” candidate, accept a copied resource URL as an implicit alternative, or reconstruct an identifier from display fields.
-- The ID is not decoded, normalized, case-folded, unescaped, or reformatted between producer and consumer unless its domain type explicitly defines that transformation.
-- Display labels may change without changing the reference contract.
+- Source executable identity and observed version or equivalent evidence are
+  part of the catalog and plan context.
+- A stale catalog or an unevaluable controlling rule fails closed instead of
+  falling through to an unintended operation.
+- Policy rejection happens before source-process execution.
+- Failure to optimize output must not trigger a different command or an
+  implicit second execution.
+- Any raw or passthrough route is explicit, is never selected as recovery from
+  policy failure, and makes clear that Atsura policy was bypassed.
+- Source CLI authentication and authorization remain authoritative; Atsura
+  does not claim that its own policy makes an upstream operation safe.
 
-### Mechanical enforcement
+### Mechanical enforcement target
 
-- `cli.CommandSpec` declares `Role`; reference kinds are attached once to structured input and output fields in its `AgentContract`.
-- The catalog derives `ProducedRef{Kind, Field}` and `ConsumedRef{Kind, Argument}` projections from those fields, so routing, help, and reference-flow checks cannot drift across parallel registries.
-- Catalog validation rejects incomplete, mixed, or role-inconsistent reference/fixed-target declarations.
-- Agent help projects role and reference flow from the same catalog used by dispatch.
-- Whole-catalog tests prove every consumed reference has a visible producer, every produced reference has a consumer, and no required-reference cycle is closed off from an invocable producer.
-- Round-trip tests pass the exact opaque ID bytes emitted by discovery into the action command.
-- Fixed-target tests prove that scoped agent help supplies target certainty without ceremonial discovery or input.
-- Negative tests reject URLs, resource paths, control characters, and undocumented alternative reference forms before adapter execution.
+Future execution tests must prove exact argv construction without shell
+interpretation, stale-binary rejection, zero attempts on policy failure, and no
+automatic raw fallback.
 
-The runnable proof is `sample list` -> `sample read --id`. It uses reference kind `sample`, producer field `id`, and consumer argument `--id`. The synthetic ID is `smp_` followed by exactly twelve lowercase hexadecimal characters. Validation rejects uppercase, partial IDs, names, URLs, whitespace, and resource paths without rewriting them.
+## Thesis 4: Discover once, apply small reviewed differences
 
-### Derived-project questions
+The working hypothesis is that a source CLI's command structure can be
+discovered by a bounded deterministic program, represented as a generated
+catalog, and tailored through a smaller policy than a hand-maintained wrapper
+or reimplementation.
 
-- Which command owns ambiguity and returns candidates?
-- What opaque reference kind connects discovery to action?
-- If no selection exists, is the object truly one CLI-owned singleton whose stable identity is fixed by the command path?
-- Is the action target truly unique, and where is that proven?
-- Which tempting identifier conversions would couple the CLI to an external storage or URL format?
-- If no in-tool producer exists, what product and catalog change is needed before exposing the action?
-
-## Thesis 4: Declare side effects before executing them
-
-An operation's effect, intent, and target are product facts. They must be known and validated before infrastructure performs the operation.
+This hypothesis is not yet proven. Source CLIs differ in help behavior,
+structured metadata, plugins, dynamic commands, aliases, environment-dependent
+surfaces, and versioning. Atsura must test one narrow slice before generalizing
+the discovery mechanism.
 
 ### Consequences
 
-- `read`, `create`, and `write` are explicit domain values, not guesses derived from an HTTP verb or function name.
-- Mutations carry an `operation.Intent` and `operation.TargetRef`.
-- The public mutation contract either binds declared CLI reference inputs to target roles or binds one command-declared `tool_local` singleton. A reference-bound `create` consumes one opaque parent/scope reference; a reference-bound `write` consumes an opaque existing-target ID and may consume a distinct parent. A fixed-target mutation has no target inputs; `create` treats the singleton as creation scope and `write` treats it as the existing target.
-- `target_inputs` is the complete set of role-bound target inputs, not an unclassified list that can contain extra selectors.
-- Unknown or inconsistent effects fail closed.
-- Authentication, confirmation, audit, dry-run, and policy decisions can attach to one execution boundary.
-- Adapters receive bounded inputs rather than unrestricted clients or executors.
-- A confirmed mutation result crosses a dedicated complete-write boundary; a
-  cancellation observed after confirmation cannot turn success into a safe
-  retry claim. Provider rate-window evidence remains independent from whether
-  repeating the same logical mutation is permitted.
+- Generated facts and reviewed policy facts remain distinguishable.
+- Regeneration cannot silently grant a capability or weaken an existing
+  decision.
+- Catalog provenance and compatibility with the resolved source binary are
+  product facts, not cache implementation details.
+- Current specifications of comparable tools must be researched from primary
+  sources before Atsura claims an overlapping capability is needed.
 
-### Mechanical enforcement
+### Mechanical enforcement target
 
-- Domain constructors and validation reject unknown or incomplete mutation intent.
-- The catalog requires a declared effect for every public command.
-- Catalog validation retains every reference-bound rule and additionally rejects a fixed-target mutation unless `target_inputs` is an explicit empty list, both input-role fields are absent, and `TargetKind` equals the fixed target kind.
-- Architecture lint prevents application code from importing concrete infrastructure.
-- Negative tests prove that validation failure occurs before the side effect.
+A later catalog slice must bind generated output to its source evidence, reject
+unclassified drift, and keep generation deterministic. No such catalog is
+implemented by this bootstrap.
 
-### Derived-project questions
+## First hypothesis to test
 
-- What assets can each command read, create, change, delete, notify, or publish?
-- Which exact opaque input supplies a create's parent or a write's existing target, and does its reference kind match the declared role?
-- Is one target reference sufficient, or does the product need a typed multi-target impact model?
-- Which effects require human authorization or a dry-run preview?
-- What evidence proves that rejection happens before external I/O?
+The recommended first user result is:
 
-## Thesis 5: Turn important claims into executable contracts
+**Before any source command runs, a maintainer can preview how one small,
+trusted policy treats one modeled source invocation and receive a deterministic
+decision, the exact planned argv when applicable, and the reason for the
+decision.**
 
-Documentation explains a claim, but a repeatable check preserves it across contributors and agents.
+The first experiment should use a synthetic source executable or fixture. It
+does not select the first supported real CLI, a policy file syntax, recursive
+help discovery, or an integration mechanism. This slice tests whether Atsura's
+policy vocabulary, plan boundary, and explanation are useful before process
+execution and broad discovery create additional variables.
 
-### Consequences
+Success evidence should include:
 
-- Architecture, security, compatibility, generated-code, and release promises identify their checks.
-- A new invariant is incomplete until its failure mode is tested.
-- CI invokes the repository's scripts instead of recreating policy in workflow YAML.
-- Generated updates fail visibly when they introduce an unclassified change.
-- Exceptions include a reason and a regression test.
+- the same inputs produce the same preview bytes or equivalent typed plan;
+- an allowed invocation remains semantically traceable to the modeled source
+  command;
+- a rejected or invalid decision makes zero source-process attempts; and
+- a maintainer can identify which rule caused the result without inspecting
+  implementation source.
 
-### Mechanical enforcement
+## Current non-goals
 
-- `./scripts/check.sh` owns the `fast`, `full`, `security`, `release`, and `public` profiles.
-- Task aliases, optional local automation, and CI delegate to that script.
-- Tool versions and third-party actions are pinned according to repository policy.
-- `task check` is the pre-merge gate; higher-risk operations add their named profile.
+- Reimplementing the source CLI or its remote APIs.
+- Implementing source-help exploration, catalog generation, a policy language,
+  command execution, output transformation, agent hooks, usage-history
+  collection, agent-generated policy, RTK integration, or distribution during
+  this bootstrap.
+- Requiring a language model for normal command execution.
+- Allowing arbitrary shell code as the default policy extension mechanism.
+- Claiming universal compatibility with every CLI shape.
+- Treating a coding agent's proposal as user authorization.
+- Finalizing a stable public Atsura command or configuration contract before a
+  vertical slice supplies evidence.
 
-### Derived-project questions
+## Open questions
 
-- Which current claims rely only on reviewer memory?
-- What is the smallest mutation that would violate each invariant?
-- Can the check produce an actionable failure message?
-- Is the same implementation exercised locally and in CI?
+The following remain deliberately unresolved:
 
-## Thesis 6: Treat public safety as a design boundary
+- Which source CLI should be tested first?
+- Should the eventual configuration use YAML or another representation?
+- How deeply should help or other command metadata be explored?
+- How should Claude Code SessionStart and PreToolUse responsibilities differ?
+- Should integration use a shell function, PATH wrapper, hook input rewrite, or
+  another mechanism?
+- What are the exact semantics of allow, confirm, and deny?
+- How, if at all, should usage history be collected?
+- Should Atsura use RTK internally, integrate with it, or remain independent?
+- Which source-CLI structured-output facilities are reliable enough to use?
+- What evidence establishes executable identity across path, replacement,
+  plugins, and version changes?
 
-Once source or history reaches a public remote, confidentiality cannot be restored by deleting a later commit. Public readiness begins at repository creation.
-
-### Consequences
-
-- Derived repositories start with clean history rather than copying a private `.git` directory.
-- Runnable public defaults replace organization-specific placeholders.
-- Fixtures use synthetic identities and data.
-- One explicit documentation locale governs trusted repository prose. Stable
-  command paths, flags, environment names, fault codes, JSON keys, schema
-  values, and reference kinds remain language-neutral machine identifiers;
-  external text remains untranslated untrusted data.
-- License, disclosure channel, dependency rights, and release behavior are decided before publication.
-- Private URLs, organization names, credentials, and internal operating procedures are prohibited in all tracked and generated content.
-
-### Mechanical enforcement
-
-- `.harness/project.json` records identity, documentation locale, and
-  public-boundary policy.
-- `tools/repoguard` checks forbidden identifiers, secrets, placeholders, required community files, and repository readiness.
-- `task security` scans source and configuration.
-- `task public:check` is required before the first public push and public release.
-
-### Derived-project questions
-
-- Was any file or Git object copied from a private source?
-- Who owns the code and documentation, and which license applies?
-- Which identifiers or domains must never appear publicly?
-- What private vulnerability-reporting channel exists?
-
-## Thesis 7: Keep one maintainable path through the repository
-
-The project should not depend on one maintainer remembering parallel registries, duplicated policy, or undocumented release steps.
-
-### Consequences
-
-- `AGENTS.md` is the only agent-policy source of truth.
-- `cli.Catalog` is canonical; typed parsing, help, and dispatch do not maintain
-  separate input or command lists.
-- `scripts/check.sh` is canonical; Task, optional local automation, and CI do not duplicate commands.
-- Durable decisions live in theses, numbered docs, or ADRs; active implementation state lives in work packets.
-- Dependencies are added only when their safety and maintenance value exceeds their ongoing cost.
-
-### Mechanical enforcement
-
-- Contract tests compare every derived view with its source of truth.
-- Repository guard checks required documentation and bootstrap state.
-- Documentation links and command snippets are checked where practical.
-- Completion requires the same full gate regardless of whether a human or agent made the change.
-
-### Derived-project questions
-
-- Where are the current duplicate sources of truth?
-- Which recurring judgment needs a Skill, generator, or lint?
-- What can a new maintainer safely remove?
-- Which maintenance task still requires private knowledge?
-
-## Mature thesis changes
-
-A mature thesis is allowed to change, but not as an incidental implementation edit. Propose the new statement, present user, incident, compatibility, or maintenance evidence, identify the consequences, update the enforcement path, and record migration impact in an ADR. The burden is evidence and repository consistency, not age alone.
+These questions are inputs to primary-source research and the first vertical
+slice, not bootstrap decisions.
