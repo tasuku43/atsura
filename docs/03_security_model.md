@@ -215,9 +215,39 @@ catalogs and bundles contain only publishable structural evidence and exact
 source identity facts required by their contracts. Diagnostic output must not
 echo arbitrary secret-bearing environment values or unbounded hostile text.
 
+## Release-artifact security evidence
+
+The candidate archive and extracted `atr` are executable untrusted inputs to
+the conformance harness. A fixed regular-member allowlist, link and traversal
+rejection, byte bounds, and safe extraction prevent the archive from choosing
+other filesystem targets; a digest and safe extraction do not make an
+arbitrary executable trustworthy. Replay is limited to the reviewed candidate
+from the same workflow, on an ephemeral matching native runner, using absolute
+no-shell execution, isolated working/home/configuration roots, a minimal
+credential-free environment, and finite time and output bounds.
+
+The installed-artifact conformance journey runs a provider-transport-free
+source fixture with an allowlisted child environment, bounded attempt logs,
+and unique stdout, stderr, and unselected-field canaries. Its synthetic
+adoption receipt is written through the production trust-store adapter in that
+isolated test root. This proves receipt consumption and exact-digest
+enforcement; it is not a public trust bypass and is not evidence of user
+consent.
+
+The journey must show zero source attempts for pre-start rejection, exactly one
+attempt for every admitted execution, non-retryable classification for every
+post-start failure, and absence of canaries from stdout, stderr, saved state,
+and bounded evidence. It may retain only digests, counters, target identity,
+stable fault codes, and boolean leak checks. Native replay is required on each
+claimed release target so an emulation or cross-build cannot silently replace
+runtime security evidence.
+
 ## Known limitations
 
 - Hiding commands and options does not prevent invocation outside Atsura.
+- Artifact replay is not an OS or network sandbox. “Provider-network-free
+  fixture” means the fixture implements no provider transport; it does not
+  prove that a malicious candidate executable could not use runner networking.
 - Local executable identity checks cannot provide operating-system sandboxing;
   portable path execution may retain a race between the final identity check
   and the operating system opening the file.

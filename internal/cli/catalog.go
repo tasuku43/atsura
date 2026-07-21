@@ -565,6 +565,87 @@ func sourceExecutionOutputSchema() *OutputSchema {
 	}}
 }
 
+func sourceCatalogOutputSchema() *OutputSchema {
+	field := func(path string, fieldType OutputFieldType) OutputSchemaField {
+		return OutputSchemaField{Path: path, Type: fieldType, Required: true}
+	}
+	array := func(path string, elementType OutputFieldType) OutputSchemaField {
+		return OutputSchemaField{Path: path, Type: OutputFieldTypeArray, ElementType: elementType, Required: true}
+	}
+	fields := []OutputSchemaField{
+		field("/adapter", OutputFieldTypeObject),
+		field("/adapter/contract_version", OutputFieldTypeInteger),
+		field("/adapter/kind", OutputFieldTypeString),
+		array("/commands", OutputFieldTypeObject),
+		array("/commands/*/options", OutputFieldTypeObject),
+		field("/commands/*/options/*/name", OutputFieldTypeString),
+		field("/commands/*/options/*/takes_value", OutputFieldTypeBoolean),
+		array("/commands/*/path", OutputFieldTypeString),
+		field("/commands/*/provenance", OutputFieldTypeString),
+		array("/commands/*/structured_output", OutputFieldTypeObject),
+		array("/commands/*/structured_output/*/fields", OutputFieldTypeString),
+		field("/commands/*/structured_output/*/format", OutputFieldTypeString),
+		field("/commands/*/structured_output/*/selector_flag", OutputFieldTypeString),
+		field("/commands/*/summary", OutputFieldTypeString),
+		field("/probe", OutputFieldTypeObject),
+		field("/probe/attempts", OutputFieldTypeInteger),
+		array("/probe/ids", OutputFieldTypeString),
+		field("/schema_version", OutputFieldTypeInteger),
+		field("/source", OutputFieldTypeObject),
+		field("/source/requested_executable", OutputFieldTypeString),
+		field("/source/resolved_path", OutputFieldTypeString),
+		field("/source/sha256", OutputFieldTypeString),
+		field("/source/size", OutputFieldTypeInteger),
+		field("/source/version", OutputFieldTypeString),
+	}
+	sort.Slice(fields, func(i, j int) bool { return fields[i].Path < fields[j].Path })
+	return &OutputSchema{ID: "source-command-catalog", Version: 1, Fields: fields}
+}
+
+func tailoringSpecificationOutputSchema() *OutputSchema {
+	field := func(path string, fieldType OutputFieldType) OutputSchemaField {
+		return OutputSchemaField{Path: path, Type: fieldType, Required: true}
+	}
+	array := func(path string, elementType OutputFieldType) OutputSchemaField {
+		return OutputSchemaField{Path: path, Type: OutputFieldTypeArray, ElementType: elementType, Required: true}
+	}
+	fields := []OutputSchemaField{
+		field("/catalog_digest", OutputFieldTypeString),
+		array("/commands", OutputFieldTypeObject),
+		array("/commands/*/command", OutputFieldTypeString),
+		field("/commands/*/options", OutputFieldTypeObject),
+		field("/commands/*/options/default", OutputFieldTypeString),
+		array("/commands/*/options/exclude", OutputFieldTypeString),
+		array("/commands/*/options/include", OutputFieldTypeString),
+		field("/commands/*/presence", OutputFieldTypeString),
+		field("/commands/*/reason", OutputFieldTypeString),
+		field("/commands/*/wrapper", OutputFieldTypeObject),
+		array("/commands/*/wrapper/after", OutputFieldTypeObject),
+		array("/commands/*/wrapper/before", OutputFieldTypeObject),
+		field("/commands/*/wrapper/invoke", OutputFieldTypeObject),
+		array("/commands/*/wrapper/invoke/append_args", OutputFieldTypeString),
+		field("/commands/*/wrapper/kind", OutputFieldTypeString),
+		field("/commands/*/wrapper/output", OutputFieldTypeObject),
+		field("/commands/*/wrapper/output/input", OutputFieldTypeString),
+		array("/commands/*/wrapper/output/rename", OutputFieldTypeObject),
+		field("/commands/*/wrapper/output/rename/*/from", OutputFieldTypeString),
+		field("/commands/*/wrapper/output/rename/*/to", OutputFieldTypeString),
+		field("/commands/*/wrapper/output/render", OutputFieldTypeString),
+		array("/commands/*/wrapper/output/select", OutputFieldTypeString),
+		field("/schema_version", OutputFieldTypeInteger),
+		field("/surface", OutputFieldTypeObject),
+		field("/surface/default", OutputFieldTypeString),
+	}
+	for index := range fields {
+		switch fields[index].Path {
+		case "/commands/*/options", "/commands/*/wrapper", "/commands/*/wrapper/output":
+			fields[index].Required = false
+		}
+	}
+	sort.Slice(fields, func(i, j int) bool { return fields[i].Path < fields[j].Path })
+	return &OutputSchema{ID: "tailoring-specification", Version: 3, Fields: fields}
+}
+
 func wrapperPlanOutputSchema() *OutputSchema {
 	field := func(path string, fieldType OutputFieldType) OutputSchemaField {
 		return OutputSchemaField{Path: path, Type: fieldType, Required: true}
@@ -795,13 +876,13 @@ func DefaultCatalog() Catalog {
 		),
 		CommandSpec{
 			Path:    "spec init",
-			Summary: "Create a schema-3 surface and identity-wrapper draft",
+			Summary: "Create a schema-3 identity-wrapper authoring baseline",
 			Args:    "--catalog <path> -- <command>",
 			Effect:  operation.EffectRead,
 			Role:    RoleUtility,
 			Agent: AgentContract{
 				CapabilityID: "tailoring.spec.init",
-				Outcome:      "Create an exclude-by-default schema-3 tailoring specification containing one exact verified command with inherited options and an identity wrapper",
+				Outcome:      "Create an exclude-by-default schema-3 authoring baseline containing one exact verified command with inherited options and an identity wrapper; review and replace that wrapper with a valid transform before using the current transform-only runtime",
 				Inputs: []CommandInput{
 					{Name: "--catalog", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read the exact bounded JSON document emitted by source inspect.", AllowedValues: []string{}},
 					{Name: "command", Source: InputSourceArgument, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalityRepeatable, Description: "Select one exact verified source command path after the positional-only marker.", AllowedValues: []string{}},
@@ -809,14 +890,15 @@ func DefaultCatalog() Catalog {
 				Output: CommandOutput{
 					Formats: []OutputFormat{OutputFormatText}, DefaultFormat: OutputFormatText,
 					Fields: []OutputField{
-						{Name: "schema_version", Type: OutputFieldTypeInteger, Description: "Generated tailoring specification schema version; always three."},
-						{Name: "catalog_digest", Type: OutputFieldTypeString, Description: "Exact canonical catalog digest bound into the draft."},
-						{Name: "surface", Type: OutputFieldTypeObject, Description: "Exclude-by-default purpose-specific command surface."},
-						{Name: "commands", Type: OutputFieldTypeArray, Description: "One included command with inherited options and an identity wrapper."},
+						{Name: "specification", Type: OutputFieldTypeObject, Description: "Complete schema-3 YAML tailoring specification authoring baseline; its identity wrapper is previewable but is not executable by the current transform-only runtime.", Schema: tailoringSpecificationOutputSchema()},
 					},
 					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable,
 				},
-				Prerequisites: []string{"A source inspect JSON document containing the exact command as verified_builtin evidence."},
+				Prerequisites: []string{
+					"A source inspect JSON document containing the exact command as verified_builtin evidence; use its versioned source-command-catalog inventory to select command paths, options, structured-output selectors, and fields.",
+					"The emitted identity wrapper is an authoring baseline for review and preview, not an executable wrapper in the current transform-only runtime.",
+					"The finite executable transform grammar is kind=transform; explicit empty before and after arrays; invoke.append_args as exact argv elements; output.input=json; a non-empty ordered output.select drawn from the command's cataloged structured-output fields; optional output.rename entries from selected fields to unique output names; and output.render=compact_json. Shell, script, jq, plugin, RTK, external-transformer, and runtime-LLM actions are invalid.",
+				},
 				Errors: []CommandError{
 					declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help spec init", "Pass a catalog and exact command path."),
 					declaredCommandError(fault.KindNotFound, "catalog_command_not_found", false, "help spec init", "Select an exact command present in the catalog."),
@@ -863,13 +945,16 @@ func DefaultCatalog() Catalog {
 						{Name: "excluded_count", Type: OutputFieldTypeInteger, Description: "Number of explicit excluded command entries."},
 						{Name: "identity_wrapper_count", Type: OutputFieldTypeInteger, Description: "Number of explicit identity wrappers."},
 						{Name: "transform_wrapper_count", Type: OutputFieldTypeInteger, Description: "Number of explicit transforming wrappers."},
-						{Name: "specification", Type: OutputFieldTypeObject, Description: "Normalized vendor-neutral schema-3 tailoring specification."},
+						{Name: "specification", Type: OutputFieldTypeObject, Description: "Normalized vendor-neutral schema-3 tailoring specification with the complete finite authoring inventory.", Schema: tailoringSpecificationOutputSchema()},
 					},
 					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable,
 					JSONEnvelope: "validation", JSONSchemaVersion: 2,
 				},
-				Prerequisites: []string{"A reviewed source inspect JSON document and schema-3 YAML specification; validation does not adopt either artifact."},
-				Errors:        artifactInputErrors("spec validate", false),
+				Prerequisites: []string{
+					"A reviewed source inspect JSON document and schema-3 YAML specification; validation does not adopt either artifact.",
+					"Use the versioned tailoring-specification inventory published on this command's normalized specification output to author surface membership, option membership, identity wrappers, and the finite JSON transform grammar without inferring fields from prose.",
+				},
+				Errors: artifactInputErrors("spec validate", false),
 			},
 			handler: runSpecValidate,
 		},
@@ -999,8 +1084,11 @@ func DefaultCatalog() Catalog {
 				},
 				Prerequisites: []string{
 					"One current schema-2 bundle whose exact digest is user-adopted; execution rebuilds rather than consumes a preview document.",
-					"The matched command must use a transforming wrapper with a typed JSON output stage proven by the exact source adapter kind, contract version, source version, command, and selector value.",
-					"The source owns its authentication, authorization, prompts, destinations, and downstream effects; Atsura starts it with closed stdin, inherited working directory and environment, and no shell.",
+					"The current runtime accepts only source adapter atsura.source.github_cli contract 2, GitHub CLI major version 2, and exact command issue list or pr list.",
+					"The wrapper must be kind=transform with output.input=json and output.render=compact_json; it must append exactly one inline --json=<ordered-select> selector whose fields exactly equal output.select in order.",
+					"The attempted argv may use only the command-specific maintained GitHub CLI long-option grammar; positional arguments, unmodeled options, separated --json values, duplicate or reordered selectors, selectors after --, and competing --jq, --template, or --web modes fail before source start.",
+					"A live GitHub CLI invocation requires source-owned authentication plus repository context from the inherited working directory or an admitted command-specific --repo option; Atsura accepts no credential input and starts the source with closed stdin, inherited working directory and environment, and no shell.",
+					"Successful source stderr must be empty in this runtime slice; every post-start failure is non-retryable and raw stdout or stderr is never returned as fallback.",
 				},
 				Errors: bundleExecuteErrors(),
 			},
@@ -1170,21 +1258,21 @@ func DefaultCatalog() Catalog {
 		CommandSpec{
 			Path:    "source inspect",
 			Summary: "Inspect one installed CLI through a bounded source adapter",
-			Args:    "--adapter <adapter> --executable <path-or-name>",
+			Args:    "--adapter=github-cli --executable <path-or-name>",
 			Effect:  operation.EffectExecute,
 			Role:    RoleUtility,
 			Agent: AgentContract{
 				CapabilityID: "tailoring.catalog.inspect",
 				Outcome:      "Produce a deterministic provenance-bearing catalog for one supported installed source CLI by requesting only the adapter's declared offline probes",
 				Inputs: []CommandInput{
-					{Name: "--adapter", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Select one registered source-inspection adapter; github-cli is the first real compatibility adapter.", AllowedValues: []string{}},
+					{Name: "--adapter", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Select the registered GitHub CLI source-inspection adapter.", AllowedValues: []string{"github-cli"}},
 					{Name: "--executable", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Resolve and inspect this source executable path or PATH name.", AllowedValues: []string{}},
 				},
 				Output: CommandOutput{
 					Formats: []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
 					Fields: []OutputField{
 						{Name: "catalog_digest", Type: OutputFieldTypeString, Description: "SHA-256 identity of the canonical catalog bytes."},
-						{Name: "catalog", Type: OutputFieldTypeObject, Description: "Vendor-neutral source identity, adapter, provenance, probe, command, option, and structured-output evidence."},
+						{Name: "catalog", Type: OutputFieldTypeObject, Description: "Vendor-neutral source identity, adapter, provenance, probe, command, option, and structured-output evidence with a complete versioned field inventory.", Schema: sourceCatalogOutputSchema()},
 						{Name: "source_process_attempts", Type: OutputFieldTypeInteger, Description: "Exact bounded offline probe attempts; four for GitHub CLI adapter contract 2."},
 					},
 					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageExhaustive,
@@ -1193,7 +1281,6 @@ func DefaultCatalog() Catalog {
 				Prerequisites: []string{"A supported source adapter and installed executable; inspection may start only the adapter's declared offline probes."},
 				Errors: []CommandError{
 					declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help source inspect", "Correct the source adapter and executable inputs."),
-					declaredCommandError(fault.KindInvalidInput, "unsupported_source_adapter", false, "help source inspect", "Choose a registered source adapter."),
 					declaredCommandError(fault.KindInvalidInput, "unsupported_source_version", false, "help source inspect", "Install a version covered by the adapter compatibility contract."),
 					declaredCommandError(fault.KindRejected, "source_inspection_failed", false, "help source inspect", "Review malformed or unsupported source inspection evidence."),
 					declaredCommandError(fault.KindContract, "invalid_source_catalog", false, "help source inspect", "Inspect the adapter's vendor-neutral catalog mapping."),

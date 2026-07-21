@@ -595,6 +595,22 @@ func TestBundleExecuteCatalogDeclaresTransformOnlySourceExecution(t *testing.T) 
 	if schema := spec.Agent.Output.Fields[4].Schema; schema == nil || schema.ID != "tailored-json-result" || schema.Version != 2 || len(schema.Fields) != 4 {
 		t.Fatalf("tailored output schema=%+v", schema)
 	}
+	prerequisites := strings.Join(spec.Agent.Prerequisites, "\n")
+	for _, want := range []string{
+		"atsura.source.github_cli contract 2",
+		"GitHub CLI major version 2",
+		"issue list or pr list",
+		"inline --json=<ordered-select>",
+		"--jq, --template, or --web",
+		"source-owned authentication",
+		"repository context from the inherited working directory or an admitted command-specific --repo option",
+		"Successful source stderr must be empty",
+		"raw stdout or stderr is never returned",
+	} {
+		if !strings.Contains(prerequisites, want) {
+			t.Errorf("bundle execute prerequisites lack %q: %s", want, prerequisites)
+		}
+	}
 	codes := make(map[string]CommandError, len(spec.Agent.Errors))
 	for _, declared := range spec.Agent.Errors {
 		codes[declared.Code] = declared
@@ -625,6 +641,121 @@ func TestBundleExecuteCatalogDeclaresTransformOnlySourceExecution(t *testing.T) 
 	}
 	if err := DefaultCatalog().Validate(); err != nil {
 		t.Fatalf("default catalog validation: %v", err)
+	}
+}
+
+func TestSourceInspectCatalogPublishesExactAdapterAndNestedCatalogSchema(t *testing.T) {
+	spec, found := DefaultCatalog().Lookup("source inspect")
+	if !found {
+		t.Fatal("source inspect is missing from the catalog")
+	}
+	if spec.Args != "--adapter=github-cli --executable <path-or-name>" || len(spec.Agent.Inputs) != 2 {
+		t.Fatalf("source inspect grammar=%q inputs=%+v", spec.Args, spec.Agent.Inputs)
+	}
+	adapter := spec.Agent.Inputs[0]
+	if adapter.Name != "--adapter" || !adapter.Required || !equalStrings(adapter.AllowedValues, []string{"github-cli"}) {
+		t.Fatalf("adapter input=%+v", adapter)
+	}
+	var catalogField OutputField
+	for _, field := range spec.Agent.Output.Fields {
+		if field.Name == "catalog" {
+			catalogField = field
+			break
+		}
+	}
+	schema := catalogField.Schema
+	if schema == nil || schema.ID != "source-command-catalog" || schema.Version != 1 {
+		t.Fatalf("source catalog schema=%+v", schema)
+	}
+	paths := make(map[string]OutputSchemaField, len(schema.Fields))
+	for _, field := range schema.Fields {
+		paths[field.Path] = field
+	}
+	want := map[string]struct {
+		fieldType   OutputFieldType
+		elementType OutputFieldType
+	}{
+		"/adapter/kind":                                 {fieldType: OutputFieldTypeString},
+		"/adapter/contract_version":                     {fieldType: OutputFieldTypeInteger},
+		"/source/resolved_path":                         {fieldType: OutputFieldTypeString},
+		"/source/sha256":                                {fieldType: OutputFieldTypeString},
+		"/probe/attempts":                               {fieldType: OutputFieldTypeInteger},
+		"/commands":                                     {fieldType: OutputFieldTypeArray, elementType: OutputFieldTypeObject},
+		"/commands/*/path":                              {fieldType: OutputFieldTypeArray, elementType: OutputFieldTypeString},
+		"/commands/*/provenance":                        {fieldType: OutputFieldTypeString},
+		"/commands/*/options/*/takes_value":             {fieldType: OutputFieldTypeBoolean},
+		"/commands/*/structured_output/*/selector_flag": {fieldType: OutputFieldTypeString},
+		"/commands/*/structured_output/*/fields":        {fieldType: OutputFieldTypeArray, elementType: OutputFieldTypeString},
+	}
+	for path, expected := range want {
+		got, exists := paths[path]
+		if !exists || got.Type != expected.fieldType || got.ElementType != expected.elementType || !got.Required {
+			t.Errorf("source catalog schema field %q=%+v want=%+v", path, got, expected)
+		}
+	}
+}
+
+func TestSpecificationCatalogPublishesFiniteAuthoringGrammar(t *testing.T) {
+	for _, path := range []string{"spec init", "spec validate"} {
+		t.Run(strings.ReplaceAll(path, " ", "_"), func(t *testing.T) {
+			spec, found := DefaultCatalog().Lookup(path)
+			if !found {
+				t.Fatalf("%s is missing from the catalog", path)
+			}
+			var specification OutputField
+			for _, field := range spec.Agent.Output.Fields {
+				if field.Name == "specification" {
+					specification = field
+					break
+				}
+			}
+			schema := specification.Schema
+			if specification.Type != OutputFieldTypeObject || schema == nil || schema.ID != "tailoring-specification" || schema.Version != 3 {
+				t.Fatalf("%s specification field=%+v", path, specification)
+			}
+			paths := make(map[string]OutputSchemaField, len(schema.Fields))
+			for _, field := range schema.Fields {
+				paths[field.Path] = field
+			}
+			for schemaPath, fieldType := range map[string]OutputFieldType{
+				"/surface/default":                         OutputFieldTypeString,
+				"/commands/*/command":                      OutputFieldTypeArray,
+				"/commands/*/presence":                     OutputFieldTypeString,
+				"/commands/*/options/default":              OutputFieldTypeString,
+				"/commands/*/wrapper/kind":                 OutputFieldTypeString,
+				"/commands/*/wrapper/invoke/append_args":   OutputFieldTypeArray,
+				"/commands/*/wrapper/output/input":         OutputFieldTypeString,
+				"/commands/*/wrapper/output/select":        OutputFieldTypeArray,
+				"/commands/*/wrapper/output/rename/*/from": OutputFieldTypeString,
+				"/commands/*/wrapper/output/rename/*/to":   OutputFieldTypeString,
+				"/commands/*/wrapper/output/render":        OutputFieldTypeString,
+			} {
+				got, exists := paths[schemaPath]
+				if !exists || got.Type != fieldType {
+					t.Errorf("%s schema field %q=%+v", path, schemaPath, got)
+				}
+			}
+			if paths["/commands/*/options"].Required || paths["/commands/*/wrapper"].Required || paths["/commands/*/wrapper/output"].Required {
+				t.Fatalf("%s conditional authoring fields=%+v %+v %+v", path, paths["/commands/*/options"], paths["/commands/*/wrapper"], paths["/commands/*/wrapper/output"])
+			}
+		})
+	}
+
+	init, _ := DefaultCatalog().Lookup("spec init")
+	authoring := init.Summary + "\n" + init.Agent.Outcome + "\n" + strings.Join(init.Agent.Prerequisites, "\n")
+	for _, want := range []string{
+		"identity-wrapper authoring baseline",
+		"not an executable wrapper in the current transform-only runtime",
+		"kind=transform",
+		"output.input=json",
+		"output.select",
+		"output.rename",
+		"output.render=compact_json",
+		"Shell, script, jq, plugin, RTK, external-transformer, and runtime-LLM actions are invalid",
+	} {
+		if !strings.Contains(authoring, want) {
+			t.Errorf("spec init authoring contract lacks %q: %s", want, authoring)
+		}
 	}
 }
 

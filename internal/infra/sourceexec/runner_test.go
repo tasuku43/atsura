@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -137,6 +139,39 @@ func TestRunRejectsPreflightWithoutAttempt(t *testing.T) {
 	result, err = New().Run(ctx, helperRequest(10*time.Second))
 	if !errors.Is(err, context.Canceled) || result.Attempts != 0 {
 		t.Fatalf("canceled result = %+v, error = %v", result, err)
+	}
+}
+
+func TestRunClassifiesNativeStartFailureWithoutAttempt(t *testing.T) {
+	name := "invalid-source"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, []byte("not a native executable\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	request := helperRequest(10 * time.Second)
+	request.Executable = path
+	result, err := New().Run(context.Background(), request)
+	if got := publicCode(t, err); got != "source_process_start_failed" || result.Attempts != 0 {
+		t.Fatalf("code=%q attempts=%d error=%v", got, result.Attempts, err)
+	}
+}
+
+func TestRunClassifiesWaitFailureAfterOneAttempt(t *testing.T) {
+	t.Setenv("ATSURA_SOURCEEXEC_HELPER", "1")
+	t.Setenv("ATSURA_SOURCEEXEC_MODE", "default")
+	runner := &Runner{wait: func(_ *exec.Cmd, waitErr error) error {
+		if waitErr != nil {
+			t.Fatalf("native wait error=%v", waitErr)
+		}
+		return errors.New("ATSURA_SECRET_SYNTHETIC_WAIT_CAUSE")
+	}}
+	result, err := runner.Run(context.Background(), helperRequest(10*time.Second))
+	public, ok := fault.PublicCopy(err)
+	if !ok || public.Code != "source_process_wait_failed" || public.Retryable || result.Attempts != 1 {
+		t.Fatalf("result=%+v error=%v public=%+v", result, err, public)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tasuku43/atsura/internal/domain/runtimeadmission"
 	"github.com/tasuku43/atsura/internal/domain/sourcecatalog"
 	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
@@ -104,27 +105,27 @@ func TestVerifyRuntimeProvesSupportedGitHubJSONSelectors(t *testing.T) {
 
 func TestVerifyRuntimeRejectsUnsupportedContracts(t *testing.T) {
 	tests := []struct {
-		name   string
-		mutate func(tailoringplan.Plan) tailoringplan.Plan
+		name     string
+		mutate   func(tailoringplan.Plan) tailoringplan.Plan
+		category error
 	}{
 		{name: "adapter kind", mutate: func(plan tailoringplan.Plan) tailoringplan.Plan {
 			plan.Source.AdapterKind = "atsura.source.alternate"
 			return plan
-		}},
-		{name: "contract version", mutate: func(plan tailoringplan.Plan) tailoringplan.Plan { plan.Source.AdapterContractVersion = 1; return plan }},
-		{name: "major version", mutate: func(plan tailoringplan.Plan) tailoringplan.Plan { plan.Source.Version = "3.0.0"; return plan }},
-		{name: "malformed version", mutate: func(plan tailoringplan.Plan) tailoringplan.Plan { plan.Source.Version = "2"; return plan }},
-		{name: "unsupported command", mutate: func(_ tailoringplan.Plan) tailoringplan.Plan { return transformRuntimePlan(t, "release", "list") }},
+		}, category: ErrRuntimeAdapterContract},
+		{name: "contract version", mutate: func(plan tailoringplan.Plan) tailoringplan.Plan { plan.Source.AdapterContractVersion = 1; return plan }, category: ErrRuntimeAdapterContract},
+		{name: "major version", mutate: func(plan tailoringplan.Plan) tailoringplan.Plan { plan.Source.Version = "3.0.0"; return plan }, category: ErrRuntimeSourceVersion},
+		{name: "malformed version", mutate: func(plan tailoringplan.Plan) tailoringplan.Plan { plan.Source.Version = "2"; return plan }, category: ErrRuntimeSourceVersion},
+		{name: "unsupported command", mutate: func(_ tailoringplan.Plan) tailoringplan.Plan { return transformRuntimePlan(t, "release", "list") }, category: ErrRuntimeCommand},
 		{name: "identity output", mutate: func(_ tailoringplan.Plan) tailoringplan.Plan {
 			return runtimePlan(t, []string{"issue", "list"}, []string{}, nil)
-		}},
+		}, category: ErrRuntimeWrapperOutput},
+		{name: "invalid plan", mutate: func(plan tailoringplan.Plan) tailoringplan.Plan { plan.SchemaVersion = 0; return plan }, category: ErrRuntimeWrapperOutput},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			plan := test.mutate(transformRuntimePlan(t, "issue", "list"))
-			if err := VerifyRuntime(plan); !errors.Is(err, ErrRuntimeUnsupported) || errors.Is(err, ErrRuntimeSelector) {
-				t.Fatalf("error = %v", err)
-			}
+			assertRuntimeAdmission(t, VerifyRuntime(plan), ErrRuntimeUnsupported, test.category)
 		})
 	}
 }
@@ -146,9 +147,7 @@ func TestVerifyRuntimeRejectsUnprovenSelectors(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			plan := replaceAppendedArgs(t, transformRuntimePlan(t, "issue", "list"), test.args)
-			if err := VerifyRuntime(plan); !errors.Is(err, ErrRuntimeSelector) || errors.Is(err, ErrRuntimeUnsupported) {
-				t.Fatalf("error = %v", err)
-			}
+			assertRuntimeAdmission(t, VerifyRuntime(plan), ErrRuntimeSelector, ErrRuntimeSelectorConflict)
 		})
 	}
 }
@@ -167,9 +166,57 @@ func TestVerifyRuntimeRejectsUnmodeledArgv(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			plan := replaceAppendedArgs(t, transformRuntimePlan(t, "pr", "list"), test.args)
-			if err := VerifyRuntime(plan); !errors.Is(err, ErrRuntimeUnsupported) || errors.Is(err, ErrRuntimeSelector) {
-				t.Fatalf("error = %v", err)
-			}
+			assertRuntimeAdmission(t, VerifyRuntime(plan), ErrRuntimeUnsupported, ErrRuntimeArgvGrammar)
 		})
+	}
+}
+
+func assertRuntimeAdmission(t *testing.T, err, legacy, category error) {
+	t.Helper()
+	if err == nil || !errors.Is(err, legacy) || !errors.Is(err, category) {
+		t.Fatalf("error=%v, want legacy=%v category=%v", err, legacy, category)
+	}
+	for _, other := range []error{
+		ErrRuntimeAdapterContract,
+		ErrRuntimeSourceVersion,
+		ErrRuntimeCommand,
+		ErrRuntimeWrapperOutput,
+		ErrRuntimeArgvGrammar,
+		ErrRuntimeSelectorConflict,
+	} {
+		if other != category && errors.Is(err, other) {
+			t.Fatalf("error=%v also matched category=%v", err, other)
+		}
+	}
+	if legacy == ErrRuntimeUnsupported && errors.Is(err, ErrRuntimeSelector) {
+		t.Fatalf("unsupported error also matched selector: %v", err)
+	}
+	if legacy == ErrRuntimeSelector && errors.Is(err, ErrRuntimeUnsupported) {
+		t.Fatalf("selector error also matched unsupported: %v", err)
+	}
+	var categorized interface {
+		RuntimeAdmissionCategory() runtimeadmission.Category
+	}
+	if !errors.As(err, &categorized) || categorized.RuntimeAdmissionCategory() != categoryName(category) {
+		t.Fatalf("error=%v does not expose a finite admission category", err)
+	}
+}
+
+func categoryName(category error) runtimeadmission.Category {
+	switch category {
+	case ErrRuntimeAdapterContract:
+		return runtimeadmission.CategoryAdapterContract
+	case ErrRuntimeSourceVersion:
+		return runtimeadmission.CategorySourceVersion
+	case ErrRuntimeCommand:
+		return runtimeadmission.CategoryCommand
+	case ErrRuntimeWrapperOutput:
+		return runtimeadmission.CategoryWrapperOutput
+	case ErrRuntimeArgvGrammar:
+		return runtimeadmission.CategoryArgvGrammar
+	case ErrRuntimeSelectorConflict:
+		return runtimeadmission.CategorySelectorConflict
+	default:
+		return ""
 	}
 }

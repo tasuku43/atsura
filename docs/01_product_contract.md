@@ -306,7 +306,14 @@ atr bundle execute --bundle <bundle.json> -- <source-executable> <argv>
 `spec init` emits an exclude-by-default specification containing one included
 verified command with inherited options and an identity wrapper. It does not
 infer source safety or create adoption. Validation and build are read-only;
-redirection of stdout is caller-selected filesystem behavior.
+redirection of stdout is caller-selected filesystem behavior. The identity
+draft is an authoring baseline, not an executable transform. For the current
+runtime, the user deliberately changes its wrapper to the finite schema-3 JSON
+transform, selecting only fields observed together in the inspected command's
+structured-output evidence and declaring any collision-free rename. Exact
+`source inspect`, `spec init`, and `spec validate` agent help publish the
+versioned nested catalog and specification inventories needed to make that
+edit without repository-source inspection.
 
 `bundle status` recomputes all canonical bindings, observes exact-digest
 adoption, and compares the current source path/hash/size without starting the
@@ -332,6 +339,15 @@ matched command, transform result, source exit code, and attempts=1. Raw source
 stdout/stderr and unselected fields are absent. Identity wrappers, argv-only
 transforms, nonempty successful stderr, source refresh, raw, and host adapters
 are not implemented by this runtime slice.
+
+The current compatibility admission is also available in exact `bundle
+execute` help: GitHub CLI adapter contract 2 and major 2, `issue list` or `pr
+list`, a transform JSON output stage, one exact inline ordered selector,
+maintained long-option grammar, no competing output mode, and empty stderr on
+success. Live execution inherits the caller's source-CLI authentication plus
+repository context from the inherited working directory or an admitted
+command-specific `--repo` option. Atsura neither obtains those credentials nor
+turns a source-owned failure into replay permission.
 
 ## Migration contract
 
@@ -403,4 +419,4 @@ ordering differences, or selectors after `--` fail before source start.
 - Non-JSON, streaming, aggregate, filter, map, sort, or multi-source transforms.
 - Usage-history collection or agent-generated automatic activation.
 - Direct external APIs.
-- Release or package distribution.
+- Public release or package-manager distribution.

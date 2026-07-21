@@ -342,6 +342,72 @@ func TestAgentHelpRootAndScopedShapeSnapshots(t *testing.T) {
 	assertJSONKeys(t, consumers[0], []string{"input", "path", "usage"})
 }
 
+func TestTailoringExactAgentHelpPublishesSelfContainedAuthoringContracts(t *testing.T) {
+	command := func(path ...string) agentCommand {
+		t.Helper()
+		args := append([]string{"help"}, path...)
+		args = append(args, "--format=agent")
+		document := runAgentHelpForTest(t, args)
+		var commands []agentCommand
+		if err := json.Unmarshal(document["commands"], &commands); err != nil {
+			t.Fatal(err)
+		}
+		if len(commands) != 1 {
+			t.Fatalf("help %v commands=%+v", path, commands)
+		}
+		return commands[0]
+	}
+
+	inspect := command("source", "inspect")
+	if inspect.Usage != "atr source inspect --adapter=github-cli --executable <path-or-name>" ||
+		!reflect.DeepEqual(inspect.Contract.Inputs[0].AllowedValues, []string{"github-cli"}) {
+		t.Fatalf("source inspect help=%+v", inspect)
+	}
+	if schema := inspect.Contract.Output.Fields[1].Schema; schema == nil || schema.ID != "source-command-catalog" || schema.Version != 1 || len(schema.Fields) < 24 {
+		t.Fatalf("source inspect schema=%+v", schema)
+	}
+
+	init := command("spec", "init")
+	if !strings.Contains(init.Summary, "authoring baseline") || !strings.Contains(init.Contract.Outcome, "current transform-only runtime") || len(init.Contract.Output.Fields) != 1 {
+		t.Fatalf("spec init help=%+v", init)
+	}
+	if schema := init.Contract.Output.Fields[0].Schema; schema == nil || schema.ID != "tailoring-specification" || schema.Version != 3 {
+		t.Fatalf("spec init schema=%+v", schema)
+	}
+	initPrerequisites := strings.Join(init.Contract.Prerequisites, "\n")
+	for _, want := range []string{"kind=transform", "output.select", "output.rename", "output.render=compact_json"} {
+		if !strings.Contains(initPrerequisites, want) {
+			t.Errorf("spec init prerequisites lack %q: %s", want, initPrerequisites)
+		}
+	}
+
+	validate := command("spec", "validate")
+	var normalized *OutputSchema
+	for _, field := range validate.Contract.Output.Fields {
+		if field.Name == "specification" {
+			normalized = field.Schema
+		}
+	}
+	if normalized == nil || normalized.ID != "tailoring-specification" || normalized.Version != 3 {
+		t.Fatalf("spec validate schema=%+v", normalized)
+	}
+
+	execute := command("bundle", "execute")
+	runtime := strings.Join(execute.Contract.Prerequisites, "\n")
+	for _, want := range []string{
+		"atsura.source.github_cli contract 2",
+		"issue list or pr list",
+		"--json=<ordered-select>",
+		"--jq, --template, or --web",
+		"source-owned authentication",
+		"Successful source stderr must be empty",
+	} {
+		if !strings.Contains(runtime, want) {
+			t.Errorf("bundle execute prerequisites lack %q: %s", want, runtime)
+		}
+	}
+}
+
 func TestRootAgentHelpSizeGrowthContainsOnlyIndexFields(t *testing.T) {
 	command := New(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
 	base := utilitySpec("base")

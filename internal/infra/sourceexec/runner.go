@@ -19,10 +19,11 @@ import (
 )
 
 // Runner is the production direct-process adapter. Hooks exist only so
-// package tests can deterministically mutate identity at race boundaries.
+// package tests can deterministically exercise identity and wait boundaries.
 type Runner struct {
 	beforeStart func(string)
 	afterStart  func(string)
+	wait        func(*exec.Cmd, error) error
 }
 
 // New creates a bounded process runner.
@@ -123,6 +124,9 @@ func (r *Runner) run(ctx context.Context, request sourceprocess.Request, expecte
 		r.afterStart(resolved)
 	}
 	waitErr := command.Wait()
+	if r != nil && r.wait != nil {
+		waitErr = r.wait(command, waitErr)
+	}
 	result.Stdout = stdout.Bytes()
 	result.Stderr = stderr.Bytes()
 	if command.ProcessState != nil {

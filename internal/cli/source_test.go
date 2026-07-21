@@ -56,7 +56,7 @@ func TestSourceInspectRejectsUnknownAdapterBeforeProbe(t *testing.T) {
 	adapter := &cliSourceInspector{}
 	cli.sources = sourceinspect.New(map[string]sourceinspect.InspectorPort{"github-cli": adapter})
 	exit := cli.RunContext(context.Background(), []string{"source", "inspect", "--adapter", "other", "--executable", "fixture"})
-	if exit != ExitUsage || out.Len() != 0 || adapter.calls != 0 || !strings.Contains(errOut.String(), "unsupported_source_adapter") {
+	if exit != ExitUsage || out.Len() != 0 || adapter.calls != 0 || !strings.Contains(errOut.String(), "invalid_arguments") || !strings.Contains(errOut.String(), "value must be one of github-cli") {
 		t.Fatalf("exit = %d, stdout = %q, stderr = %q, calls = %d", exit, out.String(), errOut.String(), adapter.calls)
 	}
 }

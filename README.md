@@ -81,17 +81,21 @@ independent. A wrapper plan describes ordered stages and exact argv, not an
 authorization decision. Hiding is a discoverability and composition
 feature, not an OS sandbox.
 
-## Try the artifact workflow
+## Try the installed artifact workflow
 
 The first source adapter inspects an installed GitHub CLI using four bounded
-offline probes. From the repository root, with GitHub CLI 2.x installed:
+offline probes. Extract the archive for your platform, make `atr` available on
+your command path, and start with `atr help source inspect --format agent`.
+No public Atsura archive has been released yet; this workflow currently applies
+to a locally packaged candidate and to a future reviewed release. With GitHub
+CLI 2.x installed, using such an archive requires no Atsura source checkout:
 
 ```sh
-go run ./cmd/atr source inspect \
+atr source inspect \
   --adapter github-cli \
   --executable gh > /tmp/atsura-catalog.json
 
-go run ./cmd/atr spec init \
+atr spec init \
   --catalog /tmp/atsura-catalog.json \
   -- pr list > /tmp/atsura-spec.yaml
 ```
@@ -100,7 +104,9 @@ go run ./cmd/atr spec init \
 verified command with inherited options and an identity wrapper. Review and
 edit that file before validation and compilation. To exercise the current
 runtime, replace the generated command's `wrapper` with this built-in JSON
-transform:
+transform. Exact `spec init` and `spec validate` agent help publish the finite
+schema-3 field inventory and authoring constraints; this edit is deliberate
+configuration authoring, not generated source code:
 
 ```yaml
 wrapper:
@@ -122,15 +128,15 @@ After editing the generated specification, validate and compile those exact
 bytes:
 
 ```sh
-go run ./cmd/atr spec validate \
+atr spec validate \
   --catalog /tmp/atsura-catalog.json \
   --spec /tmp/atsura-spec.yaml
 
-go run ./cmd/atr bundle build \
+atr bundle build \
   --catalog /tmp/atsura-catalog.json \
   --spec /tmp/atsura-spec.yaml > /tmp/atsura-bundle.json
 
-go run ./cmd/atr bundle status \
+atr bundle status \
   --bundle /tmp/atsura-bundle.json
 ```
 
@@ -144,12 +150,12 @@ To adopt the compiled surface, run this in an interactive terminal and confirm
 the exact digest after reviewing the source, surface, and wrapper summary:
 
 ```sh
-go run ./cmd/atr bundle trust --bundle /tmp/atsura-bundle.json
-go run ./cmd/atr bundle status --bundle /tmp/atsura-bundle.json
-go run ./cmd/atr bundle preview \
+atr bundle trust --bundle /tmp/atsura-bundle.json
+atr bundle status --bundle /tmp/atsura-bundle.json
+atr bundle preview \
   --bundle /tmp/atsura-bundle.json \
   -- gh pr list --limit=2
-go run ./cmd/atr bundle execute \
+atr bundle execute \
   --bundle /tmp/atsura-bundle.json \
   -- gh pr list --limit=2
 ```
@@ -171,8 +177,12 @@ schema-2 result contains the bundle and plan digests, matched command,
 transformation shape and fields, selected records, exit code, and
 `source_process_attempts: 1`. Raw stdout, stderr, and unselected fields are not
 returned or persisted. This live probe uses the source CLI's own authentication
-and repository context; the credential- and network-free synthetic fixture is
-the canonical test evidence.
+plus repository context from the inherited working directory or an admitted
+command-specific `--repo` option. Atsura does not obtain, store, or diagnose
+GitHub credentials. A source-owned post-start failure is non-retryable from
+Atsura's perspective; resolve it with the source CLI before choosing to execute
+again. The credential- and provider-network-free synthetic fixture is the
+canonical automated evidence.
 
 Use `atr help <exact-command> --format agent` for the complete machine-readable
 contract. Agent help currently uses schema version 8; object outputs may publish

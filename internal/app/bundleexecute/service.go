@@ -11,6 +11,7 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/bundletrust"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
+	"github.com/tasuku43/atsura/internal/domain/runtimeadmission"
 	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
 	"github.com/tasuku43/atsura/internal/domain/tailoring"
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
@@ -36,6 +37,20 @@ type IdentityPort interface {
 type CompatibilityPort interface {
 	VerifyRuntime(tailoringplan.Plan) error
 }
+
+type runtimeAdmissionCategorized interface {
+	RuntimeAdmissionCategory() runtimeadmission.Category
+}
+
+const (
+	runtimeMessageGeneric  = "The source adapter cannot prove this wrapper's runtime output contract."
+	runtimeMessageAdapter  = "The wrapper plan's source adapter contract is not admitted by this runtime."
+	runtimeMessageVersion  = "The wrapper plan's source version is not admitted by this runtime."
+	runtimeMessageCommand  = "The wrapper plan's source command is not admitted by this runtime."
+	runtimeMessageOutput   = "The wrapper plan does not declare the admitted transforming JSON output contract."
+	runtimeMessageArgv     = "The wrapper plan's source arguments are outside the admitted command grammar."
+	runtimeMessageSelector = "The wrapper plan does not contain exactly one admitted JSON selector matching its output fields."
+)
 
 type ProcessPort interface {
 	RunBound(context.Context, sourceprocess.BoundRequest) (sourceprocess.Result, error)
@@ -125,7 +140,7 @@ func (s *Service) Execute(ctx context.Context, intent operation.Intent, bundlePa
 		return Result{}, fault.New(fault.KindUnsupported, "wrapper_runtime_not_supported", "This runtime slice requires a transforming wrapper with a typed output stage.", false, executeHelpAction())
 	}
 	if err := s.compatibility.VerifyRuntime(plan); err != nil {
-		return Result{}, fault.Wrap(fault.KindUnsupported, "wrapper_runtime_not_supported", "The source adapter cannot prove this wrapper's runtime output contract.", false, err, executeHelpAction())
+		return Result{}, fault.New(fault.KindUnsupported, "wrapper_runtime_not_supported", runtimeAdmissionMessage(err), false, executeHelpAction())
 	}
 	request, err := plan.SourceRequest()
 	if err != nil {
@@ -167,6 +182,29 @@ func (s *Service) Execute(ctx context.Context, intent operation.Intent, bundlePa
 		WrapperKind: plan.WrapperKind, Render: outputPlan.Render, Output: output,
 		SourceExitCode: processResult.ExitCode, SourceProcessAttempts: processResult.Attempts,
 	}, nil
+}
+
+func runtimeAdmissionMessage(err error) string {
+	var categorized runtimeAdmissionCategorized
+	if !errors.As(err, &categorized) {
+		return runtimeMessageGeneric
+	}
+	switch categorized.RuntimeAdmissionCategory() {
+	case runtimeadmission.CategoryAdapterContract:
+		return runtimeMessageAdapter
+	case runtimeadmission.CategorySourceVersion:
+		return runtimeMessageVersion
+	case runtimeadmission.CategoryCommand:
+		return runtimeMessageCommand
+	case runtimeadmission.CategoryWrapperOutput:
+		return runtimeMessageOutput
+	case runtimeadmission.CategoryArgvGrammar:
+		return runtimeMessageArgv
+	case runtimeadmission.CategorySelectorConflict:
+		return runtimeMessageSelector
+	default:
+		return runtimeMessageGeneric
+	}
 }
 
 func classifyProcess(request sourceprocess.BoundRequest, result sourceprocess.Result, err error) error {

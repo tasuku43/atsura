@@ -120,7 +120,8 @@ source read/create/write effect, or source-operation target and impact.
 - deterministic invocation and typed output transformations;
 - canonical schema-2 bundles, digests, and drift validation;
 - pure surface resolution and `command_not_in_surface`;
-- ordered schema-3 wrapper execution plans and canonical plan digests; and
+- ordered schema-3 wrapper execution plans and canonical plan digests;
+- finite vendor-neutral runtime-admission diagnostic categories; and
 - operation effects, including `EffectExecute` for starting a source-owned
   process and create/write contracts for Atsura-owned state only.
 
@@ -258,6 +259,30 @@ A host adapter, when implemented, will map core outcomes such as `rewrite`,
 `not_managed`, `command_not_in_surface`, `invalid_invocation`, and
 `interaction_required` into its transport. It cannot turn host `deny` into a
 core authorization judgment or claim that a hidden command is sandboxed.
+
+## Release-artifact conformance boundary
+
+The release harness owns a credential-free source fixture and
+`tools/artifactjourney`, a non-shipped test-only composition root. It owns safe
+archive extraction, bounded public-output projections, the deterministic
+identity-draft edit, isolated process composition, and conformance evidence.
+It exercises the public `atr` binary from an exact native release archive, but
+it is not a production adapter and adds no fixture-only branch to the CLI,
+application, domain, or infrastructure layers.
+
+The test composition root invokes public commands for the user-visible path.
+Its one deliberate internal composition is direct use of the production
+`trustfile` adapter against a fresh isolated configuration root, solely to
+prove exact-receipt consumption without representing the receipt as human
+consent. Release archive member allowlists prove that neither the journey
+runner nor source fixture ships, and architecture checks prevent production
+`cmd` or `internal` packages from importing harness tools.
+
+Each claimed release target must replay the same bounded journey natively.
+Cross-compilation proves that an artifact can be built; it does not prove that
+the target can execute it. Platform evidence therefore belongs to the CI and
+release harness, while the deterministic catalog, specification, bundle, plan,
+and execution contracts remain owned by their production layers above.
 
 ## Current milestone boundary
 

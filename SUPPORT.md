@@ -46,6 +46,13 @@ source, catalog, normalized specification, and compiled surface. `bundle trust`
 means user adoption of one exact purpose-specific bundle; it is not source
 authorization.
 
+`spec init` intentionally emits an identity-wrapper authoring baseline. Exact
+agent help for `source inspect`, `spec init`, and `spec validate` describes the
+catalog fields and finite schema-3 transform grammar needed to select observed
+JSON fields and declare collision-free renames. The installed `atr` workflow
+does not require a source checkout, although editing the reviewed YAML remains
+an explicit user or agent configuration action.
+
 `bundle preview` requires that exact adoption and current source path/hash/size,
 then returns the complete deterministic plan and digest with
 `source_process_attempts: 0`. The current grammar does not completely model

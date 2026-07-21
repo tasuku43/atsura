@@ -9,6 +9,7 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/bundletrust"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
+	"github.com/tasuku43/atsura/internal/domain/runtimeadmission"
 	"github.com/tasuku43/atsura/internal/domain/sourcecatalog"
 	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
 	"github.com/tasuku43/atsura/internal/domain/tailoring"
@@ -43,6 +44,17 @@ type compatibilityStub struct {
 	err   error
 	calls int
 	plan  tailoringplan.Plan
+}
+
+type categorizedCompatibilityError struct {
+	category runtimeadmission.Category
+	hostile  string
+}
+
+func (e *categorizedCompatibilityError) Error() string { return e.hostile }
+
+func (e *categorizedCompatibilityError) RuntimeAdmissionCategory() runtimeadmission.Category {
+	return e.category
 }
 
 func (s *compatibilityStub) VerifyRuntime(plan tailoringplan.Plan) error {
@@ -172,9 +184,45 @@ func TestExecuteRejectsUnsupportedWrapperAndCompatibilityBeforeProcess(t *testin
 	compatibility := &compatibilityStub{err: errors.New("unproven selector")}
 	service, attempt := executeService(t, compatibility, process, &parserStub{})
 	_, err = service.Execute(context.Background(), executeIntent(), "bundle.json", attempt)
-	assertFault(t, err, "wrapper_runtime_not_supported", false)
-	if process.calls != 0 {
-		t.Fatalf("unsupported adapter process calls=%d", process.calls)
+	public := assertFault(t, err, "wrapper_runtime_not_supported", false)
+	if process.calls != 0 || public.Message != runtimeMessageGeneric || strings.Contains(err.Error(), "unproven selector") {
+		t.Fatalf("unsupported adapter public=%+v error=%v process calls=%d", public, err, process.calls)
+	}
+}
+
+func TestExecuteMapsFiniteRuntimeAdmissionDiagnosticsBeforeProcess(t *testing.T) {
+	tests := []struct {
+		name     string
+		category runtimeadmission.Category
+		message  string
+	}{
+		{name: "adapter contract", category: runtimeadmission.CategoryAdapterContract, message: runtimeMessageAdapter},
+		{name: "source version", category: runtimeadmission.CategorySourceVersion, message: runtimeMessageVersion},
+		{name: "command", category: runtimeadmission.CategoryCommand, message: runtimeMessageCommand},
+		{name: "wrapper output", category: runtimeadmission.CategoryWrapperOutput, message: runtimeMessageOutput},
+		{name: "argv grammar", category: runtimeadmission.CategoryArgvGrammar, message: runtimeMessageArgv},
+		{name: "selector conflict", category: runtimeadmission.CategorySelectorConflict, message: runtimeMessageSelector},
+		{name: "unknown category", category: "hostile_unknown_category", message: runtimeMessageGeneric},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			hostile := "ATSURA_SECRET_RUNTIME_CAUSE_" + strings.ReplaceAll(string(test.category), "_", "-")
+			compatibility := &compatibilityStub{err: &categorizedCompatibilityError{category: test.category, hostile: hostile}}
+			process := &processStub{}
+			parser := &parserStub{}
+			service, attempt := executeService(t, compatibility, process, parser)
+			_, err := service.Execute(context.Background(), executeIntent(), "bundle.json", attempt)
+			public := assertFault(t, err, "wrapper_runtime_not_supported", false)
+			if public.Kind != fault.KindUnsupported || public.Message != test.message || len(public.NextActions) != 1 || public.NextActions[0].Command != "help bundle execute" {
+				t.Fatalf("public=%+v", public)
+			}
+			if compatibility.calls != 1 || process.calls != 0 || parser.calls != 0 {
+				t.Fatalf("calls compatibility/process/parser=%d/%d/%d", compatibility.calls, process.calls, parser.calls)
+			}
+			if strings.Contains(err.Error(), hostile) || strings.Contains(public.Message, hostile) {
+				t.Fatalf("hostile compatibility cause leaked: error=%v public=%+v", err, public)
+			}
+		})
 	}
 }
 
