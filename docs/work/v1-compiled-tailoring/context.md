@@ -96,3 +96,9 @@
 - Canonical bundle tests recompute catalog and policy digests, derive the
   visible surface, detect catalog/policy/surface drift, exclude ambient fields,
   and pass with an alternate synthetic adapter catalog.
+- `policy validate` and `bundle build` now consume explicit regular files
+  through bounded strict codecs. The source inspection wrapper is revalidated
+  against its embedded canonical catalog digest before policy evaluation.
+- CLI and application tests prove validate/build use the same catalog and
+  normalized policy, reject digest mismatch before producing a bundle, emit
+  exact catalog-declared JSON shapes, and create no persisted trust state.

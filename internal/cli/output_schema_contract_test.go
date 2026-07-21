@@ -33,6 +33,7 @@ func TestJSONOutputMatchesCatalogContract(t *testing.T) {
 	if err := os.WriteFile(planPath, []byte(planPreviewYAML), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	catalogPath, schema2PolicyPath := bundleArtifactPaths(t)
 	probes := []probe{
 		{
 			path: "doctor", args: []string{"doctor", "--format=json"},
@@ -41,6 +42,8 @@ func TestJSONOutputMatchesCatalogContract(t *testing.T) {
 			},
 		},
 		{path: "help", args: []string{"help", "--format=agent"}, build: newDefault, view: "index"},
+		{path: "policy validate", args: bundleCommandArgs("policy validate", catalogPath, schema2PolicyPath), build: newDefault},
+		{path: "bundle build", args: bundleCommandArgs("bundle build", catalogPath, schema2PolicyPath), build: newDefault},
 		{path: "plan preview", args: []string{"plan", "preview", "--config", planPath, "--", "gh", "pr", "list"}, build: newDefault},
 		{path: "run", args: runSourceArgs(runPolicyFile(t, "allow")), build: newDefault},
 		{path: "sample list", args: []string{"sample", "list", "--format=json"}, build: newDefault},

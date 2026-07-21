@@ -417,6 +417,36 @@ func stringPointer(value string) *string {
 	return &value
 }
 
+func artifactInputErrors(command string, includeBundle bool) []CommandError {
+	errors := []CommandError{
+		declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help "+command, "Pass exact catalog and schema-2 policy paths."),
+		declaredCommandError(fault.KindNotFound, "catalog_file_not_found", false, "source inspect", "Generate and select a source inspection JSON file."),
+		declaredCommandError(fault.KindPermission, "catalog_file_permission_denied", false, "source inspect", "Correct catalog file permissions."),
+		declaredCommandError(fault.KindInvalidInput, "unsafe_catalog_file", false, "source inspect", "Use a stable regular source inspection file."),
+		declaredCommandError(fault.KindInvalidInput, "catalog_file_too_large", false, "source inspect", "Regenerate a bounded source inspection file."),
+		declaredCommandError(fault.KindUnavailable, "catalog_file_read_failed", true, "source inspect", "Retry after the catalog file is readable."),
+		declaredCommandError(fault.KindInvalidInput, "invalid_catalog_file", false, "source inspect", "Regenerate strict source inspection JSON."),
+		declaredCommandError(fault.KindRejected, "catalog_digest_mismatch", false, "source inspect", "Regenerate and review source inspection JSON."),
+		declaredCommandError(fault.KindNotFound, "policy_file_not_found", false, "help policy validate", "Select an existing schema-2 policy file."),
+		declaredCommandError(fault.KindPermission, "policy_file_permission_denied", false, "help policy validate", "Correct policy file permissions."),
+		declaredCommandError(fault.KindInvalidInput, "unsafe_policy_file", false, "help policy validate", "Use a stable regular policy file."),
+		declaredCommandError(fault.KindInvalidInput, "policy_file_too_large", false, "help policy validate", "Reduce policy below 256 KiB."),
+		declaredCommandError(fault.KindUnavailable, "policy_file_read_failed", true, "help policy validate", "Retry after the policy file is readable."),
+		declaredCommandError(fault.KindInvalidInput, "invalid_policy_yaml", false, "help policy validate", "Correct the strict schema-2 YAML syntax."),
+		declaredCommandError(fault.KindInvalidInput, "invalid_policy", false, "help policy validate", "Correct the catalog-bound policy semantics."),
+	}
+	if includeBundle {
+		errors = append(errors, declaredCommandError(fault.KindContract, "invalid_bundle", false, "help bundle build", "Repair canonical bundle compilation."))
+	}
+	return append(errors,
+		declaredCommandError(fault.KindContract, "output_contract_exceeded", false, "help "+command, "Reduce the bounded canonical output."),
+		declaredCommandError(fault.KindContract, "output_encoding_failed", false, "help "+command, "Repair canonical JSON projection."),
+		declaredCommandError(fault.KindInternal, "internal_error", false, "help "+command, "Inspect artifact loading and compilation."),
+		declaredCommandError(fault.KindInternal, "output_write_failed", true, command, "Retry with a writable output stream."),
+		declaredCommandError(fault.KindCanceled, "operation_canceled", true, command, "Retry when the caller is ready."),
+	)
+}
+
 // DefaultCatalog returns the public CLI contract.
 func DefaultCatalog() Catalog {
 	return NewCatalog(
@@ -511,6 +541,64 @@ func DefaultCatalog() Catalog {
 				},
 			},
 			handler: runHelp,
+		},
+		CommandSpec{
+			Path:    "policy validate",
+			Summary: "Validate and normalize a catalog-bound schema-2 policy",
+			Args:    "--catalog <path> --policy <path>",
+			Effect:  operation.EffectRead,
+			Role:    RoleUtility,
+			Agent: AgentContract{
+				CapabilityID: "tailoring.policy.validate",
+				Outcome:      "Validate one strict schema-2 YAML policy against exact source inspection evidence and return its canonical digest and normalized rules",
+				Inputs: []CommandInput{
+					{Name: "--catalog", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read the exact bounded JSON document emitted by source inspect.", AllowedValues: []string{}},
+					{Name: "--policy", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read one bounded strict schema-2 YAML policy.", AllowedValues: []string{}},
+				},
+				Output: CommandOutput{
+					Formats: []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
+					Fields: []OutputField{
+						{Name: "valid", Type: OutputFieldTypeBoolean, Description: "True only after strict syntax and catalog-bound semantic validation."},
+						{Name: "catalog_digest", Type: OutputFieldTypeString, Description: "Exact canonical catalog digest required by the policy."},
+						{Name: "policy_digest", Type: OutputFieldTypeString, Description: "SHA-256 identity of normalized canonical policy JSON."},
+						{Name: "rule_count", Type: OutputFieldTypeInteger, Description: "Number of exact command rules in the normalized policy."},
+						{Name: "visible_count", Type: OutputFieldTypeInteger, Description: "Number of rules projected into the tailored surface."},
+						{Name: "policy", Type: OutputFieldTypeObject, Description: "Normalized vendor-neutral schema-2 policy."},
+					},
+					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable,
+					JSONEnvelope: "validation", JSONSchemaVersion: 1,
+				},
+				Prerequisites: []string{"A reviewed source inspect JSON document and schema-2 YAML policy; neither file is trusted persistently by this read."},
+				Errors:        artifactInputErrors("policy validate", false),
+			},
+			handler: runPolicyValidate,
+		},
+		CommandSpec{
+			Path:    "bundle build",
+			Summary: "Compile catalog and policy into one canonical tailoring bundle",
+			Args:    "--catalog <path> --policy <path>",
+			Effect:  operation.EffectRead,
+			Role:    RoleUtility,
+			Agent: AgentContract{
+				CapabilityID: "tailoring.bundle.build",
+				Outcome:      "Compile exact source evidence and a valid schema-2 policy into one deterministic vendor-neutral bundle without trusting or executing it",
+				Inputs: []CommandInput{
+					{Name: "--catalog", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read the exact bounded JSON document emitted by source inspect.", AllowedValues: []string{}},
+					{Name: "--policy", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read one bounded strict schema-2 YAML policy.", AllowedValues: []string{}},
+				},
+				Output: CommandOutput{
+					Formats: []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
+					Fields: []OutputField{
+						{Name: "bundle_digest", Type: OutputFieldTypeString, Description: "SHA-256 identity of the canonical embedded bundle JSON."},
+						{Name: "bundle", Type: OutputFieldTypeObject, Description: "Canonical catalog, normalized policy, recomputable digests, and tailored surface."},
+					},
+					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable,
+					JSONEnvelope: "build", JSONSchemaVersion: 1,
+				},
+				Prerequisites: []string{"A source inspect JSON document and schema-2 policy that passes policy validate; build does not create a trust receipt."},
+				Errors:        artifactInputErrors("bundle build", true),
+			},
+			handler: runBundleBuild,
 		},
 		CommandSpec{
 			Path:    "plan preview",

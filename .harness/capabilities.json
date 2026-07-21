@@ -33,5 +33,15 @@
     "id": "tailoring.catalog.inspect",
     "status": "public",
     "reason": ""
+  },
+  {
+    "id": "tailoring.policy.validate",
+    "status": "public",
+    "reason": ""
+  },
+  {
+    "id": "tailoring.bundle.build",
+    "status": "public",
+    "reason": ""
   }
 ]

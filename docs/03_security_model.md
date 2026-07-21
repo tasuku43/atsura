@@ -120,6 +120,14 @@ committing, downloading, or installing a bundle does not trust it.
   output. Changed bundle bytes, source identity/version, catalog, or policy
   invalidate authority rather than inherit it.
 
+The current schema-2 file workflow reads only explicitly supplied paths. It
+rejects final symlinks and non-regular files, revalidates the opened identity,
+bounds policy YAML to 256 KiB and source-inspection JSON to 1 MiB, rejects YAML
+aliases/multiple documents/unknown fields, and rejects JSON duplicate keys,
+unknown fields, trailing values, and excessive depth. `bundle build` writes
+only stdout and does not create a receipt; a redirected build artifact remains
+untrusted repository or user data.
+
 ## YAML policy boundary
 
 - Per-command YAML is the selected configuration direction.

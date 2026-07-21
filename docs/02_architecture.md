@@ -11,7 +11,11 @@ changing the four-layer direction. The first ADR 0004 slice also implements a
 vendor-neutral catalog value, source-inspection application port, and bounded
 GitHub CLI reference adapter. The next pure-domain slice implements normalized
 schema-2 policy, mutation target/impact invariants, canonical bundle assembly,
-and recomputed drift validation; it deliberately performs no file or trust I/O.
+and recomputed drift validation. Infrastructure now adds shared bounded
+regular-file reads, strict duplicate/unknown-field JSON decoding, strict
+schema-2 YAML decoding, and exact source-inspection envelope loading.
+Application orchestration validates or builds without file writes or trust I/O;
+CLI presentation emits the reviewed artifacts to stdout.
 
 ## Dependency direction
 

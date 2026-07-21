@@ -20,8 +20,10 @@
 - [ ] Implement `source refresh` comparison and persistence after the completed GitHub CLI inspection task.
 - [ ] Register the remaining source refresh command and capability contract.
 - [x] Implement pure schema-2 policy invariants and deterministic vendor-neutral bundle compilation.
-- [ ] Implement schema-2 policy init/validate and normalized policy.
-- [ ] Implement canonical bundle build, digest, trust receipt, and status/drift.
+- [x] Implement strict schema-2 policy validation and normalized policy output.
+- [ ] Implement `policy init` without auto-trust.
+- [x] Implement canonical bundle build and digest output without auto-trust.
+- [ ] Implement bundle trust receipt and status/drift.
 
 ## Execution and policy
 

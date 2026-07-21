@@ -641,6 +641,7 @@ func TestE2EDoctorUsesProductionOfflineAdapter(t *testing.T) {
 
 func TestEveryCatalogCommandDispatchesThroughItsSpec(t *testing.T) {
 	planPath := planPolicyFile(t, planPreviewYAML)
+	catalogPath, schema2PolicyPath := bundleArtifactPaths(t)
 	for _, spec := range DefaultCatalog().Commands() {
 		inspector := passingInspector("test/test")
 		command, _, stderr := newTestCLI(inspector)
@@ -658,6 +659,9 @@ func TestEveryCatalogCommandDispatchesThroughItsSpec(t *testing.T) {
 		if spec.Path == "source inspect" {
 			command.sources = sourceinspect.New(map[string]sourceinspect.InspectorPort{"github-cli": &cliSourceInspector{}})
 			args = append(args, "--adapter", "github-cli", "--executable", "fixture")
+		}
+		if spec.Path == "policy validate" || spec.Path == "bundle build" {
+			args = bundleCommandArgs(spec.Path, catalogPath, schema2PolicyPath)
 		}
 		if code := runCLI(command, args); code != ExitOK {
 			t.Errorf("Run(%q) code = %d, stderr = %q", spec.Path, code, stderr.String())

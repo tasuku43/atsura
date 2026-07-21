@@ -277,8 +277,23 @@ Only catalog entries classified `verified_builtin` can receive a rule.
 The implemented pure bundle contract embeds the validated catalog and
 normalized policy, stores recomputable catalog and policy digests, and embeds
 only the policy-derived visible surface. Canonical JSON and the outer bundle
-digest are deterministic. File codecs, YAML schema-2 decoding, trust receipts,
-and public bundle commands remain subsequent slices.
+digest are deterministic.
+
+The implemented file workflow is:
+
+```text
+atr source inspect --adapter github-cli --executable gh > catalog.json
+atr policy validate --catalog catalog.json --policy policy.yaml
+atr bundle build --catalog catalog.json --policy policy.yaml > bundle.json
+```
+
+`policy validate` strictly decodes and normalizes schema-2 YAML, binds it to
+the exact catalog digest, and emits its canonical digest and rule counts.
+`bundle build` repeats those checks and emits a wrapper containing the canonical
+bundle and its digest. Both operations are read-only: redirecting their output
+is caller-selected filesystem behavior, and neither command creates trust or
+execution authority. Policy initialization, bundle trust receipts, status, and
+runtime bundle loading remain subsequent slices.
 
 Preview, explain, manual run, raw, and host adapters load the same bundle.
 Raw is explicit, manual, source-identity-bound, absent from the tailored
