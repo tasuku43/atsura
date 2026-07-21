@@ -1,0 +1,264 @@
+package bundleexecute
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"testing"
+
+	"github.com/tasuku43/atsura/internal/domain/bundletrust"
+	"github.com/tasuku43/atsura/internal/domain/fault"
+	"github.com/tasuku43/atsura/internal/domain/operation"
+	"github.com/tasuku43/atsura/internal/domain/sourcecatalog"
+	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
+	"github.com/tasuku43/atsura/internal/domain/tailoring"
+	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
+	"github.com/tasuku43/atsura/internal/domain/tailoringplan"
+)
+
+type bundleStub struct {
+	bundle tailoringbundle.Bundle
+	digest string
+	err    error
+}
+
+func (s *bundleStub) Load(context.Context, string) (tailoringbundle.Bundle, string, error) {
+	return s.bundle, s.digest, s.err
+}
+
+type adoptionStub struct{ state bundletrust.State }
+
+func (s *adoptionStub) Inspect(context.Context, string) bundletrust.State { return s.state }
+
+type identityStub struct {
+	value sourceprocess.Identity
+	err   error
+}
+
+func (s *identityStub) Identify(context.Context, string) (sourceprocess.Identity, error) {
+	return s.value, s.err
+}
+
+type compatibilityStub struct {
+	err   error
+	calls int
+	plan  tailoringplan.Plan
+}
+
+func (s *compatibilityStub) VerifyRuntime(plan tailoringplan.Plan) error {
+	s.calls++
+	s.plan = plan
+	return s.err
+}
+
+type processStub struct {
+	result  sourceprocess.Result
+	err     error
+	calls   int
+	request sourceprocess.BoundRequest
+}
+
+func (s *processStub) RunBound(_ context.Context, request sourceprocess.BoundRequest) (sourceprocess.Result, error) {
+	s.calls++
+	s.request = request
+	return s.result, s.err
+}
+
+type parserStub struct {
+	value tailoring.JSONValue
+	err   error
+	calls int
+	input []byte
+}
+
+func (s *parserStub) Parse(_ context.Context, input []byte) (tailoring.JSONValue, error) {
+	s.calls++
+	s.input = append([]byte{}, input...)
+	return s.value, s.err
+}
+
+func executeIntent() operation.Intent {
+	return operation.Intent{Command: Command, Effect: operation.EffectExecute}
+}
+
+func executeBundle(t *testing.T, transform bool) (tailoringbundle.Bundle, string, sourceprocess.Identity) {
+	t.Helper()
+	catalog := sourcecatalog.Catalog{
+		SchemaVersion: 1,
+		Adapter:       sourcecatalog.Adapter{Kind: "atsura.source.alternate", ContractVersion: 1},
+		Source:        sourcecatalog.Source{RequestedExecutable: "fixture", ResolvedPath: "/opt/bin/fixture", SHA256: strings.Repeat("a", 64), Size: 42, Version: "1.0.0"},
+		Probe:         sourcecatalog.Probe{IDs: []string{"help"}, Attempts: 1},
+		Commands: []sourcecatalog.Command{{
+			Path: []string{"item", "list"}, Summary: "List items", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin,
+			Options:          []sourcecatalog.Option{{Name: "--json", TakesValue: true}},
+			StructuredOutput: []sourcecatalog.StructuredOutput{{Format: "json", SelectorFlag: "--json", Fields: []string{"id", "name", "state"}}},
+		}},
+	}
+	catalogDigest, err := catalog.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrapper := &tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{}}
+	if transform {
+		wrapper = &tailoringbundle.Wrapper{
+			Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--json=id,name,state"}},
+			Output: &tailoringbundle.Output{Input: "json", Select: []string{"id", "name", "state"}, Rename: []tailoringbundle.Rename{{From: "id", To: "item_id"}}, Render: "compact_json"},
+			After:  []tailoringbundle.StageAction{},
+		}
+	}
+	specification := tailoringbundle.Specification{
+		SchemaVersion: tailoringbundle.SpecificationSchemaVersion, CatalogDigest: catalogDigest,
+		Surface: tailoringbundle.Surface{Default: tailoringbundle.SurfaceDefaultExclude},
+		Commands: []tailoringbundle.CommandEntry{{
+			Command: []string{"item", "list"}, Presence: tailoringbundle.PresenceInclude, Reason: "Return the compact inventory.",
+			Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultInherit, Include: []string{}, Exclude: []string{}}, Wrapper: wrapper,
+		}},
+	}
+	bundle, err := tailoringbundle.Compile(catalog, specification)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, err := bundle.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bundle, digest, sourceprocess.Identity{ResolvedPath: catalog.Source.ResolvedPath, SHA256: catalog.Source.SHA256, Size: catalog.Source.Size}
+}
+
+func executeService(t *testing.T, compatibility *compatibilityStub, process *processStub, parser *parserStub) (*Service, tailoringplan.Attempt) {
+	t.Helper()
+	bundle, digest, identity := executeBundle(t, true)
+	return New(&bundleStub{bundle: bundle, digest: digest}, &adoptionStub{state: bundletrust.StateAdopted}, &identityStub{value: identity}, compatibility, process, parser), tailoringplan.Attempt{Executable: "fixture", Args: []string{"item", "list"}}
+}
+
+func TestExecuteRebuildsPlanRunsBoundSourceOnceAndTransformsTypedJSON(t *testing.T) {
+	compatibility := &compatibilityStub{}
+	process := &processStub{result: sourceprocess.Result{Attempts: 1, ExitCode: 0, Stdout: []byte(`private raw bytes`), Identity: sourceprocess.Identity{ResolvedPath: "/opt/bin/fixture", SHA256: strings.Repeat("a", 64), Size: 42}}}
+	parser := &parserStub{value: tailoring.NewJSONArray([]tailoring.JSONValue{
+		tailoring.NewJSONObject([]tailoring.JSONField{
+			{Name: "state", Value: tailoring.NewJSONString("OPEN")},
+			{Name: "id", Value: tailoring.NewJSONNumber("0")},
+			{Name: "name", Value: tailoring.NewJSONString("")},
+		}),
+	})}
+	service, attempt := executeService(t, compatibility, process, parser)
+	result, err := service.Execute(context.Background(), executeIntent(), "bundle.json", attempt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compatibility.calls != 1 || process.calls != 1 || parser.calls != 1 || result.SourceProcessAttempts != 1 || result.SourceExitCode != 0 || len(result.PlanDigest) != 64 {
+		t.Fatalf("result=%+v calls compatibility/process/parser=%d/%d/%d", result, compatibility.calls, process.calls, parser.calls)
+	}
+	if process.request.ExpectedIdentity != process.result.Identity || strings.Join(process.request.Process.Args, "\x00") != "item\x00list\x00--json=id,name,state" {
+		t.Fatalf("bound request=%+v", process.request)
+	}
+	if result.Output.Shape != tailoring.ResultShapeArray || strings.Join(result.Output.Fields, ",") != "item_id,name,state" || result.Output.Records[0].ObjectValue[0].Value.NumberValue != "0" || result.Output.Records[0].ObjectValue[1].Value.StringValue != "" {
+		t.Fatalf("output=%+v", result.Output)
+	}
+	if string(parser.input) != "private raw bytes" || compatibility.plan.SchemaVersion != tailoringplan.SchemaVersion {
+		t.Fatalf("parser input=%q compatibility plan=%+v", parser.input, compatibility.plan)
+	}
+}
+
+func TestExecuteRejectsUnsupportedWrapperAndCompatibilityBeforeProcess(t *testing.T) {
+	identityBundle, digest, identity := executeBundle(t, false)
+	process := &processStub{}
+	_, err := New(&bundleStub{bundle: identityBundle, digest: digest}, &adoptionStub{state: bundletrust.StateAdopted}, &identityStub{value: identity}, &compatibilityStub{}, process, &parserStub{}).Execute(context.Background(), executeIntent(), "bundle.json", tailoringplan.Attempt{Executable: "fixture", Args: []string{"item", "list"}})
+	assertFault(t, err, "wrapper_runtime_not_supported", false)
+	if process.calls != 0 {
+		t.Fatalf("identity wrapper process calls=%d", process.calls)
+	}
+
+	compatibility := &compatibilityStub{err: errors.New("unproven selector")}
+	service, attempt := executeService(t, compatibility, process, &parserStub{})
+	_, err = service.Execute(context.Background(), executeIntent(), "bundle.json", attempt)
+	assertFault(t, err, "wrapper_runtime_not_supported", false)
+	if process.calls != 0 {
+		t.Fatalf("unsupported adapter process calls=%d", process.calls)
+	}
+}
+
+func TestExecuteClassifiesPostStartFailuresWithoutRawOutputOrRetry(t *testing.T) {
+	identity := sourceprocess.Identity{ResolvedPath: "/opt/bin/fixture", SHA256: strings.Repeat("a", 64), Size: 42}
+	tests := []struct {
+		name   string
+		result sourceprocess.Result
+		err    error
+		code   string
+	}{
+		{name: "known post start", result: sourceprocess.Result{Attempts: 1, ExitCode: 7, Stdout: []byte("secret stdout"), Stderr: []byte("secret stderr"), Identity: identity}, err: fault.New(fault.KindRejected, "source_command_failed", "The source process exited without a successful result.", false), code: "source_command_failed"},
+		{name: "unknown post start", result: sourceprocess.Result{Attempts: 1, ExitCode: -1, Identity: identity}, err: errors.New("secret cause"), code: "unclassified_source_execution_outcome"},
+		{name: "invalid success result", result: sourceprocess.Result{ExitCode: -1}, code: "unclassified_source_execution_outcome"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			process := &processStub{result: test.result, err: test.err}
+			service, attempt := executeService(t, &compatibilityStub{}, process, &parserStub{})
+			_, err := service.Execute(context.Background(), executeIntent(), "bundle.json", attempt)
+			public := assertFault(t, err, test.code, false)
+			if strings.Contains(public.Message, "secret") || process.calls != 1 {
+				t.Fatalf("public=%+v calls=%d", public, process.calls)
+			}
+		})
+	}
+}
+
+func TestExecuteRejectsStderrParserAndTransformFailuresAfterOneAttempt(t *testing.T) {
+	identity := sourceprocess.Identity{ResolvedPath: "/opt/bin/fixture", SHA256: strings.Repeat("a", 64), Size: 42}
+	tests := []struct {
+		name   string
+		result sourceprocess.Result
+		parser *parserStub
+		code   string
+	}{
+		{name: "stderr", result: sourceprocess.Result{Attempts: 1, ExitCode: 0, Stdout: []byte(`[]`), Stderr: []byte("warning secret"), Identity: identity}, parser: &parserStub{}, code: "source_stderr_not_supported"},
+		{name: "invalid json", result: sourceprocess.Result{Attempts: 1, ExitCode: 0, Stdout: []byte(`bad`), Identity: identity}, parser: &parserStub{err: errors.New("malformed")}, code: "source_json_invalid"},
+		{name: "missing field", result: sourceprocess.Result{Attempts: 1, ExitCode: 0, Stdout: []byte(`[]`), Identity: identity}, parser: &parserStub{value: tailoring.NewJSONArray([]tailoring.JSONValue{tailoring.NewJSONObject([]tailoring.JSONField{{Name: "id", Value: tailoring.NewJSONString("1")}})})}, code: "output_transform_failed"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			process := &processStub{result: test.result}
+			service, attempt := executeService(t, &compatibilityStub{}, process, test.parser)
+			_, err := service.Execute(context.Background(), executeIntent(), "bundle.json", attempt)
+			assertFault(t, err, test.code, false)
+			if process.calls != 1 || (test.name == "stderr" && test.parser.calls != 0) {
+				t.Fatalf("process/parser calls=%d/%d", process.calls, test.parser.calls)
+			}
+		})
+	}
+}
+
+func TestExecutePreflightFailuresStartZeroProcesses(t *testing.T) {
+	bundle, digest, identity := executeBundle(t, true)
+	tests := []struct {
+		name     string
+		bundle   *bundleStub
+		adoption bundletrust.State
+		identity sourceprocess.Identity
+		attempt  tailoringplan.Attempt
+		code     string
+	}{
+		{name: "not adopted", bundle: &bundleStub{bundle: bundle, digest: digest}, adoption: bundletrust.StateNotAdopted, identity: identity, attempt: tailoringplan.Attempt{Executable: "fixture", Args: []string{"item", "list"}}, code: "bundle_not_adopted"},
+		{name: "drift", bundle: &bundleStub{bundle: bundle, digest: digest}, adoption: bundletrust.StateAdopted, identity: sourceprocess.Identity{ResolvedPath: identity.ResolvedPath, SHA256: strings.Repeat("b", 64), Size: identity.Size}, attempt: tailoringplan.Attempt{Executable: "fixture", Args: []string{"item", "list"}}, code: "bundle_source_drift"},
+		{name: "wrong executable", bundle: &bundleStub{bundle: bundle, digest: digest}, adoption: bundletrust.StateAdopted, identity: identity, attempt: tailoringplan.Attempt{Executable: "other", Args: []string{"item", "list"}}, code: "source_executable_mismatch"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			process := &processStub{}
+			_, err := New(test.bundle, &adoptionStub{state: test.adoption}, &identityStub{value: test.identity}, &compatibilityStub{}, process, &parserStub{}).Execute(context.Background(), executeIntent(), "bundle.json", test.attempt)
+			assertFault(t, err, test.code, false)
+			if process.calls != 0 {
+				t.Fatalf("process calls=%d", process.calls)
+			}
+		})
+	}
+}
+
+func assertFault(t *testing.T, err error, code string, retryable bool) *fault.Error {
+	t.Helper()
+	public, ok := fault.PublicCopy(err)
+	if !ok || public.Code != code || public.Retryable != retryable {
+		t.Fatalf("error=%v public=%+v want code=%s retryable=%t", err, public, code, retryable)
+	}
+	return public
+}

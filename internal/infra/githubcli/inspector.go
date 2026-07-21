@@ -18,7 +18,7 @@ import (
 
 const (
 	AdapterKind      = "atsura.source.github_cli"
-	ContractVersion  = 1
+	ContractVersion  = 2
 	probeTimeout     = 5 * time.Second
 	versionByteLimit = 64 * 1024
 	helpByteLimit    = 256 * 1024
@@ -39,8 +39,7 @@ type Inspector struct {
 // New creates a GitHub CLI source adapter.
 func New(processes ProcessPort) *Inspector { return &Inspector{processes: processes} }
 
-// Inspect runs exactly version and help-reference probes and performs no
-// provider task.
+// Inspect runs exactly four offline probes and performs no provider task.
 func (i *Inspector) Inspect(ctx context.Context, executable string) (sourcecatalog.Catalog, error) {
 	if ctx == nil {
 		return sourcecatalog.Catalog{}, fmt.Errorf("github cli inspection context is nil")
@@ -73,6 +72,36 @@ func (i *Inspector) Inspect(ctx context.Context, executable string) (sourcecatal
 	if err != nil {
 		return sourcecatalog.Catalog{}, err
 	}
+	issueResult, err := i.runProbe(ctx, executable, []string{"issue", "list", "--help"}, helpByteLimit)
+	if err != nil {
+		return sourcecatalog.Catalog{}, err
+	}
+	if issueResult.Identity != versionResult.Identity {
+		return sourcecatalog.Catalog{}, fmt.Errorf("%w: executable identity changed between probes", sourcecatalog.ErrInspectionFailed)
+	}
+	issueFields, err := parseJSONFields(issueResult.Stdout, []string{"issue", "list"})
+	if err != nil {
+		return sourcecatalog.Catalog{}, err
+	}
+	commands, err = attachJSONFields(commands, []string{"issue", "list"}, issueFields)
+	if err != nil {
+		return sourcecatalog.Catalog{}, err
+	}
+	prResult, err := i.runProbe(ctx, executable, []string{"pr", "list", "--help"}, helpByteLimit)
+	if err != nil {
+		return sourcecatalog.Catalog{}, err
+	}
+	if prResult.Identity != versionResult.Identity {
+		return sourcecatalog.Catalog{}, fmt.Errorf("%w: executable identity changed between probes", sourcecatalog.ErrInspectionFailed)
+	}
+	prFields, err := parseJSONFields(prResult.Stdout, []string{"pr", "list"})
+	if err != nil {
+		return sourcecatalog.Catalog{}, err
+	}
+	commands, err = attachJSONFields(commands, []string{"pr", "list"}, prFields)
+	if err != nil {
+		return sourcecatalog.Catalog{}, err
+	}
 	catalog := sourcecatalog.Sort(sourcecatalog.Catalog{
 		SchemaVersion: sourcecatalog.SchemaVersion,
 		Adapter:       sourcecatalog.Adapter{Kind: AdapterKind, ContractVersion: ContractVersion},
@@ -83,13 +112,125 @@ func (i *Inspector) Inspect(ctx context.Context, executable string) (sourcecatal
 			Size:                versionResult.Identity.Size,
 			Version:             version,
 		},
-		Probe:    sourcecatalog.Probe{IDs: []string{"version", "help_reference"}, Attempts: 2},
+		Probe: sourcecatalog.Probe{
+			IDs:      []string{"version", "help_reference", "issue_list_help", "pr_list_help"},
+			Attempts: 4,
+		},
 		Commands: commands,
 	})
 	if err := catalog.Validate(); err != nil {
 		return sourcecatalog.Catalog{}, fmt.Errorf("%w: %v", sourcecatalog.ErrInvalidCatalog, err)
 	}
 	return catalog, nil
+}
+
+func attachJSONFields(commands []sourcecatalog.Command, path []string, fields []string) ([]sourcecatalog.Command, error) {
+	matched := -1
+	for index := range commands {
+		if strings.Join(commands[index].Path, "\x00") != strings.Join(path, "\x00") {
+			continue
+		}
+		if matched >= 0 {
+			return nil, fmt.Errorf("%w: duplicate command %q in reference help", sourcecatalog.ErrInspectionFailed, strings.Join(path, " "))
+		}
+		matched = index
+	}
+	if matched < 0 {
+		return nil, fmt.Errorf("%w: command %q is missing from reference help", sourcecatalog.ErrInspectionFailed, strings.Join(path, " "))
+	}
+	jsonOption := false
+	for _, option := range commands[matched].Options {
+		if option.Name == "--json" && option.TakesValue {
+			jsonOption = true
+		}
+	}
+	if !jsonOption {
+		return nil, fmt.Errorf("%w: command %q does not declare a value-taking --json option", sourcecatalog.ErrInspectionFailed, strings.Join(path, " "))
+	}
+	commands[matched].StructuredOutput = []sourcecatalog.StructuredOutput{{Format: "json", SelectorFlag: "--json", Fields: fields}}
+	return commands, nil
+}
+
+func parseJSONFields(value []byte, expectedPath []string) ([]string, error) {
+	scanner := bufio.NewScanner(strings.NewReader(string(value)))
+	scanner.Buffer(make([]byte, 4096), helpByteLimit)
+	wantUsage := "  gh " + strings.Join(expectedPath, " ") + " [flags]"
+	usageMatches := 0
+	jsonOptions := 0
+	sectionMatches := 0
+	collecting := false
+	fieldText := strings.Builder{}
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == wantUsage {
+			usageMatches++
+		}
+		if strings.Contains(line, "--json fields") && strings.Contains(line, "Output JSON with the specified fields") {
+			jsonOptions++
+		}
+		if line == "JSON FIELDS" {
+			sectionMatches++
+			collecting = true
+			continue
+		}
+		if !collecting {
+			continue
+		}
+		if strings.TrimSpace(line) == "" {
+			collecting = false
+			continue
+		}
+		if !strings.HasPrefix(line, "  ") {
+			return nil, fmt.Errorf("%w: JSON FIELDS for %q is malformed", sourcecatalog.ErrInspectionFailed, strings.Join(expectedPath, " "))
+		}
+		if fieldText.Len() > 0 {
+			fieldText.WriteByte(' ')
+		}
+		fieldText.WriteString(strings.TrimSpace(line))
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("%w: command help exceeds line bounds", sourcecatalog.ErrInspectionFailed)
+	}
+	if usageMatches != 1 || jsonOptions != 1 || sectionMatches != 1 {
+		return nil, fmt.Errorf("%w: command help for %q does not match the JSON field contract", sourcecatalog.ErrInspectionFailed, strings.Join(expectedPath, " "))
+	}
+	text := fieldText.String()
+	if text == "" || strings.HasPrefix(text, ",") || strings.HasSuffix(text, ",") {
+		return nil, fmt.Errorf("%w: JSON FIELDS for %q is empty or malformed", sourcecatalog.ErrInspectionFailed, strings.Join(expectedPath, " "))
+	}
+	parts := strings.Split(text, ",")
+	if len(parts) == 0 || len(parts) > 256 {
+		return nil, fmt.Errorf("%w: JSON FIELDS for %q is empty or exceeds bounds", sourcecatalog.ErrInspectionFailed, strings.Join(expectedPath, " "))
+	}
+	fields := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, part := range parts {
+		field := strings.TrimSpace(part)
+		if !stableJSONField(field) {
+			return nil, fmt.Errorf("%w: JSON field %q for %q is invalid", sourcecatalog.ErrInspectionFailed, field, strings.Join(expectedPath, " "))
+		}
+		if _, duplicate := seen[field]; duplicate {
+			return nil, fmt.Errorf("%w: JSON field %q for %q is duplicated", sourcecatalog.ErrInspectionFailed, field, strings.Join(expectedPath, " "))
+		}
+		seen[field] = struct{}{}
+		fields = append(fields, field)
+	}
+	sort.Strings(fields)
+	return fields, nil
+}
+
+func stableJSONField(value string) bool {
+	if value == "" || len(value) > 128 {
+		return false
+	}
+	for index, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '_' ||
+			(index > 0 && r >= '0' && r <= '9') || (index > 0 && (r == '-' || r == '.')) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func (i *Inspector) runProbe(ctx context.Context, executable string, args []string, stdoutLimit int) (sourceprocess.Result, error) {

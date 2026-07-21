@@ -1,6 +1,8 @@
 package tailoring
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -64,6 +66,71 @@ func NewJSONObject(value []JSONField) JSONValue {
 func (v JSONValue) Validate() error {
 	nodes := 0
 	return v.validate(0, &nodes)
+}
+
+// MarshalJSON emits the validated semantic value as compact JSON while
+// preserving lexical numbers and the declared order of object fields.
+func (v JSONValue) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	var output bytes.Buffer
+	if err := v.writeJSON(&output); err != nil {
+		return nil, err
+	}
+	return output.Bytes(), nil
+}
+
+func (v JSONValue) writeJSON(output *bytes.Buffer) error {
+	switch v.Kind {
+	case JSONNull:
+		output.WriteString("null")
+	case JSONBool:
+		if v.BoolValue {
+			output.WriteString("true")
+		} else {
+			output.WriteString("false")
+		}
+	case JSONNumber:
+		output.WriteString(v.NumberValue)
+	case JSONString:
+		encoded, err := json.Marshal(v.StringValue)
+		if err != nil {
+			return err
+		}
+		output.Write(encoded)
+	case JSONArray:
+		output.WriteByte('[')
+		for index := range v.ArrayValue {
+			if index > 0 {
+				output.WriteByte(',')
+			}
+			if err := v.ArrayValue[index].writeJSON(output); err != nil {
+				return err
+			}
+		}
+		output.WriteByte(']')
+	case JSONObject:
+		output.WriteByte('{')
+		for index := range v.ObjectValue {
+			if index > 0 {
+				output.WriteByte(',')
+			}
+			name, err := json.Marshal(v.ObjectValue[index].Name)
+			if err != nil {
+				return err
+			}
+			output.Write(name)
+			output.WriteByte(':')
+			if err := v.ObjectValue[index].Value.writeJSON(output); err != nil {
+				return err
+			}
+		}
+		output.WriteByte('}')
+	default:
+		return fmt.Errorf("%w: kind %q is unsupported", ErrInvalidJSONValue, v.Kind)
+	}
+	return nil
 }
 
 func (v JSONValue) validate(depth int, nodes *int) error {
