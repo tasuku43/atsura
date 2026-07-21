@@ -64,7 +64,7 @@ still broader than the available external native evidence.
 - [x] Exact-artifact conformance seeds only an isolated non-shipped receipt through the production store; existing production tests separately prove controlling-terminal full-digest consent and no release command exposes a bypass.
 - [x] The release gate detects removal or weakening of native artifact replay
   and evidence aggregation.
-- [ ] `task check`, `task security`, `task public:check`, and
+- [x] `task check`, `task security`, `task public:check`, and
   `task release:check` pass on one clean committed tree.
 
 ## Governing documents
