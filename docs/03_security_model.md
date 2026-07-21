@@ -1,204 +1,239 @@
 # Security Model
 
-This seed model defines the security direction for Atsura before it executes or
-transforms a source command. It does not claim that the bootstrap implements a
-secure wrapper, policy engine, or agent integration.
+This seed model covers the intended YAML-to-plan-to-wrapper boundary. It does
+not claim that the current binary securely intercepts or executes a source CLI.
 
 ## Security objective
 
-Atsura must not cause a source CLI operation that is broader than the exact
-reviewed plan for the selected source executable. If the controlling policy,
-source identity, or plan cannot be evaluated, Atsura does not execute the
-operation. Output optimization must not change the source operation's meaning
-or authorize a retry.
+Atsura must not cause a source operation broader than the exact user-trusted
+plan for the selected executable. Unknown configuration, untrusted policy,
+source drift, ambiguous rules, incomplete plans, and unsupported actions fail
+before source execution.
+
+Output transformation must not become authority to change, repeat, or bypass
+the source invocation.
 
 ## Assets
 
 - Integrity of the user's local system, files, repositories, and source-CLI
   accounts.
-- Integrity of source executable selection, command modeling, policy
-  evaluation, transformed argv, and execution-plan provenance.
-- Confidentiality of credentials already managed by source CLIs.
-- Confidentiality of command arguments and raw source stdout/stderr.
-- Integrity and confidentiality of user-trusted policy and any future catalog
-  or non-secret state.
-- The user's ability to distinguish tailored execution, policy rejection, and
-  explicit raw execution.
+- Integrity of command discovery, policy evaluation, confirmation, transformed
+  argv, and plan provenance.
+- Integrity of built-in processing and agent-facing result semantics.
+- Confidentiality of source-CLI credentials, arguments, stdout, and stderr.
+- Integrity and confidentiality of user-trusted YAML and future catalog state.
+- The user's ability to distinguish preview, tailored execution, rejection,
+  transform failure, and explicit raw execution.
 
 ## Actors and assumptions
 
-- A user may make mistakes and is the authority that can trust policy.
-- A coding agent may propose configuration and invoke commands within its
-  granted environment; that is not proof of human authorization.
-- A repository contributor may provide useful or malicious configuration.
-- A source CLI may change, return hostile text, load plugins, access remote
-  systems, or have side effects not evident from a command name.
-- An attacker may influence argv, environment, PATH, configuration, repository
-  files, help output, executable replacement, plugin state, or source output.
+- The user is the authority that may trust YAML and approve confirmation.
+- A coding agent may propose YAML or invoke commands; neither action proves
+  human authorization.
+- Repository contributors may provide malicious configuration or hook content.
+- Source CLIs may change, load plugins, emit hostile text, or have side effects
+  not evident from names or help.
+- Attackers may influence argv, environment, PATH, YAML, catalog files, hook
+  payloads, executable replacement, stdout, and stderr.
 
-A successful process launch, TTY presence, parent process, repository checkout,
-or model-generated explanation is not proof that an operation is safe.
+A TTY, successful launch, repository checkout, hook installation, or
+model-generated explanation is not proof that an operation is safe.
 
 ## Untrusted inputs
 
-Atsura treats all of the following as untrusted data:
+The following remain untrusted:
 
 - command names and arguments;
 - source executable paths and PATH resolution;
-- source help, completion, schema, version, and error output;
-- generated command catalogs;
-- policy and configuration files;
-- repository-provided integration files;
-- source stdout and stderr; and
-- coding-agent proposals and hook payloads.
+- source help, completion, schema, version, stdout, stderr, and errors;
+- generated catalogs;
+- all YAML before trust and semantic validation;
+- repository-provided integrations;
+- agent-generated proposals; and
+- hook payloads and host metadata.
 
-Parsing or visible escaping does not turn external text into instructions.
-Prompt-like text remains data.
+Strict parsing and visible escaping protect structure; they do not turn
+external prose into instructions.
 
-## Trust boundaries
+## Trust boundary
 
 ```text
-untrusted invocation / repository / source observations
-                         |
-                         v
-           bounded decoding and provenance
-                         |
-                         v
-          user-trusted policy selection
-                         |
-                         v
-        deterministic match and plan validation
-                         |
-              +----------+-----------+
-              |                      |
-              v                      v
-       policy rejection        controlled process port
-                                      |
-                                      v
-                              exact source executable
+untrusted hook request + source evidence + YAML
+                    |
+                    v
+       bounded decoding and provenance
+                    |
+                    v
+       user-trusted policy selection
+                    |
+                    v
+    deterministic matching and plan validation
+                    |
+          +---------+---------+
+          |                   |
+          v                   v
+       preview          rejection / confirm
+          |
+          v
+execution-time revalidation
+          |
+          v
+bounded wrapper: before -> source -> output -> after
 ```
 
-Coding-agent integrations sit outside the deterministic decision boundary.
-They may request a preview or execution task, but cannot silently mark a
-repository policy as user-trusted or bypass a rejection.
+Preview has no process or filesystem side effects. Execution cannot treat an
+old preview as authority; it revalidates the trusted YAML, catalog/source
+evidence, executable identity, and relevant environment immediately before the
+wrapper begins.
 
-## Policy and configuration
+## YAML policy boundary
 
-- Arbitrary shell code is not an allowed default policy mechanism.
-- A policy format must have bounded decoding, explicit schema/version behavior,
-  and deterministic rule precedence before it can control execution.
-- Unknown fields, ambiguous matches, missing decisions, or invalid provenance
-  fail closed for controlled execution.
-- Repository-provided policy and user-trusted policy are distinct sources. A
-  repository checkout alone does not grant trust.
-- The future precedence and approval mechanism must preserve which principal
-  trusted each active policy; it must not copy a repository policy into a
-  trusted store implicitly.
-- An agent-generated policy remains a proposal until the user-controlled trust
-  workflow accepts the exact reviewed bytes or semantic equivalent.
+- Per-command YAML is the selected configuration direction.
+- Decoding is bounded and strict, with explicit schema-version behavior.
+- Unknown fields, duplicate semantic keys, invalid types, unsupported actions,
+  ambiguous matches, and invalid ordering fail closed.
+- Repository YAML and user-trusted YAML are distinct provenance states. Merely
+  opening a repository does not activate its policy.
+- An agent proposal remains untrusted until a user-controlled workflow accepts
+  the exact reviewed configuration or a defined semantic digest.
+- Runtime evaluation never falls back to another configuration source after a
+  present source fails validation.
 
-YAML is neither required nor ruled out by this bootstrap.
+The initial YAML contains no arbitrary shell. Each before, after, invocation,
+and output action names a typed Atsura built-in with validated inputs and known
+effects.
 
-## Source executable identity and drift
+## Built-in action boundary
 
-A generated catalog and policy decision must eventually bind to evidence about
-the source executable they describe. At minimum, the design must be able to
-detect when the resolved executable or its reported version has changed.
-Symlinks, PATH precedence, plugins, aliases, and self-updating CLIs may require
-stronger evidence; the exact identity model is open.
+A built-in action must declare:
 
-A stale or mismatched identity invalidates controlled execution until the
-source is reinspected and the resulting policy impact is reviewed. Atsura must
-not silently regenerate a catalog and preserve old permission decisions as if
-nothing changed.
+- a stable action kind and version;
+- accepted typed inputs and finite bounds;
+- whether it runs before invocation, changes argv, processes output, or runs
+  after output;
+- its filesystem, process, network, notification, access, and destructive
+  effects;
+- its output contract;
+- cancellation and failure behavior; and
+- whether failure occurs before or after the source attempt.
+
+Unknown actions and stage-incompatible actions invalidate the plan. A built-in
+does not receive an unrestricted shell, process executor, filesystem, or
+network client.
+
+jq expressions, RTK invocation, plugins, user scripts, and generic external
+transformers are not initial built-ins. Admitting any of them requires a
+separate product and threat-model decision covering executable identity,
+configuration trust, data exposure, portability, time and size bounds, exit
+semantics, dependency integrity, and recovery.
+
+## Source identity and drift
+
+Catalog and plan evidence must be bound to the source executable they describe.
+At minimum, the design detects changes to the resolved executable or reported
+version. PATH precedence, symlinks, replacement, plugins, aliases, and
+self-updating CLIs may require stronger evidence.
+
+A mismatch invalidates controlled execution. Atsura does not silently
+regenerate a catalog and apply old permissions to new capabilities.
+
+The executor resolves and revalidates the executable immediately before launch.
 
 ## Process execution boundary
 
-No source execution is implemented in this bootstrap. A future executor must:
+A future executor must:
 
-- receive a validated executable and argv vector, never an interpolated shell
+- accept an exact executable and argv vector, never an interpolated shell
   program;
-- resolve and revalidate the execution target immediately before launch;
-- bound inherited environment, working directory, time, stdout, and stderr
-  according to the task contract;
-- keep credentials out of newly constructed argv, logs, diagnostics, catalogs,
-  policies, and persisted history;
-- perform zero attempts on policy rejection or invalid planning state; and
-- classify cancellation and uncertain mutation outcomes without claiming a
-  retry is safe.
+- perform zero source attempts for invalid, rejected, unconfirmed, stale, or
+  untrusted plans;
+- use one caller context and bound working directory, inherited environment,
+  time, stdout, and stderr;
+- keep credentials out of newly constructed argv, YAML, plans, catalogs, logs,
+  diagnostics, and history;
+- distinguish a request not sent, confirmed result, source failure, transform
+  failure, and unknown outcome; and
+- never infer that repeating a source operation is safe from cancellation or
+  output failure.
 
-Source CLI authentication and authorization remain in force. Atsura initially
-does not acquire or store OAuth tokens, PATs, or provider credentials.
+Source CLI authentication and authorization remain authoritative. Atsura does
+not initially acquire or store OAuth tokens, PATs, or provider credentials.
 
-## Raw or passthrough execution
+## Output transformation boundary
 
-Raw execution is a possible explicit product route, not a recovery mechanism.
-It must:
+Output can contain secrets, terminal controls, malformed structured data,
+prompt-like prose, oversized collections, duplicate keys, deep nesting, and
+values crafted to exploit a parser or coding agent.
 
-- be visibly selected by the caller;
-- identify the exact executable being invoked;
-- state that Atsura tailoring policy is bypassed;
-- never be chosen automatically after policy parse failure, rejection, stale
-  catalog evidence, or transform failure; and
-- avoid claiming that Atsura approved the source operation.
+The output pipeline must:
 
-Whether the raw route still applies generic process bounds is a later product
-and security decision. It may never use shell interpretation merely to be
-convenient.
+- declare the expected source format before parsing;
+- enforce byte, nesting, item, field, and processing-time bounds;
+- preserve source stdout and stderr as untrusted, separate channels;
+- apply only plan-declared typed transformations;
+- distinguish missing, null, empty, zero, false, malformed, and truncated values
+  when they affect meaning;
+- render only declared fields and structure;
+- avoid inferring facts from labels, order, indentation, or nearby records; and
+- retain source exit and transform status as separate facts.
 
-## Output and data handling
+If transformation fails after one source attempt, Atsura must not:
 
-- Atsura does not store authentication material or raw confidential source
-  output.
-- Usage history is not collected in the bootstrap and requires a new privacy,
-  retention, and redaction decision before adoption.
-- Output projection and transformation treat source text as untrusted and
-  preserve the structural safety rules inherited by the repository.
-- If output optimization is unavailable or fails, Atsura must not change argv,
-  run a different command, repeat the source command, or report transformed
-  output as complete.
-- A later slice must choose between an explicit intact-output degradation and a
-  typed failure. That choice must consider confidentiality and output bounds;
-  this bootstrap does not select it.
-- Source exit status, stdout/stderr ownership, ordering, truncation, and partial
-  write behavior require explicit contracts before execution is supported.
+- retry or change the source invocation;
+- run an alternative transformer automatically;
+- report transformed success;
+- expose raw output unless an explicit reviewed contract permits it; or
+- switch to raw execution.
 
-## Network and credentials
+The exact policy for source nonzero exit, stderr, partial stdout, transform
+failure, and optional intact-output fallback remains unresolved and must be
+decided before execution support.
 
-Atsura selects no direct external API during bootstrap. Any network access is
-performed by the source CLI under its own credential and destination policy.
-Atsura must not capture those credentials from environment or configuration for
-its own use.
+## Raw execution
 
-If a future capability calls an external API directly, it requires a revised
-thesis, authentication decision, destination policy, bounded call contract,
-publishable fixtures, and the repository's external-API validation workflow
-before implementation.
+Raw execution is a possible explicit route outside tailoring policy. It must be
+selected visibly by the caller, identify the exact executable, and state that
+Atsura tailoring is bypassed.
+
+It is never automatic recovery for invalid YAML, rejection, missing
+confirmation, source drift, built-in failure, or output-transform failure. It
+never uses shell interpretation merely for convenience.
+
+## Data, network, and credentials
+
+- Atsura stores no authentication material or raw confidential source output.
+- Usage history is not collected without a separate privacy, retention, and
+  redaction decision.
+- Direct external APIs are not selected. Network access remains the source
+  CLI's responsibility under its own credential and destination policy.
+- A future direct API or external transformer requires revised authentication,
+  egress, bounded-call, fixture, and dependency contracts.
 
 ## Required evidence for the first slice
 
-The recommended no-execution planning slice must prove:
+The first no-execution YAML-to-plan slice must prove:
 
-- identical validated inputs yield an identical typed decision;
-- invalid policy and rejection make zero source-process attempts;
-- an allowed plan contains an exact executable/argv representation without a
-  shell string;
-- every decision names the matched rule and trusted policy provenance;
-- repository-origin policy cannot be mistaken for user-trusted policy; and
-- hostile command, argument, reason, and source-description text cannot break
-  machine or terminal output structure.
+- identical validated inputs yield an identical typed plan;
+- invalid, unknown, ambiguous, or untrusted YAML yields no plan and no source
+  attempt;
+- executable and argv remain separate;
+- every plan change names its trusted YAML rule and reason;
+- invocation and output actions are separate ordered stages;
+- a substantial output reshape is representable with typed built-ins; and
+- hostile YAML values, source descriptions, and transform examples cannot break
+  machine or terminal structure.
 
 ## Open security decisions
 
-- The exact source executable identity and version-drift model.
-- Policy trust establishment, precedence, revocation, and confirmation.
-- Exact allow, confirm, and deny semantics.
-- Process environment and filesystem isolation.
-- Raw execution bounds and user experience.
-- Output fallback, redaction, size, and streaming behavior.
-- History collection, retention, and privacy.
-- Hook or wrapper authorization boundaries.
-- RTK trust and dependency implications if it is considered.
-
-Each must be decided by a concrete vertical slice or primary-source research,
-not by bootstrap speculation.
+- YAML trust establishment, locations, precedence, revocation, and digesting.
+- Exact allow, confirm, and deny authorization semantics.
+- Executable identity across PATH, symlink, replacement, plugin, and version
+  changes.
+- Hook installation and command-discovery trust.
+- Process environment, filesystem isolation, and output budgets.
+- Built-in action effects and extension review.
+- Source failure, stderr, partial output, transform failure, and raw-output
+  interaction.
+- Privacy and retention for any future history.
+- Trust and dependency boundaries for jq, RTK, plugins, or external
+  transformers.

@@ -2,11 +2,12 @@
 
 A deterministic framework for tailoring existing CLIs to coding agents.
 
-Atsura's working hypothesis is that a maintainer can inspect an existing CLI,
-apply a small reviewed policy difference, and give a coding agent a narrower,
-purpose-specific command surface without reimplementing the source CLI. The
-routine decision path is intended to be deterministic and not require a
-language model.
+Atsura's working hypothesis is that a maintainer can manage per-command YAML
+for an existing CLI and give a coding agent a narrower, purpose-specific
+surface without reimplementing that CLI. A coding-agent hook intercepts an
+attempted command, Atsura compiles it into one inspectable execution plan, and
+the same plan logic drives preview or controlled wrapper execution. Routine
+planning and enforcement are deterministic and do not require a language model.
 
 ## Project status
 
@@ -30,27 +31,39 @@ Project identity:
 
 A future tailored surface may narrow visible commands and options, classify
 operations, deterministically change arguments or defaults, use a source CLI's
-structured output, select task-relevant information, and explain the applied
-policy. An explicit raw route may preserve access to the original CLI, but must
-never be an automatic fallback from policy rejection.
+structured output, apply built-in processing around execution, substantially
+reshape output, and explain every change. An explicit raw route may preserve
+access to the original CLI, but must never be an automatic fallback from policy
+or transformation failure.
 
-The recommended first slice is intentionally smaller: preview one modeled
-source invocation against one small trusted policy and return a deterministic
-decision, exact planned argv when applicable, and the matched reason without
-executing the source process.
+Conceptually:
+
+```text
+per-command YAML + attempted command + source evidence
+  -> deterministic plan
+  -> preview
+     or
+  -> wrapper: built-in before -> source CLI -> built-in output/after
+```
+
+The recommended first slice is intentionally smaller: strictly decode one
+small YAML fixture and preview a deterministic plan for a synthetic source
+invocation, including exact argv, matched rules, reasons, and a nontrivial
+built-in output transformation, without executing the source process.
 
 The following decisions remain open and require later research or a vertical
 slice:
 
 - first source CLI;
-- policy representation, including whether YAML is appropriate;
+- exact YAML schema, locations, matching, and trust workflow;
 - command-discovery depth;
 - Claude Code hook responsibilities;
 - wrapper or hook integration mechanism;
 - exact allow, confirm, and deny semantics;
+- built-in processing and output-transform vocabulary;
 - usage-history collection;
-- RTK reuse or integration; and
-- output transformation and fallback behavior.
+- jq, RTK, plugin, or external-transformer boundaries; and
+- source failure, transform failure, raw output, and fallback behavior.
 
 See [Project Theses](docs/00_theses.md), [Product Contract](docs/01_product_contract.md),
 [Architecture](docs/02_architecture.md), and [Security Model](docs/03_security_model.md).
@@ -97,10 +110,11 @@ belong to the exact required installation.
 
 ## Safety and maturity
 
-Commands, arguments, help output, source output, generated catalogs, and policy
-files are treated as untrusted. Repository-provided configuration is not
-implicitly user-trusted. Atsura does not currently acquire or store provider
-credentials or raw confidential source output.
+Commands, arguments, help output, source output, generated catalogs, YAML, and
+hook payloads are treated as untrusted. Repository-provided configuration is
+not implicitly user-trusted. Initial YAML processing is limited to typed
+Atsura built-ins rather than arbitrary shell. Atsura does not currently acquire
+or store provider credentials or raw confidential source output.
 
 No release is created or promised by the bootstrap. See [Release Model](docs/06_release.md)
 for the inherited packaging foundation and decisions still required before an

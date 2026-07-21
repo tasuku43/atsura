@@ -1,187 +1,219 @@
 # Atsura Product Theses
 
-This document is the first decision source when an Atsura design is ambiguous.
-These are seed hypotheses: they are strong enough to choose the first vertical
-slice, but they must change when implementation and user evidence contradict
-them.
+These seed theses describe the intended Atsura experience clearly enough to
+choose a first vertical slice. They are hypotheses, not claims that the current
+binary already provides source-CLI tailoring.
 
 ## North star
 
-**A maintainer can turn an existing CLI into a smaller, purpose-specific
-interface for coding agents without reimplementing the source CLI and without
-placing a language model in the routine execution path.**
+**Given an existing CLI and user-approved per-command YAML, Atsura gives a
+coding agent a deterministic, inspectable CLI surface. Every attempted command
+becomes either a reasoned rejection or a reviewable execution plan for the
+exact source CLI, without reimplementing that CLI or requiring a language model
+at runtime.**
 
-The primary users are maintainers of coding-agent environments who already rely
-on capable CLIs but need each agent or task to see and exercise only the useful
-part of those CLIs. Their problem is not merely verbose output. A source CLI may
-expose too many commands and options, unsafe defaults, ambiguous behavior, and
-more result data than the agent needs.
+The primary user is a maintainer of a coding-agent environment. That maintainer
+wants to shape which parts of an existing CLI an agent can see, how accepted
+commands behave, and how much output returns to the agent.
 
-## Thesis 1: Tailoring changes capability, behavior, and presentation
+## Intended experience
 
-For Atsura, tailoring a CLI is the reviewed application of a small policy
-difference to a discovered source command model. Depending on later validated
-product decisions, that difference may:
+```text
+per-command YAML
+  -> coding-agent hook intercepts an attempted command
+  -> Atsura compiles source evidence + YAML + invocation into one plan
+  -> preview renders the plan without side effects
+     or
+  -> execution revalidates and applies the plan through a wrapper
+       -> built-in pre-processing
+       -> exact source CLI invocation
+       -> built-in post-processing and output transformation
+```
 
-- hide commands or options from an agent-facing surface;
-- classify an operation as allowed, confirmation-required, or rejected;
-- change arguments or defaults deterministically;
-- request a source CLI's own structured-output mode;
-- select only the information required by the agent's task;
-- explain the applied policy and its reason; and
-- offer an explicit path that invokes the source CLI without applying the
-  tailoring policy.
+An execution hook can reject a command that was attempted. Preventing the agent
+from discovering a command in the first place also requires the eventual
+agent-facing help or command-discovery integration to use the tailored surface.
+Those are related outcomes, not the same mechanism.
 
-This list is a product hypothesis, not a public command set or configuration
-schema. The first slice need not implement every dimension.
+## Thesis 1: The tailored surface is the product
 
-### Consequences
+YAML, hooks, catalogs, wrappers, and renderers are mechanisms. The user outcome
+is a purpose-specific CLI surface for a coding agent.
 
-- Atsura models a source CLI rather than recreating its business behavior.
-- An output-shortening feature alone does not validate the central hypothesis.
-- A policy decision and its transformed invocation must be inspectable before
-  execution can be considered trustworthy.
+That surface may:
 
-### Enforcement status
+- hide source commands or options from agent discovery;
+- allow, require confirmation for, or reject an attempted operation;
+- add, remove, or replace arguments and defaults;
+- select a source CLI's structured-output mode;
+- apply bounded processing before or after the source process;
+- substantially reshape output rather than merely shorten it;
+- explain every applied rule and transformation; and
+- provide a separately selected raw route to the source CLI.
 
-These consequences are aspirational until the first Atsura-specific domain
-types and contract tests replace the inherited scaffold examples.
-
-## Thesis 2: Routine execution is deterministic
-
-The validated catalog, trusted policy, invocation, and source-binary identity
-must produce the same execution decision without asking a language model.
-
-A coding agent may study a user's purpose or prior work and propose a policy.
-It may also explain trade-offs during configuration. The deterministic Atsura
-core owns parsing validated inputs, matching rules, producing an execution
-plan, and enforcing the selected decision. Agent output is a proposal until a
-user-controlled trust step accepts it.
+The initial product does not need every dimension, but a feature that only
+shortens text does not validate the central thesis.
 
 ### Consequences
 
-- Policy proposals and runtime policy enforcement are separate tasks.
-- Routine execution cannot depend on model availability, prompt wording, or
-  probabilistic classification.
-- Every applied rule needs stable provenance and a reason suitable for preview
-  and diagnostics.
-- Configuration that embeds arbitrary shell code is outside the initial design.
+- Public tasks describe tailored user outcomes, not YAML mechanics.
+- A hidden capability and a rejected invocation are represented distinctly.
+- Raw execution is outside the tailored guarantee and is never an automatic
+  fallback.
+
+## Thesis 2: YAML is reviewed configuration, not executable code
+
+The working product direction is per-command YAML. It declares differences
+from an observed source CLI model and the processing required for that command.
+
+The initial configuration uses typed Atsura actions whose meaning, inputs,
+effects, and failure behavior are known to the deterministic core. It does not
+embed arbitrary shell code.
+
+### Consequences
+
+- The exact YAML schema and file locations remain versioned product decisions.
+- Repository-provided YAML and user-trusted YAML have distinct provenance.
+- Unknown fields, unsupported actions, ambiguous matches, and invalid rule
+  combinations fail before source execution.
+- jq expressions, RTK invocation, generic external transformers, plugins, and
+  shell scripts require later explicit trust and dependency decisions.
 
 ### Mechanical enforcement target
 
-The first policy-bearing slice must include repeatability fixtures proving that
-identical validated inputs produce an identical plan and that rejected or
-invalid policy makes zero source-process attempts.
+The first YAML slice must use bounded strict decoding, reject unknown
+configuration, and prove that invalid or untrusted policy makes zero
+source-process attempts.
 
-## Thesis 3: Preserve the source CLI's meaning and safety boundary
+## Thesis 3: One plan drives preview and execution
 
-Atsura must not silently broaden a source operation, invent support the source
-CLI does not have, or treat presentation optimization as permission to change
-the operation. Argument rewriting is valid only when the resulting invocation
-has an explicit, reviewable meaning.
+An execution plan is the typed result of compiling validated source evidence,
+trusted YAML, the attempted invocation, and relevant environment facts.
 
-### Consequences
+A complete plan identifies at least:
 
-- Source executable identity and observed version or equivalent evidence are
-  part of the catalog and plan context.
-- A stale catalog or an unevaluable controlling rule fails closed instead of
-  falling through to an unintended operation.
-- Policy rejection happens before source-process execution.
-- Failure to optimize output must not trigger a different command or an
-  implicit second execution.
-- Any raw or passthrough route is explicit, is never selected as recovery from
-  policy failure, and makes clear that Atsura policy was bypassed.
-- Source CLI authentication and authorization remain authoritative; Atsura
-  does not claim that its own policy makes an upstream operation safe.
+- the source executable evidence;
+- original and transformed argv;
+- the matched rules and reasons;
+- the allow, confirm, or reject decision;
+- built-in pre-processing;
+- source invocation;
+- post-processing and output transformation; and
+- raw-versus-tailored mode.
 
-### Mechanical enforcement target
-
-Future execution tests must prove exact argv construction without shell
-interpretation, stale-binary rejection, zero attempts on policy failure, and no
-automatic raw fallback.
-
-## Thesis 4: Discover once, apply small reviewed differences
-
-The working hypothesis is that a source CLI's command structure can be
-discovered by a bounded deterministic program, represented as a generated
-catalog, and tailored through a smaller policy than a hand-maintained wrapper
-or reimplementation.
-
-This hypothesis is not yet proven. Source CLIs differ in help behavior,
-structured metadata, plugins, dynamic commands, aliases, environment-dependent
-surfaces, and versioning. Atsura must test one narrow slice before generalizing
-the discovery mechanism.
-
-### Consequences
-
-- Generated facts and reviewed policy facts remain distinguishable.
-- Regeneration cannot silently grant a capability or weaken an existing
-  decision.
-- Catalog provenance and compatibility with the resolved source binary are
-  product facts, not cache implementation details.
-- Current specifications of comparable tools must be researched from primary
-  sources before Atsura claims an overlapping capability is needed.
+Preview and execution do not implement separate policy logic. Preview renders
+the plan without side effects. Execution builds or revalidates the same plan
+immediately before applying it. A previously displayed plan is not executable
+authority when the YAML, source binary, catalog, or relevant environment has
+changed.
 
 ### Mechanical enforcement target
 
-A later catalog slice must bind generated output to its source evidence, reject
-unclassified drift, and keep generation deterministic. No such catalog is
-implemented by this bootstrap.
+Identical validated inputs must produce an identical typed plan. Preview and
+execution tests must prove equivalent decisions and transformations, while
+execution additionally proves immediate identity and configuration
+revalidation.
+
+## Thesis 4: Invocation and output transformation are separate stages
+
+`invoke` determines which source executable and argv run. `output`
+determines how successful source output is parsed, selected, aggregated,
+renamed, and rendered for the agent.
+
+Output transformation is a first-class product capability. It may replace the
+source presentation with a substantially different compact structure, provided
+the plan declares the transformation and the result does not invent facts.
+
+The preferred first path is:
+
+1. request a source CLI's structured output when reliably available;
+2. parse through a bounded declared input format;
+3. apply typed built-in selection, mapping, aggregation, and ordering actions;
+4. render a declared agent-facing shape.
+
+### Consequences
+
+- Output processing is not hidden inside a generic pre/post shell command.
+- Transform failure does not change argv, run another source command, retry the
+  source command, or silently expose raw output.
+- Source exit behavior and transform failure remain distinguishable.
+- RTK-equivalent breadth is a research target, not a current compatibility
+  claim.
+
+### Mechanical enforcement target
+
+Output fixtures must cover substantial reshaping, hostile source data, bounded
+parsing, exact declared result shape, and transform failure after exactly one
+source attempt.
+
+## Thesis 5: Agents propose; the deterministic core enforces
+
+A coding agent may study a user's purpose or usage evidence and propose YAML.
+The proposal does not become trusted policy or authorization until a
+user-controlled workflow accepts it.
+
+Runtime rule matching, plan construction, confirmation requirements,
+invocation rewriting, and output transformation are deterministic.
+
+### Consequences
+
+- Routine execution does not depend on model availability or prompt wording.
+- Every decision and transformation is attributable to trusted YAML and source
+  evidence.
+- Source CLI authentication and authorization remain authoritative.
+- Source binary or catalog drift invalidates a controlled plan instead of
+  silently inheriting prior permission.
 
 ## First hypothesis to test
 
-The recommended first user result is:
+The first vertical slice should provide this result:
 
-**Before any source command runs, a maintainer can preview how one small,
-trusted policy treats one modeled source invocation and receive a deterministic
-decision, the exact planned argv when applicable, and the reason for the
-decision.**
+**A maintainer can supply a small per-command YAML fixture and preview the
+deterministic plan for one synthetic source invocation, including the decision,
+exact argv, built-in output transformation, matched rules, and reasons, without
+starting the source process.**
 
-The first experiment should use a synthetic source executable or fixture. It
-does not select the first supported real CLI, a policy file syntax, recursive
-help discovery, or an integration mechanism. This slice tests whether Atsura's
-policy vocabulary, plan boundary, and explanation are useful before process
-execution and broad discovery create additional variables.
+This slice tests the YAML-to-plan contract and substantial output-plan
+description without yet choosing a real source CLI, hook implementation, or
+external transformer.
 
-Success evidence should include:
+Success evidence includes:
 
-- the same inputs produce the same preview bytes or equivalent typed plan;
-- an allowed invocation remains semantically traceable to the modeled source
-  command;
-- a rejected or invalid decision makes zero source-process attempts; and
-- a maintainer can identify which rule caused the result without inspecting
-  implementation source.
+- identical inputs produce identical plan output;
+- invalid or untrusted YAML produces no plan and no source attempt;
+- invocation and output stages remain separate and inspectable;
+- a nontrivial output reshape is fully described by typed built-in actions; and
+- a maintainer can identify every change without reading implementation source.
 
 ## Current non-goals
 
-- Reimplementing the source CLI or its remote APIs.
-- Implementing source-help exploration, catalog generation, a policy language,
-  command execution, output transformation, agent hooks, usage-history
-  collection, agent-generated policy, RTK integration, or distribution during
-  this bootstrap.
-- Requiring a language model for normal command execution.
-- Allowing arbitrary shell code as the default policy extension mechanism.
-- Claiming universal compatibility with every CLI shape.
-- Treating a coding agent's proposal as user authorization.
-- Finalizing a stable public Atsura command or configuration contract before a
-  vertical slice supplies evidence.
+- Reimplementing a source CLI or its remote APIs.
+- Implementing the YAML schema, hook, wrapper, executor, or transformer during
+  this thesis clarification.
+- Requiring a language model for routine execution.
+- Allowing arbitrary shell as the initial pre/post or output mechanism.
+- Claiming RTK compatibility before primary-source research.
+- Treating an agent proposal as user authorization.
+- Finalizing public commands or persisted schemas without a vertical slice.
+- Publishing or releasing Atsura.
 
 ## Open questions
 
-The following remain deliberately unresolved:
-
-- Which source CLI should be tested first?
-- Should the eventual configuration use YAML or another representation?
+- Which source CLI should be supported first?
+- What is the smallest useful per-command YAML schema and where does it live?
 - How deeply should help or other command metadata be explored?
 - How should Claude Code SessionStart and PreToolUse responsibilities differ?
-- Should integration use a shell function, PATH wrapper, hook input rewrite, or
-  another mechanism?
+- How should the tailored surface participate in agent command discovery?
+- Should host integration use a shell function, PATH wrapper, hook input
+  rewrite, or another mechanism?
 - What are the exact semantics of allow, confirm, and deny?
+- Which built-in pre-processing, post-processing, and output actions belong in
+  the first release?
+- When, if ever, should jq, RTK, external transformers, plugins, or scripts be
+  admitted?
+- How should transform failure, raw output, stderr, and source failure interact?
 - How, if at all, should usage history be collected?
-- Should Atsura use RTK internally, integrate with it, or remain independent?
-- Which source-CLI structured-output facilities are reliable enough to use?
-- What evidence establishes executable identity across path, replacement,
-  plugins, and version changes?
+- What evidence establishes executable identity across path replacement,
+  symlinks, plugins, and version changes?
 
-These questions are inputs to primary-source research and the first vertical
-slice, not bootstrap decisions.
+These questions require vertical-slice evidence or primary-source research.

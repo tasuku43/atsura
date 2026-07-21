@@ -1,162 +1,213 @@
 # Product Contract
 
-This document records Atsura's current product vocabulary and boundaries. The
-concepts are hypotheses for the first vertical slice. They do not yet define
-stable public commands, flags, output schemas, configuration keys, or file
-formats.
+This contract defines Atsura's current product vocabulary and intended user
+experience. No Atsura-specific public command, YAML schema, or persisted format
+is stable yet.
 
 ## Product statement
 
-Atsura is a deterministic framework for tailoring existing CLIs to coding
-agents. It discovers or consumes a model of a source CLI, applies a small
-reviewed policy difference, and produces an inspectable decision about the CLI
-surface or invocation. Routine enforcement does not require a language model.
+Atsura tailors existing CLIs to coding agents. A user manages reviewed
+per-command YAML, a coding-agent integration intercepts attempted commands, and
+Atsura compiles each attempt into an inspectable execution plan. The same plan
+logic drives no-side-effect preview and controlled wrapper execution.
 
-The initial product focus is the agent-visible capability and behavior of a
-CLI, not only shorter output.
+Routine planning and enforcement are deterministic and do not require a
+language model.
 
-## Primary user and outcome
+## Primary user outcome
 
-The primary user is a maintainer who configures coding-agent environments and
-wants an existing CLI to expose a purpose-appropriate, explainable surface.
+A maintainer can give an agent a purpose-specific view of an existing CLI:
 
-The first recommended outcome is a no-execution preview: for one modeled source
-invocation and one small trusted policy, the maintainer receives a deterministic
-decision, the exact planned argv when applicable, and the reason that selected
-the decision.
+- irrelevant commands and options can be omitted from agent discovery;
+- attempted operations can be allowed, confirmed, or rejected;
+- accepted invocations can be rewritten deterministically;
+- source-native structured output can be selected; and
+- source output can be substantially transformed into a smaller,
+  task-specific result.
 
-No Atsura-specific end-user command currently promises that outcome. The
-inherited `doctor` and synthetic `sample` commands remain repository harness
-examples while the first Atsura slice is designed; they are not evidence that
-source-CLI tailoring exists.
+The source CLI retains its own domain behavior, authentication, authorization,
+and remote API implementation.
+
+The current `doctor` and synthetic `sample` commands are inherited harness
+examples. They are not evidence that this outcome is implemented.
+
+## Conceptual flow
+
+```text
+user-approved per-command YAML
+        +
+attempted source command from an agent hook
+        +
+source executable and catalog evidence
+        |
+        v
+deterministic execution plan
+        |
+        +--> preview: render only, no side effects
+        |
+        +--> execute: revalidate, then apply wrapper pipeline
+                       before -> invoke -> output -> after
+```
+
+The exact public commands and hook protocol remain undecided.
 
 ## Working vocabulary
 
 ### Source CLI
 
-The existing executable whose interface Atsura may tailor. Its own
-authentication, authorization, domain behavior, and compatibility contract
-remain authoritative. A source CLI is not merely a command name from `PATH`;
-the relevant executable identity and version evidence must eventually be
-explicit and verified.
-
-Open questions include the first source CLI, plugin and alias treatment,
-version detection, and whether a source exposes reliable structured metadata.
+The existing executable being tailored. Its resolved identity, observed
+version, relevant plugins, and command model are evidence used to build a plan.
+A command name found on `PATH` is not sufficient identity by itself.
 
 ### Generated command catalog
 
-A deterministic, provenance-bearing model of the source CLI surface observed
-by an inspection process. It may eventually describe commands, options,
-argument shapes, relevant output modes, and source evidence.
+A deterministic, provenance-bearing model of the observed source CLI surface.
+It may describe commands, options, argument shapes, source-native output modes,
+and executable evidence.
 
-The catalog is generated evidence, not permission. Regeneration must not grant
-an operation or erase a reviewed policy decision. Its schema, exploration
-depth, persistence, and compatibility rules are not decided.
+The catalog is evidence, not permission. Regeneration cannot silently grant an
+operation or erase a reviewed YAML rule.
 
-### Policy
+### Per-command YAML
 
-A reviewed set of differences between the source catalog and an agent-specific
-surface or invocation. Candidate policy dimensions include visibility,
-allow/confirm/reject decisions, argument/default changes, structured-output
-selection, output selection, and explanatory reasons.
+The user-facing configuration direction for tailoring one source command or
+command family. YAML declares policy differences and processing actions rather
+than executable shell text.
 
-The policy language and storage format are undecided. Policy must be bounded,
-deterministically evaluated, and unable to execute arbitrary shell code by
-default. Repository-provided policy and user-trusted policy require distinct
-provenance and trust treatment.
+The exact schema, matching keys, inheritance, file locations, and trust
+workflow are not stable. Initial actions are typed built-ins known to Atsura.
+Repository-provided YAML is not automatically user-trusted.
 
 ### Tailored CLI surface
 
-The commands, options, defaults, and behavioral choices intentionally exposed
-to one agent role or purpose after applying policy to the source catalog.
+The commands, options, defaults, decisions, and result shapes intentionally
+exposed to one coding-agent purpose.
 
-The surface is a derived view, not a fork or reimplementation of the source
-CLI. Whether the first product renders help, supplies a wrapper, rewrites hook
-input, or uses another integration remains open.
+Hiding a command from discovery and rejecting an attempted invocation are
+distinct guarantees. Execution interception can enforce rejection; hiding also
+requires agent-facing help or command discovery to consume the tailored
+surface.
 
 ### Execution plan
 
-The complete typed decision produced before process execution. A future plan is
-expected to identify the source executable evidence, source command, applied
-rule and reason, decision class, transformed invocation when applicable, and
-output handling intent.
+The complete typed result of compiling source evidence, trusted YAML, the
+attempted invocation, and relevant environment facts.
 
-A plan is inspectable product output and a security boundary. Missing,
-ambiguous, stale, or inconsistent controlling facts invalidate it.
+A plan declares:
 
-### Transformed invocation
+- source executable evidence;
+- original and transformed argv;
+- matched rules and reasons;
+- decision and any confirmation requirement;
+- ordered built-in processing actions;
+- source invocation;
+- output input format and transformation;
+- agent-facing result shape; and
+- tailored or raw mode.
 
-The exact executable and argv vector derived from a valid plan. It is not a
-shell fragment. Any added, removed, or changed argument must be attributable to
-the source model and an applied policy rule.
+A plan can be rendered for preview. Execution must revalidate its inputs rather
+than treating an old preview as authority.
 
-No invocation transformation or process execution is implemented by this
-bootstrap.
+### Wrapper
 
-### Passthrough or raw execution
+The controlled runtime that applies a valid plan. The wrapper does not decide
+policy independently. It executes the ordered stages and reports stage-specific
+results or failures.
 
-An explicit route that invokes the selected source CLI without applying Atsura
-tailoring policy. It exists as a product hypothesis because users may need the
-original interface.
+### Invocation transformation
 
-It must never be an implicit fallback from policy rejection, policy parse
-failure, stale catalog evidence, or transformation failure. The UI must make
-the bypass and selected executable unambiguous. The integration mechanism and
-exact raw contract remain undecided.
+The exact change from the attempted executable and argv to the source
+invocation. It is represented as executable plus argv, never as an
+interpolated shell fragment. Every change is attributable to a YAML rule and
+source evidence.
+
+### Built-in processing action
+
+A named, typed operation implemented and understood by Atsura. Its accepted
+inputs, effect, output, and failure behavior are part of the plan contract.
+Initial before, after, and output processing uses these actions instead of
+arbitrary shell.
+
+### Output pipeline
+
+The stages that interpret and reshape source stdout for the coding agent:
+
+```text
+declared source output
+  -> bounded parse
+  -> select / map / rename / aggregate / order
+  -> declared agent-facing render
+```
+
+`invoke` selects the source executable and argv. `output` transforms the
+result. These responsibilities do not share a generic shell escape hatch.
+
+The initial direction prefers source-native structured output and typed built-in
+transformations. jq expressions, RTK, plugins, and generic external
+transformers remain future decisions.
 
 ### Policy rejection
 
-A pre-execution result stating that a controlling policy does not permit the
-invocation or cannot be evaluated safely. It includes a stable reason and
-causes zero source-process attempts. Rejection does not automatically offer raw
-execution as recovery.
+A pre-execution result stating that trusted YAML rejects the attempted command
+or cannot be evaluated safely. It includes the matched rule or validation
+reason and causes zero source-process attempts.
 
-The exact allow, confirmation, and denial model remains open. Until that model
-exists, an unevaluable controlling decision fails closed.
+### Raw execution
 
-## Product boundaries
+An explicitly selected route that bypasses tailoring policy and invokes the
+chosen source CLI. It is never selected automatically after rejection, stale
+evidence, invalid YAML, or transform failure. Its exact user experience and
+generic process bounds remain undecided.
 
-### Deterministic core versus coding agent
+## Output failure boundary
 
-The deterministic core owns validated input decoding, rule matching, plan
-construction, stale-evidence detection, and enforcement. A coding agent may
-research a user's purpose or usage evidence and propose policy, but proposals
-do not become active policy or authorization without a user-controlled trust
-step.
+A source attempt and an output transform are separate facts. If transformation
+fails after the source command ran, Atsura must not:
 
-### Source semantics
+- repeat the source command;
+- change its invocation;
+- claim transformed success;
+- expose raw output unless the reviewed contract explicitly permits it; or
+- choose raw execution as recovery.
 
-Atsura may narrow a surface or deliberately transform an invocation, but must
-not claim that a transformed command means the same thing without reviewable
-evidence. Source exit behavior and side effects are not inferred from labels.
-Output optimization cannot authorize a different invocation or an automatic
-retry.
+The exact handling of source nonzero exit, stderr, partial stdout, and
+transformer failure must be declared before execution is supported.
 
-### Compatibility
+## Deterministic core versus coding agent
 
-The project identity is now `Atsura`, binary `atr`, and Go module
-`github.com/tasuku43/atsura`. No Atsura-specific command path, policy syntax,
-catalog schema, persisted location, transformed-invocation rule, or hook
-contract is stable yet.
+A coding agent may propose YAML from a user's purpose or usage evidence. A
+user-controlled workflow must trust the proposal before it can affect command
+discovery or execution.
 
-The first vertical slice must name its compatibility boundary and executable
-tests before it is described as supported.
+The deterministic core owns strict YAML decoding, rule matching, plan
+construction, drift detection, confirmation requirements, invocation
+transformation, and built-in output processing.
 
-## Deliberately unsupported in this bootstrap
+## Compatibility boundary
 
-- Source-CLI help exploration or command-catalog generation.
-- A YAML or other policy schema.
-- Source command wrapping or execution.
-- Output transformation.
-- Claude Code hooks or another agent integration.
-- Usage-history storage or analysis.
-- Agent-generated policy activation.
-- RTK integration.
+The stable project identity is `Atsura`, binary `atr`, and Go module
+`github.com/tasuku43/atsura`.
+
+The following are not yet stable:
+
+- command paths and hook protocol;
+- YAML schema and storage locations;
+- catalog and plan schemas;
+- built-in action vocabulary;
+- output transformation contract;
+- raw route; and
+- source-CLI compatibility.
+
+## Deliberately unsupported now
+
+- A real source-CLI inspector or generated catalog.
+- A production YAML loader or policy engine.
+- Hook installation or command interception.
+- Wrapper execution and output transformation.
+- Arbitrary shell, jq, external-transformer, plugin, or RTK execution.
+- Usage-history collection and agent policy activation.
+- Direct external API integrations.
 - Release or package distribution.
-- Direct external API integrations and Atsura-owned credentials.
 
-## Research boundary
-
-Current behavior of RTK, Claude Code hooks, CLI wrappers, and policy tools must
-be verified from primary sources in later work. This contract makes no claim
-about their present capabilities or gaps.
+Current specifications of RTK, Claude Code hooks, and comparable wrapper or
+policy tools require later primary-source research.
