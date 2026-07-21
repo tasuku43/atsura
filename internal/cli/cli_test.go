@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tasuku43/atsura/internal/app/sourceinspect"
 	"github.com/tasuku43/atsura/internal/domain/doctor"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
@@ -653,6 +654,10 @@ func TestEveryCatalogCommandDispatchesThroughItsSpec(t *testing.T) {
 		if spec.Path == "run" {
 			t.Setenv(sourceHelperModeEnvironment, "success")
 			args = runSourceArgs(runPolicyFile(t, "allow"))
+		}
+		if spec.Path == "source inspect" {
+			command.sources = sourceinspect.New(map[string]sourceinspect.InspectorPort{"github-cli": &cliSourceInspector{}})
+			args = append(args, "--adapter", "github-cli", "--executable", "fixture")
 		}
 		if code := runCLI(command, args); code != ExitOK {
 			t.Errorf("Run(%q) code = %d, stderr = %q", spec.Path, code, stderr.String())

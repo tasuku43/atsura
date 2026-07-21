@@ -10,9 +10,11 @@ import (
 	"github.com/tasuku43/atsura/internal/app/doctorcmd"
 	"github.com/tasuku43/atsura/internal/app/planpreview"
 	"github.com/tasuku43/atsura/internal/app/samplecmd"
+	"github.com/tasuku43/atsura/internal/app/sourceinspect"
 	"github.com/tasuku43/atsura/internal/app/tailorrun"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
+	"github.com/tasuku43/atsura/internal/infra/githubcli"
 	"github.com/tasuku43/atsura/internal/infra/sampledata"
 	"github.com/tasuku43/atsura/internal/infra/sourceexec"
 	"github.com/tasuku43/atsura/internal/infra/sourcejson"
@@ -33,6 +35,7 @@ type CLI struct {
 	plans   *planpreview.Service
 	runs    *tailorrun.Service
 	samples *samplecmd.Service
+	sources *sourceinspect.Service
 }
 
 // New builds the production CLI with offline template adapters.
@@ -68,6 +71,9 @@ func newCLIWithSamples(
 		plans:   planpreview.New(tailoringyaml.New()),
 		runs:    tailorrun.New(tailoringyaml.New(), sourceexec.New(), sourcejson.New()),
 		samples: samplecmd.New(repository),
+		sources: sourceinspect.New(map[string]sourceinspect.InspectorPort{
+			"github-cli": githubcli.New(sourceexec.New()),
+		}),
 	}
 }
 

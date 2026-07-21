@@ -95,7 +95,8 @@ whose parsed major version is 2 and whose fixed probe outputs satisfy the
 driver grammar. It invokes only a finite declared probe set under per-process
 and aggregate time/byte/attempt bounds. The primary reference probe is
 `gh help reference`; commands declaring native `--json fields` may receive a
-bounded field-discovery probe. Inspection never invokes a provider task.
+bounded field-discovery probe. Atsura never requests a provider task during
+inspection; the selected local executable remains untrusted process code.
 
 Catalog entries classify provenance as:
 

@@ -73,3 +73,19 @@
 - Agent help discovery counts and routine external-processing count.
 - Setup/authentication scorecard and complete E2E transcript.
 - Gate outputs and final clean commit.
+
+## Iteration evidence
+
+- The first vendor-neutral catalog contract validates namespaced adapter kinds,
+  exact executable identity/version, three provenance classes, sorted command
+  and option evidence, structured-output selectors, finite probe facts,
+  canonical JSON, and SHA-256 identity.
+- An alternate synthetic adapter passes the application conformance test with
+  no GitHub or Claude field in shared values.
+- The GitHub CLI adapter requests exactly `version` and `help reference`, each
+  with a five-second process bound, 64 KiB stderr bound, and 64/256 KiB stdout
+  bound respectively; it requires unchanged executable identity.
+- A local offline smoke against GitHub CLI 2.72.0 produced 169 command entries,
+  31 JSON-capable entries, two source attempts, and a valid canonical digest.
+- `task check:fast` passed after the public `source inspect` catalog contract
+  and capability ledger entry were added.

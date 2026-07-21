@@ -14,9 +14,11 @@
 
 ## Catalog and bundle
 
-- [ ] Add failing domain and adapter tests for vendor-neutral identity, provenance, catalog, canonical encoding, adapter conformance, and probe budgets.
-- [ ] Implement GitHub CLI inspection and inspect/refresh application tasks.
-- [ ] Register source commands and capability contracts.
+- [x] Implement vendor-neutral canonical catalog values and alternate-adapter application conformance.
+- [x] Implement bounded GitHub CLI 2.x reference inspection and public `source inspect` output.
+- [x] Add failing domain and adapter tests for vendor-neutral identity, provenance, catalog, canonical encoding, adapter conformance, and probe budgets.
+- [ ] Implement `source refresh` comparison and persistence after the completed GitHub CLI inspection task.
+- [ ] Register the remaining source refresh command and capability contract.
 - [ ] Implement schema-2 policy init/validate and normalized policy.
 - [ ] Implement canonical bundle build, digest, trust receipt, and status/drift.
 

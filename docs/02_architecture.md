@@ -7,7 +7,9 @@ transformation from collapsing into an unrestricted wrapper.
 This document assigns intended responsibilities. The current binary implements
 both the no-execution YAML-to-plan preview and the bounded read-only local run
 selected by ADR 0002. ADR 0004 adds the v1 compiled-bundle target without
-changing the four-layer direction.
+changing the four-layer direction. The first ADR 0004 slice also implements a
+vendor-neutral catalog value, source-inspection application port, and bounded
+GitHub CLI reference adapter.
 
 ## Dependency direction
 

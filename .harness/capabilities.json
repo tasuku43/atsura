@@ -28,5 +28,10 @@
     "id": "tailoring.execute",
     "status": "public",
     "reason": ""
+  },
+  {
+    "id": "tailoring.catalog.inspect",
+    "status": "public",
+    "reason": ""
   }
 ]

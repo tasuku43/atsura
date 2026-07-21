@@ -3,7 +3,9 @@
 This model covers the YAML-to-plan-to-wrapper boundary. The current binary
 previews plans and implements ADR 0002's bounded v0.1 local read-only runner.
 ADR 0004 extends the model to catalog adapters, compiled bundles, persisted
-trust, and coding-agent host adapters.
+trust, and coding-agent host adapters. The current source-inspection slice
+requests two offline metadata probes but still treats the selected executable
+as untrusted process code.
 
 ## Security objective
 

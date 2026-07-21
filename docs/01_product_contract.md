@@ -272,6 +272,18 @@ Raw is explicit, manual, source-identity-bound, absent from the tailored
 surface, and never a recovery suggestion. Mutation plans require complete
 target and impact and cannot be unconditionally allowed in v1.
 
+`source inspect` is now executable as:
+
+```text
+atr source inspect --adapter github-cli --executable <path-or-name>
+```
+
+It requests exactly `version` and `help reference` under fixed process, time,
+and byte limits, requires one unchanged executable identity, emits canonical
+vendor-neutral catalog JSON plus its digest, and performs no provider task on
+behalf of the user. The selected executable is still untrusted local process
+code; Atsura cannot prove that a malicious replacement honors those arguments.
+
 ## Output failure boundary
 
 A source attempt and an output transform are separate facts. If transformation
@@ -328,8 +340,8 @@ The following remain versioned rather than universal:
 
 ## Deliberately unsupported now
 
-- A real source-CLI inspector or generated catalog.
-- Policy activation, precedence, inheritance, or trusted repository loading.
+- Catalog persistence/refresh and policy activation, precedence, inheritance,
+  or trusted repository loading.
 - Hook installation or command interception.
 - Create/write wrapper execution, confirmation, or mutation policy.
 - Non-JSON, streaming, aggregate, map, filter, sort, or multi-source output transforms.
