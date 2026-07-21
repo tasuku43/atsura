@@ -4,10 +4,12 @@
 
 Atsura is not yet published or released. The repository identity is
 `tasuku43/atsura`, the binary is `atr`, and MIT is the deliberate project
-license. ADR 0005 supersedes the earlier v0.1 local-run product boundary. The
-packaging mechanics below remain reviewed infrastructure, but they do not make
-the current zero-execution preview a released runtime product or authorize
-publication.
+license. ADR 0005 supersedes the earlier v0.1 local-run product boundary, and
+ADR 0006 accepts the narrow transform runtime. The
+packaging mechanics below remain reviewed infrastructure, but they do not
+authorize publication. The current runtime claim is intentionally narrower
+than the artifact matrix: one compatibility-admitted typed JSON transform
+boundary.
 
 The current first-release packaging decisions are:
 
@@ -31,10 +33,11 @@ The current first-release packaging decisions are:
 - require the repository owner to perform and record the final public-boundary
   review.
 
-These decisions fit the current pure-Go artifact and plan-inspection binary
-with no bundled provider SDK or credential store. A later source runtime,
-native hook, signing system, extra package manager, or non-Go runtime
-dependency must revise the matrix and release contract.
+These decisions fit the current pure-Go artifact and transform-runtime binary
+with no bundled provider SDK or credential store. The selected source CLI is an
+external user dependency. A later native hook, signing system, extra package
+manager, or non-Go runtime dependency must revise the matrix and release
+contract.
 
 The base template defines byte-for-byte reproducible archives within a pinned pure-Go build contract and a public, reproducible-enough overall release path without private package infrastructure. A derived project must review supported platforms, artifact signing, provenance, package managers, and compatibility promises before its first release.
 
@@ -196,12 +199,43 @@ task public:check
 Then review the exact commit that will receive the tag. A clean local run does not authorize tagging a different revision.
 
 Before a first release is approved, release preparation must replay the current
-public artifact, adoption, and `bundle preview` scenarios against the exact
-release artifacts. Preview must require the adopted current bundle, reproduce
-its canonical plan digest, and report `source_process_attempts: 0`. There is no
-current bundle-runtime, raw, or host-integration release claim. A future source
-runtime requires its own accepted compatibility corpus and release evidence;
-the retired legacy `plan preview`/`run` slice is not that evidence.
+public artifact, adoption, `bundle preview`, and `bundle execute` scenarios
+against the exact release artifacts. Preview must require the adopted current
+bundle, reproduce its canonical plan digest, and report
+`source_process_attempts: 0`. Execute must rebuild the same plan, report the
+same digest, and report exactly one attempt only after compatibility succeeds.
+
+The current executable runtime claim is limited to all of the following:
+
+- a strict schema-3 transform wrapper with JSON input and compact JSON output;
+- GitHub CLI adapter contract 2, GitHub CLI major 2, and a successful exact
+  four-probe inspection;
+- exact commands `issue list` and `pr list`;
+- exactly one inline `--json=<fields>` selector before `--`, with its field
+  order equal to the plan's `select` order;
+- rejection of competing `--jq`, `--template`, and `--web` output modes plus
+  unmodeled option or positional syntax;
+- every observable executable identity matching the bound path/hash/size, no
+  shell, closed stdin, inherited working directory and environment, one maximum
+  attempt, 30-second timeout, 4 MiB stdout, and 256 KiB stderr limits;
+- empty stderr on success, selected/renamed typed JSON only, and no persistence
+  or public inclusion of raw stdout, raw stderr, or unselected fields; and
+- non-retryable classification for every post-start or final-output failure.
+
+The credential- and network-free synthetic GitHub-compatible self-process
+fixture runs through the production verifier, runner, parser, transformer, and
+renderer and is the canonical automated gate. The accepted major-2 range is a
+maintained compatibility decision, not a claim that one fixture proves every
+future 2.x release. A live GitHub CLI observation is optional supporting
+evidence and must not persist account, repository, pull-request, or raw source
+data. Packaging checks alone do not prove source-runtime compatibility on every
+target platform; the first-tag review must record exact-artifact scenario
+evidence for each platform on which this runtime behavior is claimed.
+
+There is no current release claim for identity-wrapper execution, argv-only
+transforms, nonempty successful source stderr, raw execution, arbitrary
+transformers, or host integration. The retired legacy `plan preview`/`run`
+slice is not runtime evidence.
 
 ## Failure and recovery
 

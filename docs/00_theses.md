@@ -3,7 +3,8 @@
 These theses define Atsura's product direction. They are working hypotheses,
 but they govern implementation until evidence justifies another revision. ADR
 0005 corrects the authorization-centered interpretation introduced by ADR
-0004 while retaining its vendor-neutral, compiled-bundle architecture.
+0004, and ADR 0006 accepts the first compatibility-admitted transform runtime
+while retaining the vendor-neutral, compiled-bundle architecture.
 
 ## North star
 
@@ -31,7 +32,8 @@ adopted bundle + attempted source invocation
   -> compile one wrapper execution plan
   -> preview the plan and its digest without starting the source
      or
-  -> future: apply typed stages around one identity-bound source invocation
+  -> when the adapter admits the runtime contract, apply one typed JSON-output
+     stage around one identity-bound source invocation
 ```
 
 Source-CLI inspectors and coding-agent hosts are adapters. They can extend
@@ -152,9 +154,10 @@ A complete plan identifies at least:
 - tailored mode and finite source-process bounds.
 
 For an included command, successfully constructing the complete plan proves
-that the wrapper pipeline is fully described; it does not claim that current
-Atsura can execute it. For a command absent from the surface, plan construction
-returns a surface-resolution failure. Future execution must reuse this plan
+that the wrapper pipeline is fully described. Execution additionally requires
+an implemented runtime for the wrapper kind and adapter compatibility evidence
+for any source-native output contract. For a command absent from the surface, plan
+construction returns a surface-resolution failure. Execution reuses this plan
 logic; an old preview is never runtime authority after bundle or source drift.
 
 ### Mechanical enforcement target
@@ -165,9 +168,10 @@ catalog before checking command and option membership in the tailored surface.
 When a matched command has cataloged descendants, unresolved non-dash data is
 not guessed to be a child or a positional; an explicit `--` must disambiguate
 positional intent.
-Preview reports `source_process_attempts: 0`. Future execution must revalidate
-bundle and source identity, reuse this constructor, and start at most the
-number of source attempts declared by the wrapper contract.
+Preview reports `source_process_attempts: 0`. `bundle execute` revalidates the
+bundle and source identity, reuses this constructor, binds the plan's exact
+path/hash/size to the process boundary, and starts at most the one source
+attempt declared by the current wrapper contract.
 
 ## Thesis 5: The source CLI owns source-operation meaning and authorization
 
@@ -201,9 +205,13 @@ The preferred path is to request source-native structured output when the
 adapter can verify it, parse it within declared bounds, apply typed built-ins,
 and render a task-specific structure without inventing facts.
 
-Current preview verifies one active cataloged selector for the planned input
-format before `--`; it does not yet prove that the selector value encodes the
-requested select/rename fields for a running source adapter.
+Preview verifies one active cataloged selector for the planned input format
+before `--`. Runtime proceeds only when the exact source adapter kind, contract
+version, source version, command, complete argv grammar, and selector value are
+covered by maintained compatibility evidence. GitHub CLI adapter contract 2
+currently admits only `issue list` and `pr list` after four fixed offline
+version/reference/command-help probes. Successful stdout is still untrusted and
+must satisfy the bounded JSON parser and typed transform.
 
 Transform failure never changes argv, retries the source process, selects raw
 mode, or silently exposes unreviewed raw output. RTK-equivalent breadth remains
@@ -238,22 +246,26 @@ bundle-bound source identity but applies no surface selection, argv transform,
 or output transform. Raw is never automatic fallback, a recovery suggestion,
 or part of the tailored agent surface.
 
-## Release-quality hypothesis
+## Release-quality target
 
 Release quality closes one supported maintainer result rather than maximizing
 mechanism count. A result is supported only when it is discoverable, bounded,
 machine-interpretable without undeclared reconstruction, recoverable through
 declared faults, and verified against the same artifacts users install.
 
-The current minimal evidence slice is:
+The current implementation-quality slice is:
 
 **A maintainer can create a catalog-bound specification with an explicit
-surface default, include one verified command with either an identity or typed
-transforming wrapper, build and adopt the exact bundle, and preview the
-resolved wrapper pipeline without starting the source process.**
+surface default, include one verified command with a typed JSON-transforming
+wrapper, build and adopt the exact bundle, preview the resolved wrapper, and
+execute the same fresh plan once to receive only the selected and renamed typed
+JSON result.**
 
-This slice tests the corrected vocabulary before source runtime or host
-integration resumes.
+This slice tests the corrected surface/wrapper vocabulary at the controlled
+runtime boundary without adding source authorization or a host dependency. It
+reaches release quality only after the same scenario is replayed with the exact
+artifacts on every platform for which runtime support will be claimed; archive
+reproducibility alone is not that evidence.
 
 ## Current non-goals
 
@@ -265,8 +277,9 @@ integration resumes.
   initial specification.
 - Automatic raw or intact-output fallback.
 - Requiring a language model for routine execution.
-- Implementing source refresh, bundle runtime execution, raw, or host adapters
-  during the zero-execution preview milestone.
+- Executing identity wrappers, argv-only transforms, nonempty successful
+  stderr, or typed before/after actions in the initial transform runtime.
+- Source refresh, raw execution, or host adapters.
 - Publishing or releasing Atsura.
 
 ## Open questions
@@ -279,8 +292,8 @@ integration resumes.
   options, and command-specific positional arguments without guessing?
 - Should invocation transforms be allowed to append option-looking arguments
   after an existing `--`, where the source will interpret them as positional?
-- Which source adapters can prove the structured-output selector encoding used
-  by a wrapper rather than merely record it as a specification value?
+- Which source adapter should receive the next maintained runtime compatibility
+  contract after the first GitHub CLI `issue list`/`pr list` evidence?
 - Which source and host adapters should follow the first compatibility fixtures?
 - What stronger executable identity mechanism can close the remaining
   check-to-exec race on each supported platform?

@@ -528,7 +528,7 @@ func bundleExecuteErrors() []CommandError {
 		declaredCommandError(fault.KindNotFound, "command_not_in_surface", false, "help bundle execute", "Select a command present in the compiled tailored surface."),
 		declaredCommandError(fault.KindNotFound, "option_not_in_surface", false, "help bundle execute", "Use only options present in the matched command's tailored option surface."),
 		declaredCommandError(fault.KindContract, "invalid_wrapper_plan", false, "bundle preview", "Inspect the fresh plan and repair incomplete wrapper construction."),
-		declaredCommandError(fault.KindUnsupported, "wrapper_runtime_not_supported", false, "help bundle execute", "Use a transform wrapper and source adapter contract with proven JSON selector behavior."),
+		declaredCommandError(fault.KindUnsupported, "wrapper_runtime_not_supported", false, "help bundle execute", "Use a transform wrapper and source adapter contract with accepted JSON selector behavior."),
 		declaredCommandError(fault.KindContract, "invalid_source_process_request", false, "bundle preview", "Inspect the exact plan-derived source request before execution."),
 		declaredCommandError(fault.KindUnavailable, "source_process_start_failed", true, "bundle execute", "Retry the same invocation only when the result proves no source process started."),
 		declaredCommandError(fault.KindContract, "source_stdout_too_large", false, "help bundle execute", "Reduce source output within the declared bound; the source was not retried."),

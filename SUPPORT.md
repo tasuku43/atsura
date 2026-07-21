@@ -4,7 +4,8 @@ Atsura is pre-release and maintained on a best-effort basis. Support currently
 covers source inspection through the registered GitHub CLI adapter, schema-3
 tailoring specification creation and validation, schema-2 bundle compilation,
 exact-digest bundle status and interactive adoption, repository development,
-zero-execution schema-2 wrapper-plan preview, and the verification harness.
+zero-execution schema-2 wrapper-plan preview, the first narrow adapter-admitted
+typed JSON transform runtime, and the verification harness.
 
 ## Where to ask
 
@@ -24,6 +25,8 @@ output, or embargoed details in issues, discussions, or pull requests.
 - The smallest failing verification profile.
 - For artifact problems, the schema version and digest fields without
   confidential catalog or source content.
+- For runtime problems, adapter contract, source version, matched command,
+  plan digest, attempt count, and fault code; never attach raw source output.
 
 ## Current boundary
 
@@ -34,6 +37,7 @@ atr source inspect
 atr spec init / spec validate
 atr bundle build / bundle status / bundle trust
 atr bundle preview --bundle <path> -- <source-executable> <argv>
+atr bundle execute --bundle <path> -- <source-executable> <argv>
 ```
 
 Specification schema 3 composes command and option membership independently
@@ -48,12 +52,23 @@ then returns the complete deterministic plan and digest with
 source short options, root/global options, or command-specific positional
 arguments. A command with cataloged descendants requires an inner `--` before
 otherwise ambiguous positional data; appended argv after `--` stays after that
-marker. Preview proves an active selector and planned input format, but the
-selector value's select/rename encoding is not runtime-proven.
+marker. Preview proves an active selector and planned input format but does not
+apply it.
 
-Bundle-backed source execution, source refresh, hooks, host adapters, raw
-bypass, history, RTK or external transformers, additional source adapters, and
-published release installation are not current capabilities. Retired policy
+`bundle execute` independently rebuilds that plan. Current runtime support is
+limited to schema-3 JSON transform wrappers for GitHub CLI adapter contract 2,
+GitHub CLI major 2, and exact commands `issue list` and `pr list`. The adapter
+must admit the complete argv and exact inline ordered `--json` selector before
+one bounded source attempt. Competing `--jq`, `--template`, and `--web` modes,
+unmodeled positional or option syntax, and unsupported wrapper/adapter/version
+combinations fail before start. Successful stdout is still parsed and
+transformed strictly; raw stdout, stderr, and unselected fields are not returned
+or persisted.
+
+Identity-wrapper and argv-only-transform execution, nonempty successful stderr,
+source refresh, hooks, host adapters, raw bypass, history, RTK or external
+transformers, additional runtime adapter contracts, and published release
+installation are not current capabilities. Retired policy
 schemas 1 and 2, bundle schema 1, legacy `plan preview`, and `run` are supported
 only by explicit zero-execution migration diagnostics and are not automatically
 converted.

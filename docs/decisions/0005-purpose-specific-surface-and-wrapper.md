@@ -6,6 +6,7 @@
 - Scope: Product semantics, tailoring schema, bundle, plan, operation effects, trust, host adapters, migration, and release quality
 - Supersedes: docs/decisions/0002-v0.1-local-run-boundary.md and docs/decisions/0004-v1-compiled-tailoring-bundle.md
 - Superseded by: None
+- Extended by: docs/decisions/0006-adapter-proven-transform-runtime.md
 
 ## Context
 
@@ -96,9 +97,10 @@ stages, finite process bounds, the exact applied specification entry or `null`
 for inheritance, reason, and tailored mode. Its canonical bytes determine the
 plan digest; the preview reports `source_process_attempts: 0`.
 
-An included command with a complete plan is structurally applicable after
-future runtime revalidates its authority and adapter compatibility; current
-preview does not apply it. A command outside the surface has no plan.
+At acceptance, an included command with a complete plan was only structurally
+applicable and preview did not apply it. ADR 0006 accepts the first narrow
+adapter-proven transform runtime. A command outside the surface still has no
+plan.
 Confirmation is not a universal source
 permission state; if evidence later requires interaction, it must be a typed
 wrapper stage or a host interaction request with its own contract.
@@ -108,8 +110,8 @@ catalog before evaluating command and option membership. This avoids treating
 the tailored surface as a competing command registry. A non-dash token after a
 matched command with cataloged descendants is not guessed to be an unobserved
 child or positional value; the caller must use `--` to state positional intent.
-Future execution must reuse the same constructor and revalidate authority
-rather than treating an old preview as runtime authority.
+Execution must reuse the same constructor and revalidate authority rather than
+treating an old preview as runtime authority.
 
 ### Source-owned execution and Atsura-owned mutation
 
@@ -161,8 +163,9 @@ An automatic converter is not selected. In particular, hidden/deny and
 confirm/create/write rules cannot be mapped without inventing surface or source
 meaning. A maintainer creates and reviews a new schema-3 specification.
 
-The legacy `plan preview` path remains migration-only. Source refresh, bundle
-runtime execution, raw, and host integration remain unimplemented.
+The legacy `plan preview` path remains migration-only. At acceptance, source
+refresh, bundle runtime execution, raw, and host integration were unimplemented;
+ADR 0006 implements only the bounded transform-runtime subset.
 
 ## Consequences
 
@@ -180,9 +183,9 @@ runtime execution, raw, and host integration remain unimplemented.
 
 - Existing experimental specifications and bundles require deliberate
   recreation and adoption.
-- The previous authorization preview/run slice is retired; the replacement
-  exposes only zero-execution wrapper-plan inspection while runtime remains
-  unimplemented.
+- The previous authorization preview/run slice is retired. ADR 0006 extends
+  its zero-execution replacement with one bounded transform runtime rather than
+  reviving the retired source-policy model.
 - Surface and option composition add schema and validation complexity.
 - `EffectExecute` requires catalog and invariant audits that cannot treat every
   non-read command as a mutation.

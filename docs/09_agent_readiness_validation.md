@@ -196,14 +196,15 @@ measurements were 1,517 bytes for root agent help, 5,359 bytes for exact
 `sample read` help, and 8,359 bytes for the `sample` namespace. The 512-byte
 limit continues to bound each root selection entry.
 
-With schema 8, measured on 2026-07-21 for the wrapper-preview catalog, the
-current root is 5,114 bytes, exact `sample read` help is 5,845 bytes, and the
+With schema 8, measured on 2026-07-21 for the transform-runtime catalog, the
+current root is 5,489 bytes, exact `sample read` help is 5,845 bytes, and the
 `sample` namespace is 8,734 bytes. Exact artifact contracts remain scoped:
 `spec validate` is 8,967 bytes, `bundle build` is 8,386 bytes, `bundle status`
-is 7,527 bytes, `bundle trust` is 8,743 bytes, and `bundle preview` is 16,369
-bytes. Preview's larger scoped contract includes the versioned `wrapper-plan`
-JSON-pointer field/type inventory. The root contains selection entries rather than those complete
-invocation and failure contracts.
+is 7,527 bytes, `bundle trust` is 8,743 bytes, `bundle preview` is 16,654
+bytes, and `bundle execute` is 14,655 bytes. Preview's larger scoped contract
+includes the versioned `wrapper-plan` JSON-pointer field/type inventory. The
+root contains selection entries rather than those complete invocation and
+failure contracts.
 
 Schema 8 retains the fixed derived-scale regression with six selected commands, 18
 producer endpoints, 18 consumer endpoints, and 324 implicit same-kind edges.
@@ -262,8 +263,8 @@ go run ./cmd/atr bundle status --bundle /tmp/atsura-bundle.json
 ```
 
 Root selection plus one `spec` namespace request meets the two-invocation
-unknown-surface bound. The source inspection reports the adapter's exact
-bounded offline probe count. The generated specification is exclude-by-default
+unknown-surface bound. The GitHub CLI source inspection reports exactly four
+bounded offline probe attempts. The generated specification is exclude-by-default
 and contains one exact included verified command with inherited options and an
 identity wrapper. Validation returns the normalized specification, its digest,
 and surface/wrapper counts. Repeating bundle build with identical catalog and
@@ -292,9 +293,9 @@ rebound. `spec init` is the executable route to a catalog-bound draft.
   effect.
 
 This scenario validates artifact inspection, specification composition, and
-deterministic compilation. Scenario E separately owns wrapper-plan preview.
-Neither scenario validates bundle runtime, output transformation at runtime,
-raw bypass, or host integration.
+deterministic compilation. Scenario E separately owns wrapper-plan preview and
+Scenario F owns the first transform runtime. This scenario does not validate
+runtime output transformation, raw bypass, or host integration.
 
 ## Scenario D: Atsura bundle adoption
 
@@ -384,7 +385,7 @@ plan binds:
 - original and transformed argv;
 - ordered before, invoke, output, and after stages; and
 - closed stdin, inherited working-directory and environment modes, plus maximum
-  attempts, timeout, stdout, and stderr bounds for the future source invocation.
+  attempts, timeout, stdout, and stderr bounds for a source invocation.
 
 The plan digest is the SHA-256 identity of the canonical complete plan.
 Repeating preview with identical validated evidence and argv returns the same
@@ -427,9 +428,10 @@ before otherwise ambiguous positional data. `append_args` are appended to the
 exact attempted argv even when
 it already contains `--`; option-looking appended values then remain after the
 positional-only marker rather than being silently relocated. Preview requires
-one active cataloged selector matching the planned input format, but does not
-prove that its value encodes the requested select/rename fields against a
-running source adapter or transformer.
+one active cataloged selector matching the planned input format, but preview
+alone does not prove that its value encodes the requested select fields. The
+GitHub CLI compatibility contract in Scenario F makes that narrower command-
+and adapter-specific admission check before execution.
 
 ### Acceptance
 
@@ -440,6 +442,92 @@ inherited surface origin without reconstructing policy, and select every
 recovery command from structured faults. Routine external processing and
 source-process attempts are both zero. This acceptance proves plan inspection,
 not runtime application, raw execution, or host integration.
+
+## Scenario F: Atsura compatibility-admitted JSON transform execution
+
+### Outcome
+
+Given one adopted schema-2 bundle containing a supported transform wrapper, a
+maintainer can run one exact GitHub CLI `issue list` or `pr list` invocation and
+receive only the configured selected and renamed typed JSON fields.
+
+### Runnable probe
+
+Start with the catalog from Scenario C. Replace the `spec init` identity
+wrapper with the transform shown in
+[the schema-3 example](../examples/tailoring-spec.schema3.yaml), preserving the
+generated catalog digest, then validate, build, and adopt the resulting bundle.
+The user invocation deliberately omits `--json`; Atsura's wrapper appends the
+exact selector:
+
+```sh
+go run ./cmd/atr help bundle execute --format agent
+go run ./cmd/atr bundle preview \
+  --bundle /tmp/atsura-bundle.json \
+  -- gh pr list --limit=1
+go run ./cmd/atr bundle execute \
+  --bundle /tmp/atsura-bundle.json \
+  -- gh pr list --limit=1
+```
+
+The exact scoped help publishes the positional-only grammar and fixed schema-2
+execution output. Execute strictly reloads the adopted bundle, reassesses the
+current source identity, and rebuilds the same wrapper plan used by preview. It
+then requires GitHub CLI adapter contract 2, source major 2, exact command
+`issue list` or `pr list`, the complete maintained argv grammar, JSON output,
+and exactly one inline
+`--json=<ordered-select>` before any positional-only marker.
+
+On success, `execution.plan_digest` equals preview's `plan_digest`,
+`source_process_attempts` is one, `source.exit_code` is zero, and
+`execution.output` preserves object-versus-array shape, final field order, and
+selected/renamed typed records. For the example, the fields are
+`["id","title","state"]`; raw stdout, stderr, and unselected source fields are
+absent. Interpreting these declared fields requires no custom parser, join,
+source inspection, provider-notation decoding, or external model call.
+
+The runnable live probe uses the caller's GitHub CLI authentication and current
+repository context. It is supporting observation only. The canonical gate is a
+credential- and network-free synthetic GitHub-compatible plan and self-process
+fixture that runs through the production compatibility verifier,
+identity-bound runner, parser, transformer, and CLI renderer.
+
+### Recovery probes
+
+- Unsupported adapter contract, source major version, command, identity
+  wrapper, argv-only transform, output mode, or selector encoding fails with
+  zero source attempts.
+- Competing `--jq`, `--template`, or `--web` output modes, unmodeled options,
+  and positional arguments fail before source start.
+- Missing adoption, source drift, surface absence, option absence, and invalid
+  invocation fail through the same pre-start contracts as preview.
+- Source nonzero exit, timeout, output-limit failure, identity drift after
+  start, malformed or duplicate-key JSON, missing selected fields, nonempty
+  successful stderr, transform failure, cancellation after start, and final
+  output failure are non-retryable after exactly one attempt.
+- A failure never returns raw source output, retries with modified argv, drops
+  the transform, or falls back to raw execution.
+- Source authentication, authorization, and operation semantics remain owned by
+  the source CLI; the transform runtime does not reinterpret them as an Atsura
+  permission decision.
+
+### Current compatibility limits
+
+This scenario does not cover identity-wrapper execution, argv-only transforms,
+nonempty successful stderr, a source CLI beyond an accepted runtime adapter,
+raw execution, arbitrary shell/jq/RTK/plugin transformers, or host integration.
+It does not claim that every GitHub CLI major-2 command is supported.
+The accepted major-2 range is a maintained compatibility decision rather than
+proof that one captured fixture predicts every future 2.x release.
+
+### Acceptance
+
+An agent that knows the exact path obtains its complete execution contract with
+one scoped-help invocation; an unknown-path agent uses at most the root index
+plus that scoped contract. Preview starts zero source processes, successful
+execute starts exactly one, and both identify the same canonical plan. Routine
+external interpretation count is zero, and every recovery action comes from a
+structured fault rather than from raw source data.
 
 ## Review record
 

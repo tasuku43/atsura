@@ -2,9 +2,9 @@
 
 The harness turns Atsura's product, architecture, and security claims into
 repeatable checks. A capability is complete only when `task check` passes. The
-current zero-execution wrapper-preview milestone also requires `task security`
-because it admits an attempted source invocation, observes executable identity,
-and exposes a new canonical plan contract.
+current transform-runtime milestone also requires `task security` because it
+admits an attempted source invocation, observes executable identity, exposes a
+canonical plan contract, and can start one compatibility-admitted source process.
 
 Do not weaken a check to preserve the superseded authorization-centered model.
 Update the governing contract and its mechanical claim together.
@@ -31,9 +31,15 @@ The underlying stable interface is:
 
 `task check` is the implementation completion gate. Publication additionally
 requires `task public:check`; release additionally requires
-`task release:check`. Public and release profiles are not completion gates for
-the current non-publication preview milestone unless its changes affect their
-tracked fixtures.
+`task release:check`. Public and release profiles are not implementation
+completion gates for the current non-publication milestone unless its changes
+affect their tracked fixtures. They remain required evidence before any
+publication or release.
+
+The transform-runtime work packet deliberately runs both profiles as broad
+regression evidence because it changes public documentation and release claims.
+Passing them does not replace the exact-artifact runtime replay required before
+a first tag.
 
 ## Executable claims
 
@@ -60,8 +66,9 @@ defaults or bypass the bootstrap transaction.
 
 Contract tests must prove:
 
-- source adapters declare namespaced kind, contract version, compatible source
-  range, exact probe argv, and finite attempts/time/bytes;
+- source adapters declare namespaced kind, contract version, exact probe argv,
+  and finite attempts/time/bytes; adapter contracts and tests define and
+  enforce their accepted source-version range;
 - source identity and probe evidence are preserved in the catalog;
 - verified built-ins, observed extensions, and unverified dynamic entries stay
   distinct;
@@ -160,6 +167,8 @@ zero-execution plan boundary. Tests must prove:
   identity, matched command and surface origin, wrapper kind, reason, option
   surface, original/transformed argv, and ordered before/invoke/output/after
   stages;
+- the invocation stage declares closed stdin plus inherited working directory
+  and environment modes without serializing ambient values;
 - the invoke stage declares exactly one maximum attempt plus finite timeout,
   stdout, and stderr bounds, even though preview never crosses that boundary;
 - `append_args` appear exactly at the end of transformed argv;
@@ -186,8 +195,40 @@ active selector flag and declared input format, not that the selector value
 encodes the plan's requested select/rename fields. That encoding requires a
 source-adapter runtime fixture.
 
-Future runtime must use this same plan constructor and compare plan identity
-directly; it may not consume an old preview as authority.
+Runtime uses this same plan constructor and tests exact plan-digest equality
+with preview for the same admitted input. It rebuilds the plan and may not
+consume an old preview as authority.
+
+### Transform runtime contract
+
+`bundle execute --bundle <path> -- <source-executable> <argv>` is the first
+public source-runtime boundary. Tests must prove:
+
+- the same strict bundle, adoption, current-identity, surface, option, and plan
+  checks as preview complete before source start;
+- the current GitHub CLI runtime adapter accepts only its exact contract,
+  compatible major version, `issue list` or `pr list`, JSON output mode, and
+  one selector whose ordered value exactly equals the plan's selected fields;
+- unsupported adapters, versions, commands, identity wrappers, argv-only
+  transforms, missing or mismatched selectors, and unmodeled invocation forms
+  fail with zero source-process attempts;
+- execution is bound to the plan's exact resolved path, SHA-256, and size and
+  revalidates that identity before start and after wait;
+- the source process starts at most once with exact argv, no shell, closed
+  stdin, inherited working directory and environment, and finite timeout and
+  output bounds;
+- successful nonempty source stderr, nonzero exit, malformed or duplicate-key
+  JSON, missing selected fields, limit failures, cancellation after start,
+  identity drift, transform failure, and final output failure are
+  non-retryable and never expose raw source output;
+- successful output contains only the fixed execution envelope, selected and
+  renamed typed JSON fields, plan and bundle digests, matched command,
+  transformation metadata, exit code, and the exact attempt count of one;
+- a missing selected field fails, while explicit empty, zero, false, null,
+  lexical number values, object versus array shape, field order, nested JSON
+  types, and visible projection of structural external text remain distinct;
+- secret-shaped canaries in unselected fields and source stderr do not appear
+  in success output, faults, persisted bundles, receipts, or diagnostics.
 
 ### Source execution effect and process boundary
 
@@ -203,8 +244,9 @@ Operation tests must prove:
 Existing source-inspection process tests retain exact executable/argv,
 no-shell, identity revalidation, time/byte limits, declared attempt counts, and
 non-retryable post-start uncertainty. `bundle preview` is `EffectRead` and
-starts no source process. Bundle runtime is outside this milestone and must not
-be presented as implemented.
+starts no source process. `bundle execute` is `EffectExecute`, has no Atsura
+mutation contract, and starts at most one source process after compatibility
+and identity checks succeed.
 
 ### Retired-schema migration
 
@@ -256,18 +298,21 @@ snapshots, transcripts, and agent reasoning are absent.
 - Domain tests own specification, surface, wrapper, bundle, digest, effect,
   full-catalog matching, option admission, plan, and pure resolution invariants.
 - Application tests own ordering, port calls, adoption assessment, current
-  source identity assessment, mutation invocation, and zero-attempt behavior.
+  source identity assessment, mutation invocation, zero-attempt rejection,
+  one-attempt execution, and post-start fault classification.
 - Infrastructure tests own bounded strict codecs, executable identity, process
   limits, safe local persistence, and adapter protocol mechanics.
 - CLI tests own catalog registration, typed argv, help, output schemas,
   migration recovery, and stdout/stderr routing.
-- End-to-end fixtures own clean-state specification through bundle status,
-  adoption, and zero-execution preview without real provider or network
-  effects.
+- CLI integration fixtures own clean-state specification through bundle status,
+  adoption and preview, plus one synthetic GitHub-compatible transform that
+  runs through the production compatibility verifier, identity-bound process
+  runner, parser, transformer, and result renderer without provider credentials
+  or network effects.
 - Architecture and public guards own dependency direction and secret-free
   repository state.
 
-## Wrapper-preview milestone gate
+## Transform-runtime milestone gate
 
 This milestone is complete only when all of the following are true on the same
 tree:
@@ -278,16 +323,23 @@ tree:
 4. adopted/current bundle preview covers identity and transforming wrappers,
    explicit and inherited surface entries, longest-prefix matching, option
    absence, stable plan digests, and exactly zero source attempts;
-5. retired authorization schemas fail with zero source attempts and legacy
+5. compatibility-admitted GitHub CLI `issue list` and `pr list` transformation execution
+   covers exact selector encoding, preview/execute plan-digest equality,
+   selected/renamed typed JSON, no raw-output leak, and exactly one source
+   attempt;
+6. unsupported runtime combinations and every pre-start contract failure record
+   zero attempts, while post-start failures record one and are non-retryable;
+7. retired authorization schemas fail with zero source attempts and legacy
    `plan preview` remains migration-only;
-6. `task check` passes;
-7. `task security` passes; and
-8. repository search finds no live source-wrapper requirement for
+8. `task check` passes;
+9. `task security` passes; and
+10. repository search finds no live source-wrapper requirement for
    allow/confirm/deny, source read/create/write, or source target/impact outside
    explicit migration and superseded-history contexts.
 
-The gate does not claim bundle execution, raw execution, host installation, or
-release readiness.
+The gate does not claim identity-wrapper or argv-only-transform execution, raw
+execution, host installation, arbitrary transformer integration, support for a
+source CLI beyond an accepted adapter contract, or publication readiness.
 
 ## Evidence discipline
 

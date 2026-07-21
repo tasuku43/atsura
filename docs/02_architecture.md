@@ -4,12 +4,15 @@ Atsura keeps source inspection, surface composition, wrapper planning, source
 execution, and presentation in separate layers. ADR 0005 supersedes the
 authorization-centered source-wrapper model from ADR 0004: the core compiles a
 purpose-specific command and option surface plus deterministic wrapper
-pipelines. It does not decide whether a source operation is permitted.
+pipelines. It does not decide whether a source operation is permitted. ADR
+0006 adds the first compatibility-admitted transform runtime without making its
+GitHub CLI evidence part of the shared model.
 
-The current zero-execution preview milestone extends strict schema-3
-specification loading, schema-2 bundle compilation and adoption, and pure
-surface resolution through one complete bundle-backed wrapper plan. Source
-runtime, raw execution, and host adapters remain unimplemented.
+The current runtime milestone extends strict schema-3 specification loading,
+schema-2 bundle compilation/adoption, and pure surface resolution through one
+complete bundle-backed wrapper plan into one compatibility-admitted JSON
+transform execution. Identity/raw execution and host adapters remain
+unimplemented.
 
 ## Dependency direction
 
@@ -47,7 +50,12 @@ adopted bundle + attempted invocation
   -> pure surface and option resolution
        -> absent command: command_not_in_surface, no wrapper plan
        -> included command: one complete schema-3 wrapper plan and digest
-  -> zero source-process attempts
+  -> preview: zero source-process attempts
+     or
+  -> compatibility-admitted transform runtime
+       -> plan-derived expected path/hash/size and exact argv
+       -> one no-shell source attempt
+       -> bounded JSON parse -> pure select/rename -> fixed result envelope
 ```
 
 Surface membership and wrapper behavior are independent inputs to compilation.
@@ -55,7 +63,7 @@ An excluded command has no wrapper. An included command has an explicit option
 surface and exactly one complete wrapper. A wrapper change cannot add a
 command, and a membership change cannot invent a transformation.
 
-Current preview owns one pure plan constructor that future execution must reuse:
+Preview and supported execution share one pure plan constructor:
 
 ```text
 typed before stages
@@ -144,17 +152,18 @@ host protocol.
   construct one pure wrapper plan without starting the source;
 - coordinate Atsura-owned trust-store changes through the central mutation
   invoker; and
-- later apply that same complete wrapper plan through an
-  identity-bound source-process port.
+- apply a supported transform plan through an identity-bound source-process
+  port, a vendor-neutral compatibility port, strict source-format parser, and
+  pure transformer.
 
 Application code receives typed observations. It does not parse vendor help,
 YAML, arbitrary source bytes, shell syntax, or host payloads. It does not infer
 source-operation meaning or authorization.
 
-When runtime resumes, a source launch declares `EffectExecute`. The application
-will bind exact source identity and argv, require finite attempts/time/bytes,
-and treat an unknown post-start outcome as non-retryable. It will not attach an
-Atsura mutation target or impact to the downstream source operation.
+A source launch declares `EffectExecute`. The application binds exact source
+identity and argv, requires finite attempts/time/bytes, and treats every
+unknown post-start outcome as non-retryable. It attaches no Atsura mutation
+target or impact to the downstream source operation.
 
 ### Infrastructure
 
@@ -166,15 +175,19 @@ Atsura mutation target or impact to the downstream source operation.
 - reject duplicate or unknown fields and retired schema versions;
 - read and persist exact-digest adoption receipts safely;
 - observe the current path/hash/size identity used by zero-execution preview;
-- execute a future exact executable plus argv vector without a shell under
+- execute an exact plan-bound executable plus argv vector without a shell under
   declared time and byte bounds;
+- admit only command and argv combinations covered by the exact source-adapter
+  compatibility contract before a source attempt;
 - parse declared source formats through bounded decoders; and
 - translate a future host protocol without changing core surface or wrapper
   meaning.
 
-Each source adapter owns its probe grammar, compatible versions, attempt and
-byte budgets, and conversion into the shared catalog. Each host adapter owns
-only protocol decoding, protocol response mapping, and exact-owner settings
+Each source adapter owns its probe grammar, accepted version range, runtime
+argv contract, attempt and byte budgets, and conversion into the shared
+catalog. Compatibility admission does not make stdout trusted; the format
+parser and transformer still validate every successful result. Each host
+adapter owns only protocol decoding, protocol response mapping, and exact-owner settings
 persistence. A host `allow`, `ask`, or `deny` response is transport vocabulary,
 not a core permission state.
 
@@ -190,19 +203,25 @@ will authorize its downstream operation.
 - specification validation and bundle-build presentation;
 - adoption and drift status presentation;
 - stable migration diagnostics for retired policy and bundle schemas;
-- schema-2 wrapper-plan and future tailored-result rendering; and
+- schema-3 wrapper-plan and schema-2 tailored-result rendering; and
 - composition of application tasks with infrastructure adapters.
 
-The preview milestone does not add bundle execution, raw execution, or host
-installation commands. Retired authorization command paths may remain only as
-catalog-declared migration diagnostics and must start zero source processes.
+The current CLI composition injects the GitHub CLI contract-2 verifier into the
+generic execution application service. A later source adapter supplies another
+implementation of the same compatibility port; it does not add provider fields
+to the plan or result.
+
+The transform-runtime milestone does not add identity/raw execution or host
+installation commands. Retired authorization command paths remain only as
+catalog-declared migration diagnostics and start zero source processes.
 
 ## Controlled side-effect boundaries
 
 ### Source-owned process execution
 
-Starting a source executable is `operation.EffectExecute`. The process port is
-identity-bound, argv-vector-only, no-shell, and bounded by explicit attempts,
+Starting a source executable is `operation.EffectExecute`. The process port
+requires every observable identity to match the plan-bound path/hash/size, is
+argv-vector-only and no-shell, and is bounded by explicit attempts,
 time, stdout, and stderr limits. The source CLI remains responsible for its
 prompts, credentials, authorization, remote destinations, and downstream
 effects. A post-start unknown outcome cannot be reported as safe to retry.
@@ -242,7 +261,7 @@ core authorization judgment or claim that a hidden command is sandboxed.
 
 ## Current milestone boundary
 
-The finite zero-execution preview milestone is:
+The finite transform-runtime milestone is:
 
 ```text
 strict schema-3 specification
@@ -254,15 +273,21 @@ strict schema-3 specification
   -> longest full-catalog command match
   -> included/absent command and option resolution
   -> complete schema-3 wrapper plan + digest
-  -> source_process_attempts: 0
+  -> preview: source_process_attempts: 0
+     or
+  -> exact adapter compatibility admission
+  -> plan-derived bound request
+  -> one source attempt
+  -> bounded typed JSON transform
+  -> schema-2 execution result with source_process_attempts: 1
 
 retired authorization schema or command
   -> explicit migration diagnostic
   -> zero source-process attempts
 ```
 
-Runtime plan application, raw execution, source refresh, and host integration
-are deliberately outside this milestone.
+Identity/argv-only plan application, raw execution, source refresh, and host
+integration are deliberately outside this milestone.
 
 ## Unresolved architecture decisions
 
@@ -273,9 +298,8 @@ are deliberately outside this milestone.
   disambiguation rule.
 - Whether `append_args` may follow an existing positional-only `--`, and how a
   wrapper should express any required insertion point.
-- How each source adapter proves its structured-output selector encoding before
-  runtime applies that transform; current preview proves only one active
-  cataloged selector and its declared input format.
+- Which source adapters and commands should gain a maintained runtime contract
+  after GitHub CLI contract 2 `issue list` and `pr list`.
 - Whether named profiles or multiple adopted bundles are needed and how they
   are selected.
 - Executable identity evidence beyond exact path, bytes, observed version, and

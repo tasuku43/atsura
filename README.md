@@ -10,12 +10,13 @@ authorization, operation semantics, and remote effects.
 
 ## Project status
 
-The current milestone implements artifact compilation, adoption, and
-zero-execution wrapper-plan inspection, not bundle-backed source execution:
+The current milestone implements artifact compilation, adoption, deterministic
+wrapper-plan inspection, and one narrow bundle-backed transformation runtime:
 
 ```text
 source inspect -> spec init/validate -> bundle build -> bundle status/trust
   -> bundle preview
+  -> bundle execute
 ```
 
 - Tailoring specification schema 3 independently declares command membership,
@@ -27,12 +28,17 @@ source inspect -> spec init/validate -> bundle build -> bundle status/trust
 - `bundle preview --bundle <path> -- <source-executable> <argv>` returns one
   deterministic schema-3 wrapper plan and digest with zero source-process
   attempts.
+- `bundle execute` rebuilds that plan and, for a compatibility-admitted GitHub
+  CLI `issue list` or `pr list` JSON transform, requires every observable
+  executable identity to match the bundle and starts at most once before
+  returning only selected/renamed typed JSON.
 - The retired authorization-oriented policy schemas, legacy `plan preview`,
   and `run` have migration diagnostics only. They are not current tailoring
   capabilities.
 
-Source refresh, bundle runtime execution, raw bypass, and host adapters remain
-unimplemented.
+Identity-wrapper execution, argv-only transforms, successful nonempty source
+stderr, source refresh, raw bypass, additional adapter contracts, and host
+adapters remain unimplemented.
 
 The `atr` binary also contains the foundry's `doctor` and synthetic `sample`
 commands as executable architecture and harness examples. They are not
@@ -62,7 +68,11 @@ catalog + reviewed schema-3 specification
 exact bundle digest
   -> explicit user adoption
   -> current source path/hash/size validation
-  -> deterministic zero-execution wrapper plan + digest
+  -> deterministic wrapper plan + digest
+     -> preview with zero source attempts
+     -> adapter compatibility admission
+        -> one bounded source process
+        -> selected/renamed typed JSON result
 ```
 
 An excluded command is absent from the tailored surface; it is not denied or
@@ -73,8 +83,8 @@ feature, not an OS sandbox.
 
 ## Try the artifact workflow
 
-The first source adapter inspects an installed GitHub CLI using two bounded
-offline probes. From the repository root, with `gh` installed:
+The first source adapter inspects an installed GitHub CLI using four bounded
+offline probes. From the repository root, with GitHub CLI 2.x installed:
 
 ```sh
 go run ./cmd/atr source inspect \
@@ -84,7 +94,34 @@ go run ./cmd/atr source inspect \
 go run ./cmd/atr spec init \
   --catalog /tmp/atsura-catalog.json \
   -- pr list > /tmp/atsura-spec.yaml
+```
 
+`spec init` creates an exclude-by-default specification containing one exact
+verified command with inherited options and an identity wrapper. Review and
+edit that file before validation and compilation. To exercise the current
+runtime, replace the generated command's `wrapper` with this built-in JSON
+transform:
+
+```yaml
+wrapper:
+  kind: transform
+  before: []
+  invoke:
+    append_args: ["--json=number,title,state"]
+  output:
+    input: json
+    select: [number, title, state]
+    rename:
+      - from: number
+        to: id
+    render: compact_json
+  after: []
+```
+
+After editing the generated specification, validate and compile those exact
+bytes:
+
+```sh
 go run ./cmd/atr spec validate \
   --catalog /tmp/atsura-catalog.json \
   --spec /tmp/atsura-spec.yaml
@@ -97,9 +134,7 @@ go run ./cmd/atr bundle status \
   --bundle /tmp/atsura-bundle.json
 ```
 
-`spec init` creates an exclude-by-default specification containing one exact
-verified command with inherited options and an identity wrapper. Review and
-edit that file before validation and compilation. The static
+The static
 [schema-3 example](examples/tailoring-spec.schema3.yaml) illustrates the strict
 shape, but its placeholder catalog digest must be replaced by the digest from
 the exact inspected catalog; `spec init` is the reliable way to produce a bound
@@ -113,16 +148,31 @@ go run ./cmd/atr bundle trust --bundle /tmp/atsura-bundle.json
 go run ./cmd/atr bundle status --bundle /tmp/atsura-bundle.json
 go run ./cmd/atr bundle preview \
   --bundle /tmp/atsura-bundle.json \
-  -- gh pr list
+  -- gh pr list --limit=2
+go run ./cmd/atr bundle execute \
+  --bundle /tmp/atsura-bundle.json \
+  -- gh pr list --limit=2
 ```
 
 `bundle preview` requires the exact bundle digest to be adopted and the current
 source path, SHA-256, and size to match its catalog evidence. It selects the
 longest command prefix from the complete catalog, applies command and option
 surface membership, and returns source/adapter identity, the exact or `null`
-specification entry, original/transformed argv, ordered stages, finite future
+specification entry, original/transformed argv, ordered stages, finite
 process bounds, and a canonical plan digest. It always reports
 `source_process_attempts: 0` and does not transform output at preview time.
+
+`bundle execute` independently rebuilds the plan rather than trusting preview
+output, verifies GitHub CLI adapter contract 2, the complete supported argv,
+and the exact ordered `--json` selector, then starts the identity-checked
+resolved path once without a shell. Successful stdout is still strictly parsed
+and transformed. Its fixed
+schema-2 result contains the bundle and plan digests, matched command,
+transformation shape and fields, selected records, exit code, and
+`source_process_attempts: 1`. Raw stdout, stderr, and unselected fields are not
+returned or persisted. This live probe uses the source CLI's own authentication
+and repository context; the credential- and network-free synthetic fixture is
+the canonical test evidence.
 
 Use `atr help <exact-command> --format agent` for the complete machine-readable
 contract. Agent help currently uses schema version 8; object outputs may publish
@@ -140,7 +190,8 @@ The following remain later research or vertical-slice decisions:
 
 - additional source CLIs and adapter compatibility;
 - source refresh and command-discovery depth;
-- bundle runtime and exact post-start failure behavior;
+- execution of identity wrappers, argv-only transforms, and nonempty successful
+  stderr;
 - Claude Code and other host-adapter responsibilities;
 - wrapper installation or hook integration mechanisms;
 - raw tailoring bypass;
@@ -153,10 +204,12 @@ root/global options, and command-specific positional grammar are not completely
 modeled. If a matched command has cataloged descendants, an unknown following
 non-dash token is ambiguous rather than assumed positional; use an inner `--`
 before positional data. `append_args` remain at the end even after an existing
-`--`, and option-looking values there are positional. Preview requires one active
-cataloged selector matching a planned structured input, but its value's
-select/rename encoding is not proven against a running source adapter. These
-are compatibility limits, not inferred behavior.
+`--`, and option-looking values there are positional. Preview requires one
+active cataloged selector matching a planned structured input. Execute
+additionally requires the current adapter contract to admit the exact ordered
+selector and complete argv. Competing `--jq`, `--template`, and `--web` output
+modes plus unmodeled positional or option syntax fail before source start.
+These are compatibility limits, not inferred behavior.
 
 See [Project Theses](docs/00_theses.md), [Product Contract](docs/01_product_contract.md),
 [Architecture](docs/02_architecture.md), and [Security Model](docs/03_security_model.md).

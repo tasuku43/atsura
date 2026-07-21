@@ -2,7 +2,8 @@
 
 This contract defines Atsura's current vocabulary and supported product
 boundaries. ADR 0005 supersedes the authorization-centered source-wrapper
-semantics of ADR 0004 while retaining one canonical vendor-neutral bundle.
+semantics of ADR 0004; ADR 0006 adds the first compatibility-admitted runtime
+while retaining one canonical vendor-neutral bundle.
 
 ## Product statement
 
@@ -12,7 +13,7 @@ surface defines which commands and options exist and how included commands
 invoke and transform the source CLI. The source CLI remains authoritative for
 operation semantics, authentication, authorization, and remote effects.
 
-Routine compilation and future execution require no language model.
+Routine compilation and supported execution require no language model.
 
 ## Primary user outcome
 
@@ -49,11 +50,12 @@ surface resolution
         +--> command present: deterministic wrapper execution plan
 ```
 
-`bundle preview` implements the zero-execution branch of this flow. It requires
-the exact schema-2 bundle to be user-adopted, revalidates the current source
-path, SHA-256, and size, and returns a complete deterministic plan plus its
-digest with `source_process_attempts: 0`. Bundle-backed source execution remains
-unimplemented.
+`bundle preview` implements the zero-execution branch of this flow. `bundle
+execute` implements the first transform-only runtime branch. Both require the
+exact schema-2 bundle to be user-adopted, revalidate current source path,
+SHA-256, and size, and rebuild the same deterministic schema-3 plan. Execute
+additionally requires an accepted adapter JSON selector contract and starts the
+identity-checked resolved path at most once.
 
 ## Working vocabulary
 
@@ -162,7 +164,8 @@ have; those remain catalog evidence and future specification work.
 
 An included command whose source invocation and output are preserved by the
 tailoring specification. Source identity validation and generic bounded
-process framing still apply when runtime execution is implemented.
+process framing still apply. Identity-wrapper execution is not implemented by
+the initial transform-only runtime.
 
 ### Transforming wrapper
 
@@ -185,11 +188,13 @@ starting the source. It contains:
 - the exact applied specification entry, or JSON `null` for an inherited
   surface entry, and the effective reason;
 - tailored mode; and
-- finite source-process attempts, timeout, stdout, and stderr bounds.
+- closed stdin, inherited working-directory and environment modes, and finite
+  source-process attempts, timeout, stdout, and stderr bounds.
 
-Plan existence means the included wrapper pipeline is structurally complete
-for future execution after fresh authority and adapter-compatibility checks;
-preview does not apply it.
+Plan existence means the included wrapper pipeline is structurally complete.
+Preview does not apply it. Execute rebuilds rather than consumes that plan and
+applies it only when the current runtime and adapter compatibility checks cover
+the wrapper.
 The plan does not contain a universal permission decision, source effect,
 authorization target/impact, or confirmation requirement. A command absent
 from the surface produces no plan. The preview envelope is schema version 2 and
@@ -283,9 +288,9 @@ types do not expose host allow/ask/deny vocabulary.
 Hiding through a host changes routine discovery and invocation. It does not
 replace OS, source CLI, credential, or provider authorization.
 
-## Current public artifact workflow
+## Current public artifact and transform workflow
 
-The zero-execution preview milestone supports these artifact outcomes:
+The current milestone supports these artifact and runtime outcomes:
 
 ```text
 atr source inspect --adapter github-cli --executable <path-or-name>
@@ -295,6 +300,7 @@ atr bundle build --catalog <catalog.json> --spec <spec.yaml>
 atr bundle status --bundle <bundle.json>
 atr bundle trust --bundle <bundle.json>
 atr bundle preview --bundle <bundle.json> -- <source-executable> <argv>
+atr bundle execute --bundle <bundle.json> -- <source-executable> <argv>
 ```
 
 `spec init` emits an exclude-by-default specification containing one included
@@ -314,8 +320,18 @@ SHA-256 plan digest. It reads current
 source identity but reports `source_process_attempts: 0` and performs no output
 transformation.
 
-Source refresh, bundle runtime execution, raw, and host-adapter commands are
-not implemented.
+`bundle execute` repeats those authority and plan steps rather than accepting a
+preview document. It supports only a transforming wrapper with a typed JSON
+output stage whose exact command and argv are admitted by a maintained source
+adapter compatibility contract. Successful stdout is then validated by the
+bounded parser and typed transform. It starts the identity-checked resolved
+path with exact argv, closed stdin, inherited working directory and
+environment, no shell, finite output/time bounds, and at most one attempt.
+Success is schema-2 JSON containing bundle/plan identity,
+matched command, transform result, source exit code, and attempts=1. Raw source
+stdout/stderr and unselected fields are absent. Identity wrappers, argv-only
+transforms, nonempty successful stderr, source refresh, raw, and host adapters
+are not implemented by this runtime slice.
 
 ## Migration contract
 
@@ -337,14 +353,15 @@ semantics are retired experimental formats.
 
 ## Output failure boundary
 
-Source execution and output transformation are separate facts. When future
-runtime resumes, transform failure after a source attempt must not retry or
-change the invocation, claim transformed success, expose raw output without an
-explicit output contract, or select raw mode.
+Source execution and output transformation are separate facts. A transform
+failure after the one source attempt does not retry or change the invocation,
+claim transformed success, expose raw output, or select raw mode. Cancellation,
+timeout, output overflow, malformed JSON, missing fields, transform failure,
+and final output-write failure after start are all non-retryable.
 
-The existing no-shell process adapter retains fixed identity, timeout, stdout,
-stderr, and attempt bounds as implementation evidence. It is not a current
-public bundle-runtime compatibility claim.
+The no-shell process adapter compares the plan-bound path/hash/size before
+start, immediately before start, and after wait. A portable race remains
+between the final check and the operating system opening the executable.
 
 ## Compatibility boundary
 
@@ -353,9 +370,12 @@ The stable project identity is `Atsura`, binary `atr`, and Go module
 
 Shared catalog, specification, bundle, surface, and plan schemas contain
 no GitHub- or Claude-specific fields. GitHub CLI 2.x remains the first source
-inspection adapter. Claude Code remains a planned host adapter, not the core
-product model. Real compatibility is limited to maintained adapter fixtures and
-version ranges.
+adapter. Inspection contract 2 uses four fixed offline probes and exposes
+runtime field/selector evidence only for `issue list` and `pr list`. Its
+maintained runtime accepts GitHub CLI major 2, but one captured version does not
+prove every future 2.x release. Claude Code remains a planned host adapter, not
+the core product model. Real compatibility is limited to maintained adapter
+fixtures and version ranges.
 
 The current preview grammar is intentionally narrower than arbitrary source
 CLI grammar. Catalog evidence does not yet model short options, root/global
@@ -367,14 +387,16 @@ appended to the attempted argv exactly, including after an existing `--`; in
 that case the source would treat
 option-looking appended values as positional, and an output selector appended
 there is not active. Preview proves the presence and format of one active
-cataloged selector, but it does not prove that the selector's value encodes the
-plan's requested select/rename fields. Runtime output transformation is not
-implemented.
+cataloged selector. Execute additionally requires an accepted exact selector
+encoding and finite argv grammar; unknown adapters, older contracts,
+unsupported commands, competing `--jq`/`--template`/`--web` output modes,
+unmodeled positional or option syntax, separated selector values, duplicates,
+ordering differences, or selectors after `--` fail before source start.
 
 ## Deliberately unsupported now
 
 - Source refresh and catalog persistence.
-- Bundle-backed source execution.
+- Identity-wrapper and argv-only-transform execution.
 - Raw execution.
 - Hook installation or interception.
 - Arbitrary shell, jq, scripts, plugins, RTK, or external transformers.

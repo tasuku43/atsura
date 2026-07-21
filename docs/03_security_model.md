@@ -19,7 +19,7 @@ Atsura must:
   fails;
 - never execute arbitrary shell, scripts, jq programs, plugins, or external
   transformers from the initial specification;
-- bind adoption and future execution to exact bundle and source identity;
+- bind adoption and execution to exact bundle and source identity;
 - keep credentials and raw sensitive source output out of persistent state;
 - preserve source invocation meaning when output optimization cannot be
   applied safely; and
@@ -91,7 +91,7 @@ a core permission decision.
 
 Project-local host installation must use exact ownership markers, preserve
 unrelated settings, and fail closed on malformed or conflicting state. Host
-work is outside the current preview milestone.
+work is outside the current transform-runtime milestone.
 
 ## Surface composition is not isolation
 
@@ -121,8 +121,8 @@ transformed argv, ordered stages, finite process bounds, and the exact applied
 specification entry or `null` for inheritance. It does not carry a universal
 permission decision. Preview revalidates current source path, SHA-256, and size,
 returns a canonical plan digest, and reports `source_process_attempts: 0`.
-Future runtime must revalidate again rather than using an old preview as
-authority.
+Runtime revalidates again and rebuilds the plan rather than using an old
+preview as authority.
 
 ## Source process execution
 
@@ -145,9 +145,13 @@ The process boundary must:
 The source CLI remains responsible for credential prompts, source-specific
 confirmation, authorization, destinations, and downstream effects.
 
-Bundle-backed source execution remains unimplemented. The read-only
-`bundle preview` path does not cross the source-process boundary. Existing
-inspection probes remain bounded source execution.
+`bundle execute` is the first bundle-backed source boundary. It supports only
+adapter-admitted JSON transform wrappers, derives the request from the fresh
+plan, and compares expected path/hash/size before start, immediately before
+start, and after wait. Compatibility admission covers maintained command and
+argv behavior; it does not trust stdout, which still passes through the strict
+parser and typed transformer. `bundle preview` remains read-only. Inspection
+probes remain separately bounded source execution.
 
 ## Atsura-owned mutations
 
@@ -181,7 +185,7 @@ Future raw execution is an explicit tailoring bypass, not a permission bypass.
 It revalidates bundle-bound source identity but applies no surface selection or
 wrapper transformation. Raw is never automatic fallback, never a recovery
 suggestion, and never part of the tailored agent surface. Raw is outside the
-current preview milestone.
+current transform-runtime milestone.
 
 ## Failure policy
 
@@ -230,19 +234,27 @@ echo arbitrary secret-bearing environment values or unbounded hostile text.
   exposes that result but does not prove that the source interprets it as an
   option.
 - Preview requires exactly one active cataloged structured-output selector for
-  the planned input format before `--`, but its value's select/rename encoding
-  and runtime behavior have not been proven by this zero-execution milestone.
-- Before/after actions, richer argv transforms, runtime, raw, and host adapters
-  remain unimplemented.
+  the planned input format before `--`. Execute further requires an exact
+  adapter compatibility contract; GitHub CLI contract 2 covers only `issue
+  list` and `pr list`.
+- The current GitHub runtime admits major 2 as a maintained range; one captured
+  version is not evidence for every future 2.x release. Competing
+  `--jq`/`--template`/`--web` output modes, unmodeled options, and positional
+  arguments fail before source start.
+- Successful nonempty stderr is rejected without exposing it because the first
+  result schema has no reviewed stderr meaning.
+- Identity/argv-only execution, before/after actions, richer argv transforms,
+  raw, and host adapters remain unimplemented.
 
 ## Security claim for the current milestone
 
-The zero-execution preview milestone may claim only that validated schema-3
-specifications compile deterministically into schema-2 bundles whose
-surface/wrapper truth table and exact-digest adoption are mechanically checked;
-`bundle preview` requires the adopted digest and current source path/hash/size,
-resolves command and option membership, and returns one canonical bounded plan
-with zero source-process attempts; commands absent from the surface produce no
-plan; and retired authorization schemas fail with explicit migration
-diagnostics. It may not claim source-operation authorization, sandboxing,
-runtime enforcement, raw execution, or host integration.
+The transform-runtime milestone may claim that validated schema-3
+specifications compile deterministically into schema-2 bundles; preview returns
+one canonical plan with zero attempts; and execute rebuilds that plan, requires
+exact adoption/current identity and adapter compatibility admission, requires
+every observable executable identity to match the plan-bound path/hash/size,
+starts at most once without a shell, and returns only the complete typed
+selected JSON result. Pre-start contract failures start zero processes. Every post-start
+failure is non-retryable and exposes no raw source output. The milestone does
+not claim source-operation authorization, sandboxing, identity/raw execution,
+or host integration.
