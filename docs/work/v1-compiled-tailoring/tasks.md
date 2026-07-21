@@ -19,6 +19,7 @@
 - [x] Add failing domain and adapter tests for vendor-neutral identity, provenance, catalog, canonical encoding, adapter conformance, and probe budgets.
 - [ ] Implement `source refresh` comparison and persistence after the completed GitHub CLI inspection task.
 - [ ] Register the remaining source refresh command and capability contract.
+- [x] Implement pure schema-2 policy invariants and deterministic vendor-neutral bundle compilation.
 - [ ] Implement schema-2 policy init/validate and normalized policy.
 - [ ] Implement canonical bundle build, digest, trust receipt, and status/drift.
 

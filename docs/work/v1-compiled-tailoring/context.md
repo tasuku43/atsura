@@ -89,3 +89,10 @@
   31 JSON-capable entries, two source attempts, and a valid canonical digest.
 - `task check:fast` passed after the public `source inspect` catalog contract
   and capability ledger entry were added.
+- The pure schema-2 model is catalog-digest-bound and deny-by-default, rejects
+  unverified catalog commands, restricts reads to allow/deny, restricts
+  mutations to confirm/deny with complete target and impact, and requires typed
+  output for executable rules.
+- Canonical bundle tests recompute catalog and policy digests, derive the
+  visible surface, detect catalog/policy/surface drift, exclude ambient fields,
+  and pass with an alternate synthetic adapter catalog.

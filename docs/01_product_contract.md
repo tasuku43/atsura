@@ -267,6 +267,19 @@ install/status/remove plus a private protocol-facing hook command. Exact flags
 and schema fields are catalog contracts introduced with their implementations;
 the outcome names and authority boundaries are fixed by ADR 0004.
 
+The implemented pure schema-2 policy contract is catalog-digest-bound and
+deny-by-default. Each explicit exact-command rule declares visibility, effect,
+allow/confirm/deny, reason, argv additions, typed JSON output, and—when
+mutating—one typed target binding plus every generic impact dimension. Read
+rules cannot use confirm; create/write rules cannot use unconditional allow.
+Only catalog entries classified `verified_builtin` can receive a rule.
+
+The implemented pure bundle contract embeds the validated catalog and
+normalized policy, stores recomputable catalog and policy digests, and embeds
+only the policy-derived visible surface. Canonical JSON and the outer bundle
+digest are deterministic. File codecs, YAML schema-2 decoding, trust receipts,
+and public bundle commands remain subsequent slices.
+
 Preview, explain, manual run, raw, and host adapters load the same bundle.
 Raw is explicit, manual, source-identity-bound, absent from the tailored
 surface, and never a recovery suggestion. Mutation plans require complete
