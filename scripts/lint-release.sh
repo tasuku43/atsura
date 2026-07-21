@@ -47,7 +47,7 @@ git ls-files -co --exclude-standard -z -- '*.sh' |
     [[ -f $script ]] && printf '%s\0' "$script"
   done |
   xargs -0 shellcheck
-go test ./tools/archivepack ./tools/internal/releaseversion ./tools/releaseversion
+go test ./tools/archivepack ./tools/artifactevidence ./tools/internal/releaseversion ./tools/releaseversion
 required_go=go$(awk '$1 == "go" { print $2 }' go.mod)
 actual_go=$(go env GOVERSION)
 if [[ $actual_go != "$required_go" ]]; then
@@ -75,7 +75,7 @@ for required in \
   '@@FORMULA_CLASS@@' '@@DESCRIPTION@@' '@@LICENSE_SPDX@@' '@@REPOSITORY_URL@@' '@@VERSION@@' \
   '@@MACOS_ARM64_URL@@' '@@MACOS_AMD64_URL@@' \
   '@@MACOS_ARM64_SHA256@@' '@@MACOS_AMD64_SHA256@@' '@@BINARY_NAME@@'; do
-  grep -qF "$required" "$template" || {
+  grep -qF -- "$required" "$template" || {
     echo "Formula template is missing $required" >&2
     exit 1
   }
@@ -129,8 +129,9 @@ for required in \
   './scripts/check.sh public' './scripts/package-release.sh' 'checksums.txt' \
   'gh release create' 'Formula/' 'scripts/render-formula.sh' \
   'runtime-replay:' 'actions/download-artifact@' 'scripts/test-release-artifact.sh' \
-  'needs: [preflight, build, runtime-replay]'; do
-  grep -qF "$required" .github/workflows/release.yml || {
+  'runtime-evidence:' 'tools/artifactevidence' \
+  'needs: [preflight, build, runtime-replay, runtime-evidence]'; do
+  grep -qF -- "$required" .github/workflows/release.yml || {
     echo "release workflow is missing: $required" >&2
     exit 1
   }
@@ -170,20 +171,92 @@ native_matrix_rows() {
   '
 }
 
+evidence_run_script() {
+  awk '
+    /^[[:space:]]+run: \|$/ { in_run=1; next }
+    in_run && /^      - / { exit }
+    in_run {
+      sub(/^          /, "")
+      print
+    }
+  '
+}
+
+validate_evidence_job_plumbing() {
+  local job=$1
+  local expected_uses=$2
+  local uses_count=0
+  local action
+  while IFS= read -r action; do
+    [[ -n $action ]] || continue
+    uses_count=$((uses_count + 1))
+    case $action in
+      actions/checkout@*|actions/setup-go@*|actions/download-artifact@*|actions/upload-artifact@*) ;;
+      *)
+        echo "native evidence aggregation uses an unapproved action: $action" >&2
+        return 1
+        ;;
+    esac
+  done < <(printf '%s\n' "$job" | sed -n \
+    -e 's/^[[:space:]]*- uses: //p' \
+    -e 's/^[[:space:]]*uses: //p')
+  if [[ $uses_count -ne $expected_uses ]]; then
+    echo "native evidence aggregation has an unexpected action count" >&2
+    return 1
+  fi
+  if [[ $(printf '%s\n' "$job" | grep -cE '^[[:space:]]+run: \|$') -ne 1 ]]; then
+    echo "native evidence aggregation must contain exactly one run script" >&2
+    return 1
+  fi
+}
+
 expected_native_matrix='ubuntu-24.04|linux|amd64|tar.gz
 ubuntu-24.04-arm|linux|arm64|tar.gz
 macos-15-intel|darwin|amd64|tar.gz
 macos-15|darwin|arm64|tar.gz
 windows-2025|windows|amd64|zip'
 artifact_job=$(workflow_job .github/workflows/ci.yml artifact)
+artifact_conformance_job=$(workflow_job .github/workflows/ci.yml artifact-conformance)
 runtime_replay_job=$(workflow_job .github/workflows/release.yml runtime-replay)
+runtime_evidence_job=$(workflow_job .github/workflows/release.yml runtime-evidence)
+publish_job=$(workflow_job .github/workflows/release.yml publish)
 ci_revision_literal="revision=\"\${GITHUB_SHA}\""
+ci_evidence_path_literal="evidence/\${{ matrix.goos }}_\${{ matrix.goarch }}.json"
+ci_evidence_redirect_literal=">\"$ci_evidence_path_literal\""
+ci_evidence_name_literal="name: native-journey-\${{ matrix.goos }}-\${{ matrix.goarch }}"
+ci_evidence_pattern_literal='pattern: native-journey-*'
+ci_evidence_summary_name_literal='name: native-aggregate'
+ci_revision_flag_literal="--revision \"\${GITHUB_SHA}\""
 release_revision_literal="\${{ needs.preflight.outputs.revision }}"
 release_ref_literal="ref: $release_revision_literal"
-release_artifact_name_literal="name: release-\${{ matrix.goos }}-\${{ matrix.goarch }}"
+release_artifact_name_literal="name: release-candidate-\${{ matrix.goos }}-\${{ matrix.goarch }}"
+release_archive_pattern_literal='pattern: release-candidate-*'
+release_checksums_name_literal='name: release-checksums'
 release_archive_literal="archive=\"dist/\${binary}_\${GITHUB_REF_NAME}_\${{ matrix.goos }}_\${{ matrix.goarch }}.\${{ matrix.extension }}\""
 release_tag_argument_literal="\"\${GITHUB_REF_NAME}\""
 release_revision_argument_literal="\"$release_revision_literal\""
+release_evidence_path_literal="$ci_evidence_path_literal"
+release_evidence_name_literal="name: native-release-journey-\${{ matrix.goos }}-\${{ matrix.goarch }}"
+release_evidence_pattern_literal='pattern: native-release-journey-*'
+release_evidence_summary_name_literal='name: native-release-aggregate'
+release_tag_flag_literal="--tag $release_tag_argument_literal"
+release_revision_flag_literal="--revision $release_revision_argument_literal"
+workspace_evidence_flag_literal="--directory \"\${GITHUB_WORKSPACE}/evidence\""
+ci_workspace_evidence_flag_literal="--directory \"\${GITHUB_WORKSPACE}/native-inputs/evidence\""
+ci_workspace_archives_flag_literal="--archives \"\${GITHUB_WORKSPACE}/native-inputs/dist\""
+release_workspace_archives_flag_literal="--archives \"\${GITHUB_WORKSPACE}/archives\""
+expected_ci_evidence_run="go run ./tools/artifactevidence \\
+  --directory \"\${GITHUB_WORKSPACE}/native-inputs/evidence\" \\
+  --archives \"\${GITHUB_WORKSPACE}/native-inputs/dist\" \\
+  --tag v0.0.0 \\
+  --revision \"\${GITHUB_SHA}\" \\
+  >native-evidence-summary.json"
+expected_release_evidence_run="go run ./tools/artifactevidence \\
+  --directory \"\${GITHUB_WORKSPACE}/evidence\" \\
+  --archives \"\${GITHUB_WORKSPACE}/archives\" \\
+  --tag \"\${GITHUB_REF_NAME}\" \\
+  --revision \"\${{ needs.preflight.outputs.revision }}\" \\
+  >native-evidence-summary.json"
 if [[ $(printf '%s\n' "$artifact_job" | native_matrix_rows) != "$expected_native_matrix" ]]; then
   echo "CI artifact job must contain the exact five native runner/target/archive tuples" >&2
   exit 1
@@ -196,12 +269,23 @@ for required in \
   'Native artifact journey' \
   "$ci_revision_literal" \
   'scripts/package-release.sh' \
-  'scripts/test-release-artifact.sh'; do
-  if ! printf '%s\n' "$artifact_job" | grep -qF "$required"; then
+  'scripts/test-release-artifact.sh' \
+  "$ci_evidence_redirect_literal" \
+  "$ci_evidence_name_literal" \
+  'path: |' \
+  "$ci_evidence_path_literal" \
+  'dist/*' \
+  'overwrite: true'; do
+  if ! printf '%s\n' "$artifact_job" | grep -qF -- "$required"; then
     echo "CI artifact job is missing native artifact evidence: $required" >&2
     exit 1
   fi
 done
+validate_evidence_job_plumbing "$artifact_conformance_job" 4
+if [[ $(printf '%s\n' "$artifact_conformance_job" | evidence_run_script) != "$expected_ci_evidence_run" ]]; then
+  echo "CI artifact-conformance command must remain the exact bounded evidence verifier" >&2
+  exit 1
+fi
 for required in \
   'needs: [preflight, build]' \
   "$release_ref_literal" \
@@ -211,17 +295,81 @@ for required in \
   "$release_archive_literal" \
   "$release_tag_argument_literal" \
   "$release_revision_argument_literal" \
-  'scripts/test-release-artifact.sh'; do
-  if ! printf '%s\n' "$runtime_replay_job" | grep -qF "$required"; then
+  'scripts/test-release-artifact.sh' \
+  "$ci_evidence_redirect_literal" \
+  "$release_evidence_name_literal" \
+  "$release_evidence_path_literal" \
+  'overwrite: true'; do
+  if ! printf '%s\n' "$runtime_replay_job" | grep -qF -- "$required"; then
     echo "release runtime-replay job is missing exact downloaded-artifact evidence: $required" >&2
     exit 1
   fi
 done
+validate_evidence_job_plumbing "$runtime_evidence_job" 5
+if [[ $(printf '%s\n' "$runtime_evidence_job" | evidence_run_script) != "$expected_release_evidence_run" ]]; then
+  echo "release runtime-evidence command must remain the exact bounded evidence verifier" >&2
+  exit 1
+fi
 for forbidden_rebuild in 'scripts/package-release.sh' 'go build' 'go run ./cmd/atr' './cmd/atr'; do
   if printf '%s\n' "$runtime_replay_job" | grep -qF "$forbidden_rebuild"; then
     echo "release runtime-replay job must not rebuild atr: $forbidden_rebuild" >&2
     exit 1
   fi
+done
+for required in \
+  'needs: artifact' \
+  "$ci_evidence_pattern_literal" \
+  'path: native-inputs' \
+  'merge-multiple: true' \
+  'go run ./tools/artifactevidence' \
+  "$ci_workspace_evidence_flag_literal" \
+  "$ci_workspace_archives_flag_literal" \
+  '--tag v0.0.0' \
+  "$ci_revision_flag_literal" \
+  "$ci_evidence_summary_name_literal" \
+  'if-no-files-found: error' \
+  'overwrite: true'; do
+  if ! printf '%s\n' "$artifact_conformance_job" | grep -qF -- "$required"; then
+    echo "CI artifact-conformance job is missing exact aggregate evidence: $required" >&2
+    exit 1
+  fi
+done
+for required in \
+  'needs: [preflight, runtime-replay]' \
+  "$release_ref_literal" \
+  "$release_evidence_pattern_literal" \
+  "$release_archive_pattern_literal" \
+  'path: archives' \
+  'merge-multiple: true' \
+  'go run ./tools/artifactevidence' \
+  "$workspace_evidence_flag_literal" \
+  "$release_workspace_archives_flag_literal" \
+  "$release_tag_flag_literal" \
+  "$release_revision_flag_literal" \
+  "$release_evidence_summary_name_literal" \
+  'if-no-files-found: error' \
+  'overwrite: true'; do
+  if ! printf '%s\n' "$runtime_evidence_job" | grep -qF -- "$required"; then
+    echo "release runtime-evidence job is missing exact aggregate evidence: $required" >&2
+    exit 1
+  fi
+done
+for required in \
+  'needs: [preflight, build, runtime-replay, runtime-evidence]' \
+  "$release_archive_pattern_literal" \
+  "$release_checksums_name_literal"; do
+  if ! printf '%s\n' "$publish_job" | grep -qF -- "$required"; then
+    echo "release publish job is missing verified attempt-scoped evidence: $required" >&2
+    exit 1
+  fi
+done
+for evidence_job in "$artifact_conformance_job" "$runtime_evidence_job"; do
+  for forbidden_replay in 'scripts/package-release.sh' 'scripts/test-release-artifact.sh' 'go build' 'go run ./cmd/atr' './cmd/atr'; do
+    if printf '%s\n' "$evidence_job" | grep -qF "$forbidden_replay"; then
+      echo "native evidence aggregation must not rebuild or replay artifacts: $forbidden_replay" >&2
+      exit 1
+    fi
+  done
 done
 
 formula_job=$(awk '
@@ -234,6 +382,12 @@ build_job=$(awk '
   in_build && !/^  build:/ && /^  [A-Za-z0-9_-]+:/ { exit }
   in_build { print }
 ' .github/workflows/release.yml)
+for required in "$release_artifact_name_literal" 'if-no-files-found: error' 'overwrite: true'; do
+  if ! printf '%s\n' "$build_job" | grep -qF -- "$required"; then
+    echo "release build job is missing retry-safe candidate upload: $required" >&2
+    exit 1
+  fi
+done
 release_revision_ref="ref: \${{ needs.preflight.outputs.revision }}"
 formula_temp_ref="\${RUNNER_TEMP}/formula"
 printf '%s\n' "$build_job" | grep -A4 -F "$release_revision_ref" | grep -qF 'persist-credentials: false' || {
@@ -243,8 +397,9 @@ printf '%s\n' "$build_job" | grep -A4 -F "$release_revision_ref" | grep -qF 'per
 for required in \
   "$release_revision_ref" \
   './scripts/render-formula.sh' 'ruby -c' './scripts/audit-formula.sh' \
-  "$formula_temp_ref" 'ref: main' 'Stage audited Formula on main'; do
-  if ! printf '%s\n' "$formula_job" | grep -qF "$required"; then
+  "$formula_temp_ref" "$release_checksums_name_literal" \
+  'ref: main' 'Stage audited Formula on main'; do
+  if ! printf '%s\n' "$formula_job" | grep -qF -- "$required"; then
     echo "Formula job is missing its host-specific check: $required" >&2
     exit 1
   fi

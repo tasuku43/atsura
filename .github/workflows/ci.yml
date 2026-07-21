@@ -99,9 +99,60 @@ jobs:
             "${{ matrix.goarch }}" \
             dist
           archive="dist/${binary}_${tag}_${{ matrix.goos }}_${{ matrix.goarch }}.${{ matrix.extension }}"
+          mkdir -p evidence
           bash scripts/test-release-artifact.sh \
             "${tag}" \
             "${revision}" \
             "${{ matrix.goos }}" \
             "${{ matrix.goarch }}" \
-            "${archive}"
+            "${archive}" \
+            >"evidence/${{ matrix.goos }}_${{ matrix.goarch }}.json"
+
+      - name: Upload native journey evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: native-journey-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            evidence/${{ matrix.goos }}_${{ matrix.goarch }}.json
+            dist/*
+          if-no-files-found: error
+          overwrite: true
+
+  artifact-conformance:
+    name: Verify five-target native artifact evidence
+    needs: artifact
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download native journey evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: native-journey-*
+          path: native-inputs
+          merge-multiple: true
+
+      - name: Verify exact native evidence set
+        shell: bash
+        run: |
+          go run ./tools/artifactevidence \
+            --directory "${GITHUB_WORKSPACE}/native-inputs/evidence" \
+            --archives "${GITHUB_WORKSPACE}/native-inputs/dist" \
+            --tag v0.0.0 \
+            --revision "${GITHUB_SHA}" \
+            >native-evidence-summary.json
+
+      - name: Upload bounded native evidence summary
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: native-aggregate
+          path: native-evidence-summary.json
+          if-no-files-found: error
+          overwrite: true
