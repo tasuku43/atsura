@@ -21,14 +21,16 @@ validates it, builds it, and adopts the exact bundle interactively. Separate
 composite conformance then proves that each packaged artifact consumes the
 same exact-digest receipt, previews with zero source attempts, and executes one
 compatibility-admitted source process to return only selected and renamed
-typed JSON; synthetic receipt creation is not represented as human consent.
+typed JSON for each admitted `issue list` and `pr list` journey; synthetic
+receipt creation is not represented as human consent.
 
 ## Why now
 
 The production composition is covered by an in-process fixture, and release
-packaging proves deterministic archive contents. The repository does not yet
-replay the native executable extracted from each claimed archive, so the
-release-quality runtime claim is broader than its executable evidence.
+packaging proves deterministic archive contents. Local host replay and the
+five-runner workflow are implemented, but GitHub has not received the current
+commits under the no-push constraint, so the release-quality platform claim is
+still broader than the available external native evidence.
 
 ## Non-goals
 
@@ -40,12 +42,23 @@ release-quality runtime claim is broader than its executable evidence.
 
 ## Acceptance criteria
 
-- [x] The documented installed-`atr` journey is self-contained and agrees with exact command help, finite catalog/schema authoring metadata, and structured faults.
-- [x] A credential- and network-free native fixture proves four inspection attempts, zero preview attempts, one execute attempt, stable plan identity, and selected/renamed JSON without an unselected canary.
-- [ ] Every claimed release OS/architecture runs the exact `atr` executable extracted from its packaged archive in CI.
+- [x] The documented installed-`atr` journey is self-contained and agrees with
+  schema-8 root plus five exact scoped help contracts, finite catalog/schema
+  field and input inventories, and every induced structured fault and next
+  action.
+- [x] A credential- and network-free native fixture proves
+  `commands_verified=["issue list","pr list"]`, four inspection attempts,
+  seven zero-attempt rejections, ten total fixture attempts, exactly one
+  success attempt per admitted command, stable command-specific plan identity,
+  and selected/renamed JSON without an unselected canary.
+- [ ] Every claimed release OS/architecture runs the exact `atr` executable
+  extracted from its packaged archive in CI, and a dependent verifier accepts
+  exactly five reports plus five candidate archives, recomputes every SHA-256,
+  and emits `provenance_level=workflow_index_unattested` for the same revision.
 - [x] Exact-artifact conformance seeds only an isolated non-shipped receipt through the production store; existing production tests separately prove controlling-terminal full-digest consent and no release command exposes a bypass.
-- [x] The release gate detects removal or weakening of native artifact replay.
-- [x] `task check`, `task security`, `task public:check`, and `task release:check` pass on one clean committed tree.
+- [x] The release gate detects removal or weakening of native artifact replay
+  and evidence aggregation.
+- [ ] `task check`, `task security`, `task public:check`, and `task release:check` pass on one clean committed tree.
 
 ## Governing documents
 

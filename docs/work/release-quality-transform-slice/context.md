@@ -7,8 +7,9 @@
   digest, one source attempt, and no unselected canary in output.
 - `scripts/lint-release.sh` builds the five supported archives twice, verifies
   their contents and build metadata, and compares byte-for-byte digests.
-- `.github/workflows/release.yml` currently cross-builds all five artifacts on
-  one Linux amd64 runner and does not execute the extracted non-host binaries.
+- The working tree defines native replay for all five artifacts plus strict
+  evidence/archive aggregation, but those workflow changes do not yet have
+  GitHub-hosted run evidence.
 - `bundle trust` requires a controlling terminal through the production
   confirmation adapter. Existing application, CLI, and infrastructure tests
   cover that interaction; automation must not add a public confirmation bypass.
@@ -41,6 +42,22 @@
   standard public-repository runner labels exist for Linux x64 and arm64,
   macOS Intel and arm64, and Windows x64. The selected labels are recorded in
   the workflow rather than inferred from `-latest` architecture.
+- Read-only GitHub inspection on 2026-07-22 found durable implementation head
+  `c6df2ba7bf3d97697be067f3bacf420f83e2b0c7` absent from GitHub, with zero
+  Actions runs for that SHA. Local `main` was 35 commits ahead of remote
+  `main` at `10bf45d1a4d1e13a93ed917f5e25c799f4698ff2`; existing remote green checks
+  cover an older workflow without the native artifact matrix and are not
+  milestone evidence. The subsequent temporary-packet evidence commit is also
+  intentionally local under the same no-push constraint.
+- GitHub-hosted evidence cannot be created for a Git object the service does
+  not possess. Under this goal's no-push constraint, workflow structure and
+  current-host replay can be completed locally, but the five native results
+  remain external evidence rather than something a local aggregate may infer.
+- The pinned `actions/upload-artifact` contract, checked 2026-07-22, makes
+  artifacts immutable and requires `overwrite: true` to delete and recreate a
+  prior same-name artifact. The workflow therefore uses stable target-unique
+  names with explicit replacement and disjoint archive/evidence/summary
+  prefixes rather than binding downloads to only the latest run attempt.
 
 ## Unknowns
 
@@ -76,8 +93,9 @@ binary's `version` command during packaging.
 - External schema provenance, publication rights, and drift evidence: the
   GitHub-compatible help is synthetic and minimal; it is not copied provider
   documentation.
-- Output delivery and process facts: complete bounded local JSON; four inspect
-  attempts, zero preview attempts, exactly one execute attempt; no retry.
+- Output delivery and process facts: complete bounded local JSON; four shared
+  inspect attempts, zero preview attempts, and exactly one execute attempt per
+  admitted command; no retry.
 - Publication and licensing concerns: none beyond existing MIT archive inputs.
 
 ## Glossary

@@ -25,22 +25,26 @@
 - [x] Add the exact-artifact journey orchestrator and tests.
 - [x] Add native archive replay script and harness enforcement.
 - [x] Add five-target CI and release workflow replay.
+- [x] Add strict per-target evidence upload and five-target aggregation.
 - [x] Update durable product, architecture, security, harness, release, and agent-readiness documents.
 
 ## Verify
 
-- [x] Focused tests pass. Evidence: all changed Go packages pass on Go 1.26.5.
-- [x] `task check` passes. Evidence: full tests, race tests, architecture, contract, and hygiene checks pass on the committed clean tree.
-- [x] `task security` passes. Evidence: module verification, security guard, gosec, and vulnerability scan pass on the committed clean tree.
-- [x] `task public:check` passes. Evidence: public guard and contract lint pass on the committed clean tree.
-- [x] `task release:check` passes. Evidence: local release profile includes exact Darwin/arm64 archive replay.
-- [x] Runtime-only behavior is observed on the native host. Evidence: extracted Darwin/arm64 archive reports five help contracts, 4 inspection attempts, 5 zero-attempt rejections, 9 total fixture attempts, matching plan digest, and absent canaries.
+- [ ] Focused tests pass on the final implementation.
+- [ ] `task check` passes on the final committed clean tree.
+- [ ] `task security` passes on the final committed clean tree.
+- [ ] `task public:check` passes on the final committed clean tree.
+- [ ] `task release:check` passes on the final committed clean tree.
+- [x] Runtime-only behavior is observed on the native host. Evidence: the exact
+  Darwin/arm64 archive reports 6 help contracts, 4 inspection attempts, 7
+  zero-attempt rejections, 10 total fixture attempts, per-command
+  preview/execute digest parity, and absent canaries.
 - [x] Routine-success external-processing count is zero. Evidence: the fixture has no provider transport and the journey uses no external interpreter or model.
-- [x] Generated diff and repository status are understood. Evidence: this milestone began from a clean tree and all current paths belong to this work.
+- [ ] Generated diff and final repository status are understood.
 
 ## Hand off
 
 - [ ] Acceptance criteria have evidence.
 - [ ] Durable decisions are promoted and the temporary packet is removed.
-- [x] All implementation is committed by concern and the tree is clean.
+- [ ] All implementation is committed by concern and the tree is clean.
 - [ ] The milestone goal is completed and the far successor goal is created.

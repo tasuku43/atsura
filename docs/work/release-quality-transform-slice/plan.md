@@ -16,7 +16,9 @@ attempt counts, validates every automatable public artifact step, and seeds an
 isolated receipt through the same non-public trust-store adapter. Existing
 tests separately prove that a real user can create that receipt only after
 controlling-terminal confirmation. Run this composite evidence on all five
-target-native GitHub-hosted runners and enforce its presence from the release
+target-native GitHub-hosted runners, upload one bounded revision-bound evidence
+document per target, pair the exact five-document set with the five candidate
+archives, recompute their hashes, and enforce that dependency from the release
 gate.
 
 ## Alternatives considered
@@ -71,8 +73,10 @@ only, not user consent or an agent's unaided authoring behavior.
 
 Every tool failure names the exact journey stage but never forwards captured
 source stdout, stderr, or an internal cause. A failed step stops immediately.
-The source fixture never retries and the orchestrator rejects any attempt
-count other than 4/0/1.
+The source fixture never retries and the orchestrator rejects any per-command
+success count other than 0 preview/1 execute; the complete two-command journey
+has four shared inspection attempts and ten fixture attempts including the
+four induced post-start failures.
 
 ### Security and public boundary
 
@@ -86,15 +90,18 @@ detectable. No public trust bypass exists in a release binary.
 1. Work packet and artifact replay contract.
 2. Native fixture and artifact-journey tests.
 3. Release script and five-target CI/release matrices.
-4. Durable release/harness/agent-readiness documentation.
-5. Focused verification, commits, all four gates, packet removal.
+4. Strict five-target evidence aggregation and workflow dependency checks.
+5. Durable release/harness/agent-readiness documentation.
+6. Focused verification, commits, all four gates, packet removal.
 
 ## Verification
 
-- Unit and contract tests: `go test ./tools/artifactjourney ./tools/sourcefixture`
+- Unit and contract tests: `go test ./tools/artifactjourney ./tools/artifactevidence ./tools/sourcefixture`
 - Negative side-effect tests: fixture log proves preview does not start source; canary proves projection.
 - Opaque-reference and pagination tests: not applicable; current workflow produces no references or paged output.
-- Structured output and recovery tests: journey validates command JSON and existing fault catalog remains enforced.
+- Structured output and recovery tests: journey validates both command results
+  and compares every induced fault's kind, code, retryability, and exact next
+  actions with the applicable packaged scoped-help declaration.
 - Agent-readiness scenario and discovery-round-trip count: exact help plus documented one-pass workflow; no exploratory provider call.
 - Manual observation: native host archive replay through `task release:check`.
 - Required profiles: `task check`, `task security`, `task public:check`, `task release:check`.
