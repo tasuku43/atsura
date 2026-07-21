@@ -42,11 +42,17 @@ type evidenceDocument struct {
 
 type artifactJourneyEvidence struct {
 	Target                      string   `json:"target"`
+	ObservedHost                string   `json:"observed_host"`
+	ArchiveName                 string   `json:"archive_name"`
 	ArchiveSHA256               string   `json:"archive_sha256"`
 	Version                     string   `json:"version"`
+	Revision                    string   `json:"revision"`
 	HelpContractsVerified       int      `json:"help_contracts_verified"`
 	BundleDigest                string   `json:"bundle_digest"`
 	PlanDigest                  string   `json:"plan_digest"`
+	IssueBundleDigest           string   `json:"issue_bundle_digest"`
+	IssuePlanDigest             string   `json:"issue_plan_digest"`
+	CommandsVerified            []string `json:"commands_verified"`
 	SourceInspectionAttempts    int      `json:"source_inspection_attempts"`
 	ZeroAttemptRejections       int      `json:"zero_attempt_rejections"`
 	PostStartFaults             []string `json:"post_start_faults"`
@@ -129,7 +135,7 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 	if err != nil || string(version.stdout) != wantedVersion || len(version.stderr) != 0 {
 		return evidenceDocument{}, fmt.Errorf("packaged version verification failed")
 	}
-	helpOutputs, err := verifyPackagedHelp(ctx, runner)
+	helpEvidence, err := verifyPackagedHelp(ctx, runner)
 	if err != nil {
 		return evidenceDocument{}, err
 	}
@@ -153,84 +159,20 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 		return evidenceDocument{}, fmt.Errorf("source inspection attempt evidence is invalid")
 	}
 
-	draft, err := runner.success(ctx, "success", "spec", "init", "--catalog", catalogPath, "--", "pr", "list")
+	prJourney, err := prepareCommandJourney(ctx, runner, helpEvidence, workRoot, catalogPath, inspectionPayload.CatalogDigest, sourcePath, trustPath, attemptLog, 4, []string{"pr", "list"})
 	if err != nil {
-		return evidenceDocument{}, fmt.Errorf("specification draft failed")
+		return evidenceDocument{}, fmt.Errorf("pull-request journey preparation failed: %w", err)
 	}
-	transformedSpecification, err := transformDraft(draft.stdout)
-	if err != nil {
-		return evidenceDocument{}, fmt.Errorf("specification transform edit failed")
-	}
-	specificationPath := filepath.Join(workRoot, "specification.yaml")
-	if err := writePrivate(specificationPath, transformedSpecification); err != nil {
-		return evidenceDocument{}, fmt.Errorf("specification evidence write failed")
-	}
-	validation, err := runner.success(ctx, "success", "spec", "validate", "--catalog", catalogPath, "--spec", specificationPath)
-	if err != nil {
-		return evidenceDocument{}, fmt.Errorf("specification validation failed")
-	}
-	if err := validateSpecificationEvidence(validation.stdout, inspectionPayload.CatalogDigest); err != nil {
-		return evidenceDocument{}, fmt.Errorf("specification validation evidence is invalid")
-	}
-	built, err := runner.success(ctx, "success", "bundle", "build", "--catalog", catalogPath, "--spec", specificationPath)
-	if err != nil {
-		return evidenceDocument{}, fmt.Errorf("bundle build failed")
-	}
-	bundleDigest, err := decodeBundleDigest(built.stdout)
-	if err != nil {
-		return evidenceDocument{}, fmt.Errorf("bundle build evidence is invalid")
-	}
-	bundlePath := filepath.Join(workRoot, "bundle.json")
-	if err := writePrivate(bundlePath, built.stdout); err != nil {
-		return evidenceDocument{}, fmt.Errorf("bundle evidence write failed")
-	}
-
-	status, err := runner.success(ctx, "success", "bundle", "status", "--bundle", bundlePath)
-	if err != nil || validateStatus(status.stdout, bundleDigest, bundletrust.StateNotAdopted) != nil {
-		return evidenceDocument{}, fmt.Errorf("pre-adoption status evidence is invalid")
-	}
-	baseInvocation := []string{"--bundle", bundlePath, "--", sourcePath, "pr", "list", "--limit=1"}
-	zeroAttemptRejections := 0
-	for _, command := range []string{"preview", "execute"} {
-		arguments := append([]string{"--error-format=json", "bundle", command}, baseInvocation...)
-		failure, err := runner.failure(ctx, "success", 10, "bundle_not_adopted", false, arguments...)
-		if err != nil {
-			return evidenceDocument{}, fmt.Errorf("pre-adoption rejection evidence is invalid")
-		}
-		if err := scanCanaries(failure.stdout, failure.stderr); err != nil {
-			return evidenceDocument{}, err
-		}
-		zeroAttemptRejections++
-	}
-	if err := requireAttempts(attemptLog, 4); err != nil {
-		return evidenceDocument{}, fmt.Errorf("pre-adoption zero-attempt evidence is invalid")
-	}
-
-	store := trustfile.New(trustPath)
-	changed, err := store.Add(ctx, bundleDigest)
-	if err != nil || !changed || store.Inspect(ctx, bundleDigest) != bundletrust.StateAdopted {
-		return evidenceDocument{}, fmt.Errorf("isolated exact receipt seeding failed")
-	}
-	status, err = runner.success(ctx, "success", "bundle", "status", "--bundle", bundlePath)
-	if err != nil || validateStatus(status.stdout, bundleDigest, bundletrust.StateAdopted) != nil {
-		return evidenceDocument{}, fmt.Errorf("adopted status evidence is invalid")
-	}
-
-	preview, err := runner.success(ctx, "success", append([]string{"bundle", "preview"}, baseInvocation...)...)
-	if err != nil {
-		return evidenceDocument{}, fmt.Errorf("adopted preview failed")
-	}
-	previewEvidence, err := decodePreview(preview.stdout)
-	if err != nil || previewEvidence.SourceProcessAttempts != 0 || !digestValue(previewEvidence.PlanDigest) {
-		return evidenceDocument{}, fmt.Errorf("adopted preview evidence is invalid")
-	}
-	if err := requireAttempts(attemptLog, 4); err != nil {
-		return evidenceDocument{}, fmt.Errorf("preview zero-attempt evidence is invalid")
-	}
+	zeroAttemptRejections := prJourney.zeroAttemptRejections
 
 	for _, conflict := range []string{"--web", "--jq=.[]", "--template={{.number}}"} {
-		arguments := []string{"--error-format=json", "bundle", "execute", "--bundle", bundlePath, "--", sourcePath, "pr", "list", "--limit=1", conflict}
-		failure, err := runner.failure(ctx, "success", 12, "wrapper_runtime_not_supported", false, arguments...)
+		declaration, declarationErr := helpEvidence.fault("bundle execute", "wrapper_runtime_not_supported")
+		if declarationErr != nil || declaration.Kind != "unsupported" || declaration.Retryable {
+			return evidenceDocument{}, fmt.Errorf("runtime conflict help contract is invalid")
+		}
+		arguments := append([]string{"--error-format=json", "bundle", "execute"}, prJourney.baseInvocation...)
+		arguments = append(arguments, conflict)
+		failure, err := runner.failure(ctx, "success", 12, declaration, arguments...)
 		if err != nil {
 			return evidenceDocument{}, fmt.Errorf("runtime conflict rejection evidence is invalid")
 		}
@@ -247,17 +189,22 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 		mode string
 		exit int
 		code string
+		kind string
 	}{
-		{mode: "command_failure", exit: 10, code: "source_command_failed"},
-		{mode: "stderr", exit: 13, code: "source_stderr_not_supported"},
-		{mode: "malformed", exit: 13, code: "source_json_invalid"},
-		{mode: "missing_field", exit: 13, code: "output_transform_failed"},
+		{mode: "command_failure", exit: 10, code: "source_command_failed", kind: "rejected"},
+		{mode: "stderr", exit: 13, code: "source_stderr_not_supported", kind: "contract"},
+		{mode: "malformed", exit: 13, code: "source_json_invalid", kind: "contract"},
+		{mode: "missing_field", exit: 13, code: "output_transform_failed", kind: "contract"},
 	}
 	faultCodes := make([]string, 0, len(postStartFaults))
 	wantedAttempts := 4
 	for _, test := range postStartFaults {
-		arguments := append([]string{"--error-format=json", "bundle", "execute"}, baseInvocation...)
-		failure, err := runner.failure(ctx, test.mode, test.exit, test.code, false, arguments...)
+		declaration, declarationErr := helpEvidence.fault("bundle execute", test.code)
+		if declarationErr != nil || declaration.Kind != test.kind || declaration.Retryable {
+			return evidenceDocument{}, fmt.Errorf("post-start help contract is invalid")
+		}
+		arguments := append([]string{"--error-format=json", "bundle", "execute"}, prJourney.baseInvocation...)
+		failure, err := runner.failure(ctx, test.mode, test.exit, declaration, arguments...)
 		if err != nil {
 			return evidenceDocument{}, fmt.Errorf("post-start fault evidence is invalid")
 		}
@@ -271,20 +218,44 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 		faultCodes = append(faultCodes, test.code)
 	}
 
-	execution, err := runner.success(ctx, "success", append([]string{"bundle", "execute"}, baseInvocation...)...)
+	prExecution, err := runner.success(ctx, "success", append([]string{"bundle", "execute"}, prJourney.baseInvocation...)...)
 	if err != nil {
 		return evidenceDocument{}, fmt.Errorf("successful transform execution failed")
 	}
-	executionEvidence, err := decodeExecution(execution.stdout)
-	if err != nil || executionEvidence.PlanDigest != previewEvidence.PlanDigest || executionEvidence.BundleDigest != bundleDigest || executionEvidence.SourceProcessAttempts != 1 {
+	prExecutionEvidence, err := decodeExecution(prExecution.stdout)
+	if err != nil || prExecutionEvidence.PlanDigest != prJourney.planDigest || prExecutionEvidence.BundleDigest != prJourney.bundleDigest || prExecutionEvidence.SourceProcessAttempts != 1 {
 		return evidenceDocument{}, fmt.Errorf("successful transform execution evidence is invalid")
 	}
-	if err := validateSelectedOutput(executionEvidence); err != nil {
+	if err := validateSelectedOutput(prExecutionEvidence, "pr list"); err != nil {
 		return evidenceDocument{}, fmt.Errorf("selected transform output evidence is invalid")
 	}
 	wantedAttempts++
 	if err := requireAttempts(attemptLog, wantedAttempts); err != nil {
 		return evidenceDocument{}, fmt.Errorf("successful execution one-attempt evidence is invalid")
+	}
+
+	issueJourney, err := prepareCommandJourney(ctx, runner, helpEvidence, workRoot, catalogPath, inspectionPayload.CatalogDigest, sourcePath, trustPath, attemptLog, wantedAttempts, []string{"issue", "list"})
+	if err != nil {
+		return evidenceDocument{}, fmt.Errorf("issue journey preparation failed: %w", err)
+	}
+	zeroAttemptRejections += issueJourney.zeroAttemptRejections
+	issueExecution, err := runner.success(ctx, "success", append([]string{"bundle", "execute"}, issueJourney.baseInvocation...)...)
+	if err != nil {
+		return evidenceDocument{}, fmt.Errorf("successful issue transform execution failed")
+	}
+	issueExecutionEvidence, err := decodeExecution(issueExecution.stdout)
+	if err != nil || issueExecutionEvidence.PlanDigest != issueJourney.planDigest || issueExecutionEvidence.BundleDigest != issueJourney.bundleDigest || issueExecutionEvidence.SourceProcessAttempts != 1 {
+		return evidenceDocument{}, fmt.Errorf("successful issue transform execution evidence is invalid")
+	}
+	if err := validateSelectedOutput(issueExecutionEvidence, "issue list"); err != nil {
+		return evidenceDocument{}, fmt.Errorf("selected issue transform output evidence is invalid")
+	}
+	wantedAttempts++
+	if err := requireAttempts(attemptLog, wantedAttempts); err != nil {
+		return evidenceDocument{}, fmt.Errorf("successful issue execution one-attempt evidence is invalid")
+	}
+	if prJourney.bundleDigest == issueJourney.bundleDigest || prJourney.planDigest == issueJourney.planDigest {
+		return evidenceDocument{}, fmt.Errorf("command-specific bundle or plan identity was not distinct")
 	}
 
 	trustBytes, err := readBoundedFile(trustPath, maxAttemptLogBytes)
@@ -295,8 +266,10 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 	if err != nil {
 		return evidenceDocument{}, fmt.Errorf("fixture attempt evidence is unreadable")
 	}
-	canaryBoundaries := [][]byte{inspection.stdout, draft.stdout, transformedSpecification, validation.stdout, built.stdout, status.stdout, preview.stdout, execution.stdout, trustBytes, attemptBytes}
-	canaryBoundaries = append(canaryBoundaries, helpOutputs...)
+	canaryBoundaries := [][]byte{inspection.stdout, prExecution.stdout, issueExecution.stdout, trustBytes, attemptBytes}
+	canaryBoundaries = append(canaryBoundaries, prJourney.boundaries...)
+	canaryBoundaries = append(canaryBoundaries, issueJourney.boundaries...)
+	canaryBoundaries = append(canaryBoundaries, helpEvidence.outputs...)
 	if err := scanCanaries(canaryBoundaries...); err != nil {
 		return evidenceDocument{}, err
 	}
@@ -305,17 +278,165 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 	}
 
 	return evidenceDocument{SchemaVersion: 1, ArtifactJourney: artifactJourneyEvidence{
-		Target: configuration.goos + "/" + configuration.goarch, ArchiveSHA256: digest,
-		Version: strings.TrimPrefix(configuration.tag, "v"), HelpContractsVerified: len(helpOutputs), BundleDigest: bundleDigest, PlanDigest: previewEvidence.PlanDigest,
+		Target: configuration.goos + "/" + configuration.goarch, ObservedHost: runtime.GOOS + "/" + runtime.GOARCH,
+		ArchiveName: filepath.Base(archivePath), ArchiveSHA256: digest,
+		Version: strings.TrimPrefix(configuration.tag, "v"), Revision: configuration.revision, HelpContractsVerified: len(helpEvidence.outputs),
+		BundleDigest: prJourney.bundleDigest, PlanDigest: prJourney.planDigest,
+		IssueBundleDigest: issueJourney.bundleDigest, IssuePlanDigest: issueJourney.planDigest,
+		CommandsVerified:         []string{"issue list", "pr list"},
 		SourceInspectionAttempts: 4, ZeroAttemptRejections: zeroAttemptRejections,
 		PostStartFaults: faultCodes, FixtureAttempts: wantedAttempts,
 		CredentialEnvironmentAbsent: true, SecretCanariesAbsent: true,
 	}}, nil
 }
 
+type preparedCommandJourney struct {
+	bundleDigest          string
+	planDigest            string
+	baseInvocation        []string
+	zeroAttemptRejections int
+	boundaries            [][]byte
+}
+
+func prepareCommandJourney(
+	ctx context.Context,
+	runner journeyRunner,
+	help packagedHelpEvidence,
+	workRoot, catalogPath, catalogDigest, sourcePath, trustPath, attemptLog string,
+	existingAttempts int,
+	command []string,
+) (preparedCommandJourney, error) {
+	if len(command) != 2 || command[1] != "list" || (command[0] != "issue" && command[0] != "pr") {
+		return preparedCommandJourney{}, fmt.Errorf("command journey is unsupported")
+	}
+	prefix := command[0]
+	draftArguments := []string{"spec", "init", "--catalog", catalogPath, "--"}
+	draftArguments = append(draftArguments, command...)
+	draft, err := runner.success(ctx, "success", draftArguments...)
+	if err != nil {
+		return preparedCommandJourney{}, fmt.Errorf("specification draft failed")
+	}
+	transformedSpecification, err := transformDraft(draft.stdout, command)
+	if err != nil {
+		return preparedCommandJourney{}, fmt.Errorf("specification transform edit failed")
+	}
+	specificationPath := filepath.Join(workRoot, prefix+"-specification.yaml")
+	if err := writePrivate(specificationPath, transformedSpecification); err != nil {
+		return preparedCommandJourney{}, fmt.Errorf("specification evidence write failed")
+	}
+	validation, err := runner.success(ctx, "success", "spec", "validate", "--catalog", catalogPath, "--spec", specificationPath)
+	if err != nil || validateSpecificationEvidence(validation.stdout, catalogDigest) != nil {
+		return preparedCommandJourney{}, fmt.Errorf("specification validation evidence is invalid")
+	}
+	built, err := runner.success(ctx, "success", "bundle", "build", "--catalog", catalogPath, "--spec", specificationPath)
+	if err != nil {
+		return preparedCommandJourney{}, fmt.Errorf("bundle build failed")
+	}
+	bundleDigest, err := decodeBundleDigest(built.stdout)
+	if err != nil {
+		return preparedCommandJourney{}, fmt.Errorf("bundle build evidence is invalid")
+	}
+	bundlePath := filepath.Join(workRoot, prefix+"-bundle.json")
+	if err := writePrivate(bundlePath, built.stdout); err != nil {
+		return preparedCommandJourney{}, fmt.Errorf("bundle evidence write failed")
+	}
+
+	preAdoptionStatus, err := runner.success(ctx, "success", "bundle", "status", "--bundle", bundlePath)
+	if err != nil || validateStatus(preAdoptionStatus.stdout, bundleDigest, bundletrust.StateNotAdopted) != nil {
+		return preparedCommandJourney{}, fmt.Errorf("pre-adoption status evidence is invalid")
+	}
+	baseInvocation := []string{"--bundle", bundlePath, "--", sourcePath}
+	baseInvocation = append(baseInvocation, command...)
+	baseInvocation = append(baseInvocation, "--limit=1")
+	zeroAttemptRejections := 0
+	for _, bundleCommand := range []string{"preview", "execute"} {
+		helpPath := "bundle " + bundleCommand
+		declaration, declarationErr := help.fault(helpPath, "bundle_not_adopted")
+		if declarationErr != nil || declaration.Kind != "rejected" || declaration.Retryable {
+			return preparedCommandJourney{}, fmt.Errorf("pre-adoption help contract is invalid")
+		}
+		arguments := append([]string{"--error-format=json", "bundle", bundleCommand}, baseInvocation...)
+		failure, failureErr := runner.failure(ctx, "success", 10, declaration, arguments...)
+		if failureErr != nil {
+			return preparedCommandJourney{}, fmt.Errorf("pre-adoption rejection evidence is invalid")
+		}
+		if err := scanCanaries(failure.stdout, failure.stderr); err != nil {
+			return preparedCommandJourney{}, err
+		}
+		zeroAttemptRejections++
+	}
+	if err := requireAttempts(attemptLog, existingAttempts); err != nil {
+		return preparedCommandJourney{}, fmt.Errorf("pre-adoption zero-attempt evidence is invalid")
+	}
+
+	store := trustfile.New(trustPath)
+	changed, err := store.Add(ctx, bundleDigest)
+	if err != nil || !changed || store.Inspect(ctx, bundleDigest) != bundletrust.StateAdopted {
+		return preparedCommandJourney{}, fmt.Errorf("isolated exact receipt seeding failed")
+	}
+	adoptedStatus, err := runner.success(ctx, "success", "bundle", "status", "--bundle", bundlePath)
+	if err != nil || validateStatus(adoptedStatus.stdout, bundleDigest, bundletrust.StateAdopted) != nil {
+		return preparedCommandJourney{}, fmt.Errorf("adopted status evidence is invalid")
+	}
+
+	preview, err := runner.success(ctx, "success", append([]string{"bundle", "preview"}, baseInvocation...)...)
+	if err != nil {
+		return preparedCommandJourney{}, fmt.Errorf("adopted preview failed")
+	}
+	previewEvidence, err := decodePreview(preview.stdout)
+	if err != nil || previewEvidence.SourceProcessAttempts != 0 || !digestValue(previewEvidence.PlanDigest) {
+		return preparedCommandJourney{}, fmt.Errorf("adopted preview evidence is invalid")
+	}
+	if err := requireAttempts(attemptLog, existingAttempts); err != nil {
+		return preparedCommandJourney{}, fmt.Errorf("preview zero-attempt evidence is invalid")
+	}
+
+	return preparedCommandJourney{
+		bundleDigest: bundleDigest, planDigest: previewEvidence.PlanDigest,
+		baseInvocation: baseInvocation, zeroAttemptRejections: zeroAttemptRejections,
+		boundaries: [][]byte{draft.stdout, transformedSpecification, validation.stdout, built.stdout, preAdoptionStatus.stdout, adoptedStatus.stdout, preview.stdout},
+	}, nil
+}
+
 type helpSchemaProjection struct {
-	ID      string `json:"id"`
-	Version int    `json:"version"`
+	ID      string                      `json:"id"`
+	Version int                         `json:"version"`
+	Fields  []helpSchemaFieldProjection `json:"fields"`
+}
+
+type helpSchemaFieldProjection struct {
+	Path        string `json:"path"`
+	Type        string `json:"type"`
+	ElementType string `json:"element_type,omitempty"`
+	Required    bool   `json:"required"`
+	Nullable    bool   `json:"nullable"`
+}
+
+type helpNextAction struct {
+	Command string `json:"command"`
+	Reason  string `json:"reason"`
+}
+
+type helpFaultDeclaration struct {
+	Code        string           `json:"code"`
+	Kind        string           `json:"kind"`
+	Retryable   bool             `json:"retryable"`
+	NextActions []helpNextAction `json:"next_actions"`
+}
+
+type helpOutputFieldProjection struct {
+	Name   string                `json:"name"`
+	Type   string                `json:"type"`
+	Schema *helpSchemaProjection `json:"schema"`
+}
+
+type helpInputProjection struct {
+	Name          string   `json:"name"`
+	Source        string   `json:"source"`
+	Required      bool     `json:"required"`
+	ValueKind     string   `json:"value_kind"`
+	Cardinality   string   `json:"cardinality"`
+	AllowedValues []string `json:"allowed_values"`
 }
 
 type helpCommandProjection struct {
@@ -323,41 +444,179 @@ type helpCommandProjection struct {
 	Summary  string `json:"summary"`
 	Usage    string `json:"usage"`
 	Contract struct {
-		Outcome string `json:"outcome"`
-		Inputs  []struct {
-			Name          string   `json:"name"`
-			AllowedValues []string `json:"allowed_values"`
-		} `json:"inputs"`
-		Output struct {
-			Fields []struct {
-				Name   string                `json:"name"`
-				Schema *helpSchemaProjection `json:"schema"`
-			} `json:"fields"`
+		Outcome string                `json:"outcome"`
+		Inputs  []helpInputProjection `json:"inputs"`
+		Output  struct {
+			Fields []helpOutputFieldProjection `json:"fields"`
 		} `json:"output"`
-		Prerequisites []string `json:"prerequisites"`
+		Prerequisites []string               `json:"prerequisites"`
+		Errors        []helpFaultDeclaration `json:"errors"`
 	} `json:"contract"`
 }
 
-func verifyPackagedHelp(ctx context.Context, runner journeyRunner) ([][]byte, error) {
+func input(name, source, cardinality string, allowed ...string) helpInputProjection {
+	if allowed == nil {
+		allowed = []string{}
+	}
+	return helpInputProjection{Name: name, Source: source, Required: true, ValueKind: "text", Cardinality: cardinality, AllowedValues: allowed}
+}
+
+type packagedHelpEvidence struct {
+	outputs  [][]byte
+	commands map[string]helpCommandProjection
+}
+
+func schemaField(path, fieldType string, required bool) helpSchemaFieldProjection {
+	return helpSchemaFieldProjection{Path: path, Type: fieldType, Required: required}
+}
+
+func schemaArray(path, elementType string) helpSchemaFieldProjection {
+	return helpSchemaFieldProjection{Path: path, Type: "array", ElementType: elementType, Required: true}
+}
+
+var sourceCatalogSchemaFields = []helpSchemaFieldProjection{
+	schemaField("/adapter", "object", true),
+	schemaField("/adapter/contract_version", "integer", true),
+	schemaField("/adapter/kind", "string", true),
+	schemaArray("/commands", "object"),
+	schemaArray("/commands/*/options", "object"),
+	schemaField("/commands/*/options/*/name", "string", true),
+	schemaField("/commands/*/options/*/takes_value", "boolean", true),
+	schemaArray("/commands/*/path", "string"),
+	schemaField("/commands/*/provenance", "string", true),
+	schemaArray("/commands/*/structured_output", "object"),
+	schemaArray("/commands/*/structured_output/*/fields", "string"),
+	schemaField("/commands/*/structured_output/*/format", "string", true),
+	schemaField("/commands/*/structured_output/*/selector_flag", "string", true),
+	schemaField("/commands/*/summary", "string", true),
+	schemaField("/probe", "object", true),
+	schemaField("/probe/attempts", "integer", true),
+	schemaArray("/probe/ids", "string"),
+	schemaField("/schema_version", "integer", true),
+	schemaField("/source", "object", true),
+	schemaField("/source/requested_executable", "string", true),
+	schemaField("/source/resolved_path", "string", true),
+	schemaField("/source/sha256", "string", true),
+	schemaField("/source/size", "integer", true),
+	schemaField("/source/version", "string", true),
+}
+
+var tailoringSpecificationSchemaFields = []helpSchemaFieldProjection{
+	schemaField("/catalog_digest", "string", true),
+	schemaArray("/commands", "object"),
+	schemaArray("/commands/*/command", "string"),
+	schemaField("/commands/*/options", "object", false),
+	schemaField("/commands/*/options/default", "string", true),
+	schemaArray("/commands/*/options/exclude", "string"),
+	schemaArray("/commands/*/options/include", "string"),
+	schemaField("/commands/*/presence", "string", true),
+	schemaField("/commands/*/reason", "string", true),
+	schemaField("/commands/*/wrapper", "object", false),
+	schemaArray("/commands/*/wrapper/after", "object"),
+	schemaArray("/commands/*/wrapper/before", "object"),
+	schemaField("/commands/*/wrapper/invoke", "object", true),
+	schemaArray("/commands/*/wrapper/invoke/append_args", "string"),
+	schemaField("/commands/*/wrapper/kind", "string", true),
+	schemaField("/commands/*/wrapper/output", "object", false),
+	schemaField("/commands/*/wrapper/output/input", "string", true),
+	schemaArray("/commands/*/wrapper/output/rename", "object"),
+	schemaField("/commands/*/wrapper/output/rename/*/from", "string", true),
+	schemaField("/commands/*/wrapper/output/rename/*/to", "string", true),
+	schemaField("/commands/*/wrapper/output/render", "string", true),
+	schemaArray("/commands/*/wrapper/output/select", "string"),
+	schemaField("/schema_version", "integer", true),
+	schemaField("/surface", "object", true),
+	schemaField("/surface/default", "string", true),
+}
+
+func (h packagedHelpEvidence) fault(path, code string) (helpFaultDeclaration, error) {
+	command, present := h.commands[path]
+	if !present {
+		return helpFaultDeclaration{}, fmt.Errorf("packaged help command is missing")
+	}
+	var result helpFaultDeclaration
+	found := false
+	for _, declaration := range command.Contract.Errors {
+		if declaration.Code != code {
+			continue
+		}
+		if found {
+			return helpFaultDeclaration{}, fmt.Errorf("packaged help fault is duplicated")
+		}
+		result = declaration
+		found = true
+	}
+	if !found || result.Kind == "" || len(result.NextActions) == 0 {
+		return helpFaultDeclaration{}, fmt.Errorf("packaged help fault is incomplete")
+	}
+	for _, action := range result.NextActions {
+		if action.Command == "" || action.Reason == "" {
+			return helpFaultDeclaration{}, fmt.Errorf("packaged help recovery is incomplete")
+		}
+	}
+	return result, nil
+}
+
+func validateOutputSchema(command helpCommandProjection, fieldName, schemaID string, version int, wanted []helpSchemaFieldProjection) error {
+	var schema *helpSchemaProjection
+	found := false
+	for _, field := range command.Contract.Output.Fields {
+		if field.Name != fieldName {
+			continue
+		}
+		if found || field.Type != "object" || field.Schema == nil {
+			return fmt.Errorf("structured output field is invalid")
+		}
+		schema = field.Schema
+		found = true
+	}
+	if !found || schema.ID != schemaID || schema.Version != version || len(schema.Fields) != len(wanted) {
+		return fmt.Errorf("structured output schema identity is invalid")
+	}
+	for index := range wanted {
+		got := schema.Fields[index]
+		expected := wanted[index]
+		if got.Path != expected.Path || got.Type != expected.Type || got.ElementType != expected.ElementType || got.Required != expected.Required || got.Nullable != expected.Nullable {
+			return fmt.Errorf("structured output schema field %d is invalid", index)
+		}
+	}
+	return nil
+}
+
+func validateInputs(got, wanted []helpInputProjection) error {
+	if len(got) != len(wanted) {
+		return fmt.Errorf("input inventory length is invalid")
+	}
+	for index := range wanted {
+		if got[index].Name != wanted[index].Name || got[index].Source != wanted[index].Source || got[index].Required != wanted[index].Required || got[index].ValueKind != wanted[index].ValueKind || got[index].Cardinality != wanted[index].Cardinality || strings.Join(got[index].AllowedValues, "\x00") != strings.Join(wanted[index].AllowedValues, "\x00") {
+			return fmt.Errorf("input inventory field %d is invalid", index)
+		}
+	}
+	return nil
+}
+
+func verifyPackagedHelp(ctx context.Context, runner journeyRunner) (packagedHelpEvidence, error) {
 	root, err := runner.success(ctx, "success", "help", "--format", "agent")
 	if err != nil {
-		return nil, fmt.Errorf("packaged root help verification failed")
+		return packagedHelpEvidence{}, fmt.Errorf("packaged root help verification failed")
 	}
-	wanted := []string{"source inspect", "spec init", "spec validate", "bundle execute"}
+	wanted := []string{"source inspect", "spec init", "spec validate", "bundle preview", "bundle execute"}
 	if err := validateRootHelp(root.stdout, wanted); err != nil {
-		return nil, fmt.Errorf("packaged root help contract is invalid")
+		return packagedHelpEvidence{}, fmt.Errorf("packaged root help contract is invalid")
 	}
-	outputs := [][]byte{root.stdout}
+	result := packagedHelpEvidence{outputs: [][]byte{root.stdout}, commands: make(map[string]helpCommandProjection, len(wanted))}
 	for _, path := range wanted {
 		arguments := append([]string{"help"}, strings.Split(path, " ")...)
 		arguments = append(arguments, "--format", "agent")
-		result, runErr := runner.success(ctx, "success", arguments...)
-		if runErr != nil || validateScopedHelp(path, result.stdout) != nil {
-			return nil, fmt.Errorf("packaged scoped help contract is invalid for %s", path)
+		output, runErr := runner.success(ctx, "success", arguments...)
+		command, validationErr := validateScopedHelp(path, output.stdout)
+		if runErr != nil || validationErr != nil {
+			return packagedHelpEvidence{}, fmt.Errorf("packaged scoped help contract is invalid for %s", path)
 		}
-		outputs = append(outputs, result.stdout)
+		result.outputs = append(result.outputs, output.stdout)
+		result.commands[path] = command
 	}
-	return outputs, nil
+	return result, nil
 }
 
 func validateRootHelp(value []byte, wanted []string) error {
@@ -384,7 +643,7 @@ func validateRootHelp(value []byte, wanted []string) error {
 	return nil
 }
 
-func validateScopedHelp(path string, value []byte) error {
+func validateScopedHelp(path string, value []byte) (helpCommandProjection, error) {
 	var document struct {
 		SchemaVersion int    `json:"schema_version"`
 		View          string `json:"view"`
@@ -396,52 +655,57 @@ func validateScopedHelp(path string, value []byte) error {
 		Commands []helpCommandProjection `json:"commands"`
 	}
 	if err := json.Unmarshal(value, &document); err != nil || document.SchemaVersion != 8 || document.View != "scope" || document.Program != "atr" || document.Scope.Selector != path || document.Scope.Kind != "command" || len(document.Commands) != 1 || document.Commands[0].Path != path {
-		return fmt.Errorf("invalid scoped agent help")
+		return helpCommandProjection{}, fmt.Errorf("invalid scoped agent help")
 	}
 	command := document.Commands[0]
-	schema := func(name string) *helpSchemaProjection {
-		for _, field := range command.Contract.Output.Fields {
-			if field.Name == name {
-				return field.Schema
-			}
-		}
-		return nil
-	}
 	prerequisites := strings.Join(command.Contract.Prerequisites, "\n")
 	switch path {
 	case "source inspect":
-		if command.Usage != "atr source inspect --adapter=github-cli --executable <path-or-name>" || len(command.Contract.Inputs) < 1 || command.Contract.Inputs[0].Name != "--adapter" || strings.Join(command.Contract.Inputs[0].AllowedValues, ",") != "github-cli" {
-			return fmt.Errorf("source inspection invocation contract is incomplete")
+		if command.Usage != "atr source inspect --adapter=github-cli --executable <path-or-name>" || validateInputs(command.Contract.Inputs, []helpInputProjection{input("--adapter", "flag", "single", "github-cli"), input("--executable", "flag", "single")}) != nil {
+			return helpCommandProjection{}, fmt.Errorf("source inspection invocation contract is incomplete")
 		}
-		if nested := schema("catalog"); nested == nil || nested.ID != "source-command-catalog" || nested.Version != 1 {
-			return fmt.Errorf("source catalog schema is incomplete")
+		if err := validateOutputSchema(command, "catalog", "source-command-catalog", 1, sourceCatalogSchemaFields); err != nil {
+			return helpCommandProjection{}, fmt.Errorf("source catalog schema is incomplete")
 		}
 	case "spec init":
-		if !strings.Contains(command.Summary, "authoring baseline") || !strings.Contains(command.Contract.Outcome, "identity wrapper") {
-			return fmt.Errorf("specification baseline contract is incomplete")
+		if command.Usage != "atr spec init --catalog <path> -- <command>" || validateInputs(command.Contract.Inputs, []helpInputProjection{input("--catalog", "flag", "single"), input("command", "argument", "repeatable")}) != nil || !strings.Contains(command.Summary, "authoring baseline") || !strings.Contains(command.Contract.Outcome, "identity wrapper") {
+			return helpCommandProjection{}, fmt.Errorf("specification baseline contract is incomplete")
 		}
-		if nested := schema("specification"); nested == nil || nested.ID != "tailoring-specification" || nested.Version != 3 {
-			return fmt.Errorf("specification schema is incomplete")
+		if err := validateOutputSchema(command, "specification", "tailoring-specification", 3, tailoringSpecificationSchemaFields); err != nil {
+			return helpCommandProjection{}, fmt.Errorf("specification schema is incomplete")
 		}
 		for _, marker := range []string{"kind=transform", "output.select", "output.rename", "output.render=compact_json", "Shell, script, jq, plugin, RTK"} {
 			if !strings.Contains(prerequisites, marker) {
-				return fmt.Errorf("specification authoring marker is missing")
+				return helpCommandProjection{}, fmt.Errorf("specification authoring marker is missing")
 			}
 		}
 	case "spec validate":
-		if nested := schema("specification"); nested == nil || nested.ID != "tailoring-specification" || nested.Version != 3 {
-			return fmt.Errorf("normalized specification schema is incomplete")
+		if command.Usage != "atr spec validate --catalog <path> --spec <path>" || validateInputs(command.Contract.Inputs, []helpInputProjection{input("--catalog", "flag", "single"), input("--spec", "flag", "single")}) != nil {
+			return helpCommandProjection{}, fmt.Errorf("specification validation invocation contract is incomplete")
+		}
+		if err := validateOutputSchema(command, "specification", "tailoring-specification", 3, tailoringSpecificationSchemaFields); err != nil {
+			return helpCommandProjection{}, fmt.Errorf("normalized specification schema is incomplete")
+		}
+	case "bundle preview":
+		if command.Usage != "atr bundle preview --bundle <path> -- <source-executable> <argv>" || validateInputs(command.Contract.Inputs, []helpInputProjection{input("--bundle", "flag", "single"), input("source-executable", "argument", "single"), input("argv", "argument", "repeatable")}) != nil || !strings.Contains(prerequisites, "never treats adoption as source authorization") {
+			return helpCommandProjection{}, fmt.Errorf("preview contract is incomplete")
 		}
 	case "bundle execute":
+		if command.Usage != "atr bundle execute --bundle <path> -- <source-executable> <argv>" || validateInputs(command.Contract.Inputs, []helpInputProjection{input("--bundle", "flag", "single"), input("source-executable", "argument", "single"), input("argv", "argument", "repeatable")}) != nil {
+			return helpCommandProjection{}, fmt.Errorf("runtime invocation contract is incomplete")
+		}
 		for _, marker := range []string{"atsura.source.github_cli contract 2", "issue list or pr list", "--json=<ordered-select>", "--jq, --template, or --web", "source-owned authentication", "Successful source stderr must be empty"} {
 			if !strings.Contains(prerequisites, marker) {
-				return fmt.Errorf("runtime admission marker is missing")
+				return helpCommandProjection{}, fmt.Errorf("runtime admission marker is missing")
 			}
 		}
 	default:
-		return fmt.Errorf("unsupported help contract")
+		return helpCommandProjection{}, fmt.Errorf("unsupported help contract")
 	}
-	return nil
+	if len(command.Contract.Errors) == 0 {
+		return helpCommandProjection{}, fmt.Errorf("fault contract is missing")
+	}
+	return command, nil
 }
 
 type journeyRunner struct {
@@ -461,12 +725,12 @@ func (r journeyRunner) success(ctx context.Context, mode string, arguments ...st
 	return outcome, nil
 }
 
-func (r journeyRunner) failure(ctx context.Context, mode string, exit int, code string, retryable bool, arguments ...string) (commandOutcome, error) {
+func (r journeyRunner) failure(ctx context.Context, mode string, exit int, declaration helpFaultDeclaration, arguments ...string) (commandOutcome, error) {
 	outcome, err := r.command(ctx, mode, arguments...)
 	if err != nil || outcome.exitCode != exit || len(outcome.stdout) != 0 {
 		return commandOutcome{}, fmt.Errorf("command did not produce the expected failure boundary")
 	}
-	if err := validateFault(outcome.stderr, code, retryable); err != nil {
+	if err := validateFault(outcome.stderr, declaration); err != nil {
 		return commandOutcome{}, err
 	}
 	return outcome, nil
@@ -663,6 +927,10 @@ func validateAttemptSequence(value []byte) error {
 			Argv: []string{"pr", "list", "--limit=1", "--json=number,title,state"},
 		})
 	}
+	expected = append(expected, fixtureAttemptRecord{
+		SchemaVersion: 1, Kind: "runtime", Mode: "success",
+		Argv: []string{"issue", "list", "--limit=1", "--json=number,title,state"},
+	})
 	scanner := bufio.NewScanner(bytes.NewReader(value))
 	scanner.Buffer(make([]byte, 4096), maxAttemptLogBytes)
 	actual := make([]fixtureAttemptRecord, 0, len(expected))
@@ -700,10 +968,13 @@ func scanCanaries(values ...[]byte) error {
 	return nil
 }
 
-func transformDraft(value []byte) ([]byte, error) {
+func transformDraft(value []byte, command []string) ([]byte, error) {
+	if len(command) != 2 || command[1] != "list" || (command[0] != "issue" && command[0] != "pr") {
+		return nil, fmt.Errorf("draft command is unsupported")
+	}
 	text := string(value)
 	replacements := [][2]string{
-		{"reason: Include this verified command without transformation.", "reason: Return one reviewed compact pull request."},
+		{"reason: Include this verified command without transformation.", "reason: Return one reviewed compact result."},
 		{"kind: identity", "kind: transform"},
 		{"append_args: []", `append_args: ["--json=number,title,state"]`},
 	}
@@ -713,7 +984,7 @@ func transformDraft(value []byte) ([]byte, error) {
 		}
 		text = strings.Replace(text, replacement[0], replacement[1], 1)
 	}
-	if !strings.Contains(text, "- pr\n") || !strings.Contains(text, "- list\n") || strings.Contains(text, "output:") {
+	if strings.Count(text, "- "+command[0]+"\n") != 1 || strings.Count(text, "- "+command[1]+"\n") != 1 || strings.Contains(text, "output:") {
 		return nil, fmt.Errorf("draft command shape is invalid")
 	}
 	lines := strings.Split(text, "\n")
@@ -864,29 +1135,51 @@ func decodeExecution(value []byte) (executionEvidence, error) {
 	return document.Execution, nil
 }
 
-func validateSelectedOutput(result executionEvidence) error {
-	if strings.Join(result.MatchedCommand, " ") != "pr list" || result.WrapperKind != "transform" || result.Output.Render != "compact_json" || result.Output.Shape != "array" || strings.Join(result.Output.Fields, ",") != "id,title,state" || result.Source.ExitCode != 0 || len(result.Output.Records) != 1 {
+func validateSelectedOutput(result executionEvidence, command string) error {
+	if strings.Join(result.MatchedCommand, " ") != command || result.WrapperKind != "transform" || result.Output.Render != "compact_json" || result.Output.Shape != "array" || strings.Join(result.Output.Fields, ",") != "id,title,state" || result.Source.ExitCode != 0 || len(result.Output.Records) != 1 {
 		return fmt.Errorf("unexpected execution metadata")
 	}
+	wantedID := "101"
+	wantedTitle := `"Review policy"`
+	if command == "issue list" {
+		wantedID = "202"
+		wantedTitle = `"Fix deterministic wrapper"`
+	} else if command != "pr list" {
+		return fmt.Errorf("unsupported selected-output command")
+	}
 	record := result.Output.Records[0]
-	if len(record) != 3 || string(record["id"]) != "101" || string(record["title"]) != `"Review policy"` || string(record["state"]) != `"OPEN"` {
+	if len(record) != 3 || string(record["id"]) != wantedID || string(record["title"]) != wantedTitle || string(record["state"]) != `"OPEN"` {
 		return fmt.Errorf("unexpected selected record")
 	}
 	return nil
 }
 
-func validateFault(value []byte, code string, retryable bool) error {
+func validateFault(value []byte, declaration helpFaultDeclaration) error {
 	var document struct {
 		SchemaVersion int `json:"schema_version"`
 		Error         struct {
-			Code      string `json:"code"`
-			Retryable bool   `json:"retryable"`
+			Code        string           `json:"code"`
+			Kind        string           `json:"kind"`
+			Retryable   bool             `json:"retryable"`
+			NextActions []helpNextAction `json:"next_actions"`
 		} `json:"error"`
 	}
-	if err := json.Unmarshal(value, &document); err != nil || document.SchemaVersion != 1 || document.Error.Code != code || document.Error.Retryable != retryable {
+	if err := json.Unmarshal(value, &document); err != nil || document.SchemaVersion != 1 || document.Error.Code != declaration.Code || document.Error.Kind != declaration.Kind || document.Error.Retryable != declaration.Retryable || !equalNextActions(document.Error.NextActions, declaration.NextActions) {
 		return fmt.Errorf("unexpected structured fault evidence")
 	}
 	return nil
+}
+
+func equalNextActions(left, right []helpNextAction) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func digestValue(value string) bool {
