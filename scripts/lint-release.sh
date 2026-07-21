@@ -182,6 +182,19 @@ evidence_run_script() {
   '
 }
 
+workflow_step_run_script() {
+  local step_name=$1
+  awk -v heading="      - name: ${step_name}" '
+    $0 == heading { in_step=1; next }
+    in_step && /^      - / { exit }
+    in_step && /^[[:space:]]+run: \|$/ { in_run=1; next }
+    in_run {
+      sub(/^          /, "")
+      print
+    }
+  '
+}
+
 validate_evidence_job_plumbing() {
   local job=$1
   local expected_uses=$2
@@ -257,12 +270,19 @@ expected_release_evidence_run="go run ./tools/artifactevidence \\
   --tag \"\${GITHUB_REF_NAME}\" \\
   --revision \"\${{ needs.preflight.outputs.revision }}\" \\
   >native-evidence-summary.json"
+expected_native_recovery_run="go test -count=1 ./internal/infra/sourceexec
+go test -count=1 ./internal/infra/bundlejson -run '^TestFileFaultMapsEveryLocalFileFailureToExactPublicContract$'
+go test -count=1 ./internal/cli -run '^(TestBundlePreviewProductionCompositionCoversEveryRecovery|TestBundleExecuteProductionCompositionCoversEveryPreAndPostStartRecovery)$'"
 if [[ $(printf '%s\n' "$artifact_job" | native_matrix_rows) != "$expected_native_matrix" ]]; then
   echo "CI artifact job must contain the exact five native runner/target/archive tuples" >&2
   exit 1
 fi
 if [[ $(printf '%s\n' "$runtime_replay_job" | native_matrix_rows) != "$expected_native_matrix" ]]; then
   echo "release runtime-replay job must contain the exact five native runner/target/archive tuples" >&2
+  exit 1
+fi
+if [[ $(printf '%s\n' "$artifact_job" | workflow_step_run_script 'Run native source-process and recovery contracts') != "$expected_native_recovery_run" ]]; then
+  echo "CI artifact job must run the exact native source-process and recovery contracts" >&2
   exit 1
 fi
 for required in \

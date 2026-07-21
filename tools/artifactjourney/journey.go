@@ -424,6 +424,111 @@ type helpFaultDeclaration struct {
 	NextActions []helpNextAction `json:"next_actions"`
 }
 
+func expectedHelpFault(code, kind string, retryable bool, command, reason string) helpFaultDeclaration {
+	return helpFaultDeclaration{
+		Code: code, Kind: kind, Retryable: retryable,
+		NextActions: []helpNextAction{{Command: command, Reason: reason}},
+	}
+}
+
+var bundlePreviewHelpFaults = []helpFaultDeclaration{
+	expectedHelpFault("invalid_arguments", "invalid_input", false, "help bundle preview", "Pass one bundle path, the exact source executable, and at least one source argv element after --."),
+	expectedHelpFault("bundle_file_not_found", "not_found", false, "bundle build", "Build and select a canonical bundle document."),
+	expectedHelpFault("bundle_file_permission_denied", "permission", false, "bundle status", "Correct bundle file permissions."),
+	expectedHelpFault("unsafe_bundle_file", "invalid_input", false, "bundle build", "Use a stable regular bundle file."),
+	expectedHelpFault("bundle_file_too_large", "invalid_input", false, "bundle build", "Build a bundle within the 2 MiB limit."),
+	expectedHelpFault("bundle_file_read_failed", "unavailable", true, "bundle status", "Retry after the bundle file is readable."),
+	expectedHelpFault("invalid_bundle_file", "invalid_input", false, "bundle build", "Rebuild and review strict canonical bundle JSON."),
+	expectedHelpFault("legacy_tailoring_schema", "invalid_input", false, "help bundle build", "Rebuild with a schema-3 specification and bundle schema 2."),
+	expectedHelpFault("bundle_digest_mismatch", "rejected", false, "bundle build", "Rebuild and review the changed bundle content."),
+	expectedHelpFault("invalid_bundle_trust_store", "rejected", false, "bundle status", "Repair or reconcile invalid user-local adoption state."),
+	expectedHelpFault("bundle_not_adopted", "rejected", false, "bundle trust", "Review and adopt the exact bundle digest before previewing a plan."),
+	expectedHelpFault("bundle_source_drift", "rejected", false, "bundle status", "Rebuild and adopt current source evidence before previewing a plan."),
+	expectedHelpFault("source_executable_not_found", "not_found", false, "bundle status", "Reconcile the missing bundle-bound source executable."),
+	expectedHelpFault("source_identity_unavailable", "unavailable", true, "bundle status", "Retry after the bundle-bound source identity can be read."),
+	expectedHelpFault("unsafe_source_executable", "invalid_input", false, "bundle status", "Select and inspect a supported regular source executable."),
+	expectedHelpFault("source_identity_changed", "rejected", false, "bundle status", "Rebuild from stable current source identity evidence."),
+	expectedHelpFault("invalid_source_identity", "contract", false, "bundle status", "Repair invalid source identity evidence."),
+	expectedHelpFault("source_executable_mismatch", "invalid_input", false, "help bundle preview", "Use the exact requested executable or resolved path recorded in the bundle."),
+	expectedHelpFault("invalid_invocation", "invalid_input", false, "help bundle preview", "Use a cataloged command path and deterministic observed long-option grammar."),
+	expectedHelpFault("command_not_in_surface", "not_found", false, "help bundle preview", "Select a command present in the compiled tailored surface."),
+	expectedHelpFault("option_not_in_surface", "not_found", false, "help bundle preview", "Use only options present in the matched command's tailored option surface."),
+	expectedHelpFault("invalid_wrapper_plan", "contract", false, "help bundle preview", "Repair the bundle or plan constructor so it produces one complete typed plan."),
+	expectedHelpFault("output_contract_exceeded", "contract", false, "help bundle preview", "Reduce the bounded invocation and plan output."),
+	expectedHelpFault("output_encoding_failed", "contract", false, "help bundle preview", "Repair deterministic schema-2 preview JSON."),
+	expectedHelpFault("internal_error", "internal", false, "bundle status", "Inspect bundle, adoption, source identity, and plan wiring."),
+	expectedHelpFault("output_write_failed", "internal", true, "bundle preview", "Retry with a writable output stream."),
+	expectedHelpFault("operation_canceled", "canceled", true, "bundle preview", "Retry when the caller is ready."),
+}
+
+var bundleExecuteHelpFaults = []helpFaultDeclaration{
+	expectedHelpFault("invalid_arguments", "invalid_input", false, "help bundle execute", "Pass one bundle path, the exact source executable, and at least one source argv element after --."),
+	expectedHelpFault("bundle_file_not_found", "not_found", false, "bundle build", "Build and select a canonical bundle document."),
+	expectedHelpFault("bundle_file_permission_denied", "permission", false, "bundle status", "Correct bundle file permissions."),
+	expectedHelpFault("unsafe_bundle_file", "invalid_input", false, "bundle build", "Use a stable regular bundle file."),
+	expectedHelpFault("bundle_file_too_large", "invalid_input", false, "bundle build", "Build a bundle within the 2 MiB limit."),
+	expectedHelpFault("bundle_file_read_failed", "unavailable", true, "bundle status", "Retry after the bundle file is readable."),
+	expectedHelpFault("invalid_bundle_file", "invalid_input", false, "bundle build", "Rebuild and review strict canonical bundle JSON."),
+	expectedHelpFault("legacy_tailoring_schema", "invalid_input", false, "help bundle build", "Rebuild with a schema-3 specification and bundle schema 2."),
+	expectedHelpFault("bundle_digest_mismatch", "rejected", false, "bundle build", "Rebuild and review the changed bundle content."),
+	expectedHelpFault("invalid_bundle_trust_store", "rejected", false, "bundle status", "Repair or reconcile invalid user-local adoption state."),
+	expectedHelpFault("bundle_not_adopted", "rejected", false, "bundle trust", "Review and adopt the exact bundle digest before execution."),
+	expectedHelpFault("bundle_source_drift", "rejected", false, "bundle status", "Rebuild and adopt current source evidence before execution."),
+	expectedHelpFault("source_executable_not_found", "not_found", false, "bundle status", "Reconcile the missing bundle-bound source executable."),
+	expectedHelpFault("source_identity_unavailable", "unavailable", true, "bundle status", "Retry after the bundle-bound source identity can be read."),
+	expectedHelpFault("unsafe_source_executable", "invalid_input", false, "bundle status", "Select and inspect a supported regular source executable."),
+	expectedHelpFault("source_identity_changed", "rejected", false, "bundle status", "Rebuild from stable current source identity evidence; do not replay a started operation."),
+	expectedHelpFault("invalid_source_identity", "contract", false, "bundle status", "Repair invalid source identity evidence."),
+	expectedHelpFault("source_executable_mismatch", "invalid_input", false, "help bundle execute", "Use the exact requested executable or resolved path recorded in the bundle."),
+	expectedHelpFault("invalid_invocation", "invalid_input", false, "help bundle execute", "Use a cataloged command path and deterministic observed long-option grammar."),
+	expectedHelpFault("command_not_in_surface", "not_found", false, "help bundle execute", "Select a command present in the compiled tailored surface."),
+	expectedHelpFault("option_not_in_surface", "not_found", false, "help bundle execute", "Use only options present in the matched command's tailored option surface."),
+	expectedHelpFault("invalid_wrapper_plan", "contract", false, "bundle preview", "Inspect the fresh plan and repair incomplete wrapper construction."),
+	expectedHelpFault("wrapper_runtime_not_supported", "unsupported", false, "help bundle execute", "Use a transform wrapper and source adapter contract with accepted JSON selector behavior."),
+	expectedHelpFault("invalid_source_process_request", "contract", false, "bundle preview", "Inspect the exact plan-derived source request before execution."),
+	expectedHelpFault("source_process_start_failed", "unavailable", true, "bundle execute", "Retry the same invocation only when the result proves no source process started."),
+	expectedHelpFault("source_stdout_too_large", "contract", false, "help bundle execute", "Reduce source output within the declared bound; the source was not retried."),
+	expectedHelpFault("source_stderr_too_large", "contract", false, "help bundle execute", "Reduce source stderr within the declared bound; the source was not retried."),
+	expectedHelpFault("source_execution_canceled", "canceled", false, "bundle status", "Reconcile source-owned effects before considering another invocation."),
+	expectedHelpFault("source_command_timeout", "unavailable", false, "bundle status", "Reconcile source-owned effects after the timed-out attempt."),
+	expectedHelpFault("source_command_failed", "rejected", false, "help bundle execute", "Inspect the source command independently; Atsura does not expose raw failure output or retry it."),
+	expectedHelpFault("source_process_wait_failed", "unavailable", false, "bundle status", "Reconcile source-owned effects after the unclassified wait outcome."),
+	expectedHelpFault("source_stderr_not_supported", "contract", false, "help bundle execute", "Use a successful source invocation with empty stderr for this initial transform runtime."),
+	expectedHelpFault("source_output_processing_canceled", "canceled", false, "bundle status", "The source already ran; reconcile before considering another invocation."),
+	expectedHelpFault("source_json_invalid", "contract", false, "bundle preview", "Repair the source output selector or adapter contract; raw output is not a fallback."),
+	expectedHelpFault("output_transform_failed", "contract", false, "bundle preview", "Repair selected fields and typed transform expectations; raw output is not a fallback."),
+	expectedHelpFault("unclassified_source_execution_outcome", "contract", false, "bundle status", "Reconcile source-owned effects before considering another invocation."),
+	expectedHelpFault("output_contract_exceeded", "contract", false, "bundle preview", "Reduce the bounded transformed result; the source was not retried."),
+	expectedHelpFault("output_encoding_failed", "contract", false, "bundle preview", "Repair deterministic schema-2 execution JSON; the source was not retried."),
+	expectedHelpFault("internal_error", "internal", false, "bundle status", "Inspect bundle execution wiring without replaying the source."),
+	expectedHelpFault("execute_output_write_failed", "internal", false, "bundle status", "The source completed; reconcile before considering another invocation."),
+	expectedHelpFault("operation_canceled", "canceled", true, "bundle execute", "Retry only because cancellation occurred before a source attempt."),
+}
+
+func validateHelpFaultMatrix(got, wanted []helpFaultDeclaration) error {
+	if len(got) != len(wanted) {
+		return fmt.Errorf("fault inventory length is invalid")
+	}
+	seen := make(map[string]struct{}, len(got))
+	for index := range wanted {
+		actual := got[index]
+		expected := wanted[index]
+		if _, exists := seen[actual.Code]; exists {
+			return fmt.Errorf("fault %q is duplicated", actual.Code)
+		}
+		seen[actual.Code] = struct{}{}
+		if actual.Code != expected.Code || actual.Kind != expected.Kind || actual.Retryable != expected.Retryable || len(actual.NextActions) != len(expected.NextActions) {
+			return fmt.Errorf("fault signature %d is invalid", index)
+		}
+		for actionIndex := range expected.NextActions {
+			if actual.NextActions[actionIndex] != expected.NextActions[actionIndex] {
+				return fmt.Errorf("fault recovery %d/%d is invalid", index, actionIndex)
+			}
+		}
+	}
+	return nil
+}
+
 type helpOutputFieldProjection struct {
 	Name   string                `json:"name"`
 	Type   string                `json:"type"`
@@ -612,6 +717,16 @@ func verifyPackagedHelp(ctx context.Context, runner journeyRunner) (packagedHelp
 		command, validationErr := validateScopedHelp(path, output.stdout)
 		if runErr != nil || validationErr != nil {
 			return packagedHelpEvidence{}, fmt.Errorf("packaged scoped help contract is invalid for %s", path)
+		}
+		var faultErr error
+		switch path {
+		case "bundle preview":
+			faultErr = validateHelpFaultMatrix(command.Contract.Errors, bundlePreviewHelpFaults)
+		case "bundle execute":
+			faultErr = validateHelpFaultMatrix(command.Contract.Errors, bundleExecuteHelpFaults)
+		}
+		if faultErr != nil {
+			return packagedHelpEvidence{}, fmt.Errorf("packaged scoped help fault contract is invalid for %s: %w", path, faultErr)
 		}
 		result.outputs = append(result.outputs, output.stdout)
 		result.commands[path] = command

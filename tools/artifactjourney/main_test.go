@@ -238,6 +238,92 @@ func TestOutputSchemaInventoriesAreExact(t *testing.T) {
 	}
 }
 
+func TestBundleRuntimeHelpFaultMatricesAreExact(t *testing.T) {
+	tests := []struct {
+		path   string
+		count  int
+		faults []helpFaultDeclaration
+	}{
+		{path: "bundle preview", count: 27, faults: bundlePreviewHelpFaults},
+		{path: "bundle execute", count: 41, faults: bundleExecuteHelpFaults},
+	}
+	for _, test := range tests {
+		t.Run(test.path, func(t *testing.T) {
+			if len(test.faults) != test.count {
+				t.Fatalf("fault count = %d, want %d", len(test.faults), test.count)
+			}
+			if err := validateHelpFaultMatrix(test.faults, test.faults); err != nil {
+				t.Fatal(err)
+			}
+
+			mutations := []struct {
+				name   string
+				mutate func([]helpFaultDeclaration) []helpFaultDeclaration
+			}{
+				{name: "missing", mutate: func(value []helpFaultDeclaration) []helpFaultDeclaration {
+					return value[:len(value)-1]
+				}},
+				{name: "extra", mutate: func(value []helpFaultDeclaration) []helpFaultDeclaration {
+					return append(value, expectedHelpFault("unexpected", "internal", false, "help", "Unexpected."))
+				}},
+				{name: "duplicate", mutate: func(value []helpFaultDeclaration) []helpFaultDeclaration {
+					value[len(value)-1] = value[0]
+					return value
+				}},
+				{name: "order", mutate: func(value []helpFaultDeclaration) []helpFaultDeclaration {
+					value[0], value[1] = value[1], value[0]
+					return value
+				}},
+				{name: "code", mutate: func(value []helpFaultDeclaration) []helpFaultDeclaration {
+					value[0].Code += "_changed"
+					return value
+				}},
+				{name: "kind", mutate: func(value []helpFaultDeclaration) []helpFaultDeclaration {
+					value[0].Kind = "contract"
+					return value
+				}},
+				{name: "retryable", mutate: func(value []helpFaultDeclaration) []helpFaultDeclaration {
+					value[0].Retryable = !value[0].Retryable
+					return value
+				}},
+				{name: "missing next action", mutate: func(value []helpFaultDeclaration) []helpFaultDeclaration {
+					value[0].NextActions = nil
+					return value
+				}},
+				{name: "extra next action", mutate: func(value []helpFaultDeclaration) []helpFaultDeclaration {
+					value[0].NextActions = append(value[0].NextActions, helpNextAction{Command: "help", Reason: "Unexpected."})
+					return value
+				}},
+				{name: "next command", mutate: func(value []helpFaultDeclaration) []helpFaultDeclaration {
+					value[0].NextActions[0].Command += " changed"
+					return value
+				}},
+				{name: "next reason", mutate: func(value []helpFaultDeclaration) []helpFaultDeclaration {
+					value[0].NextActions[0].Reason += " Changed."
+					return value
+				}},
+			}
+			for _, mutation := range mutations {
+				t.Run(mutation.name, func(t *testing.T) {
+					changed := mutation.mutate(cloneHelpFaults(test.faults))
+					if err := validateHelpFaultMatrix(changed, test.faults); err == nil {
+						t.Fatal("changed fault matrix was accepted")
+					}
+				})
+			}
+		})
+	}
+}
+
+func cloneHelpFaults(value []helpFaultDeclaration) []helpFaultDeclaration {
+	result := make([]helpFaultDeclaration, len(value))
+	for index := range value {
+		result[index] = value[index]
+		result[index].NextActions = append([]helpNextAction{}, value[index].NextActions...)
+	}
+	return result
+}
+
 func cloneHelpCommand(t *testing.T, value helpCommandProjection) helpCommandProjection {
 	t.Helper()
 	encoded, err := json.Marshal(value)

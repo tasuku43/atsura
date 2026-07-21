@@ -61,13 +61,60 @@ func boundHelperRequest(t *testing.T, runner *Runner, request sourceprocess.Requ
 	return sourceprocess.BoundRequest{Process: request, ExpectedIdentity: identity}
 }
 
-func publicCode(t *testing.T, err error) string {
+func copyTestExecutable(t *testing.T) string {
+	t.Helper()
+	value, err := os.ReadFile(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "helper"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, value, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func replaceTestExecutable(path string) error {
+	replacement := path + ".replacement"
+	if err := os.WriteFile(replacement, []byte("changed executable"), 0o700); err != nil {
+		return fmt.Errorf("write replacement: %w", err)
+	}
+	if err := os.Rename(replacement, path); err == nil {
+		return nil
+	} else if runtime.GOOS != "windows" {
+		return fmt.Errorf("replace executable: %w", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if err := os.Remove(path); err == nil || errors.Is(err, os.ErrNotExist) {
+			if err := os.Rename(replacement, path); err != nil {
+				return fmt.Errorf("install replacement: %w", err)
+			}
+			return nil
+		} else if time.Now().After(deadline) {
+			return fmt.Errorf("remove running executable before replacement: %w", err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func assertExactSourceFault(t *testing.T, err error, kind fault.Kind, code, message string, retryable bool) {
 	t.Helper()
 	public, ok := fault.PublicCopy(err)
 	if !ok {
-		t.Fatalf("error is not a public fault: %v", err)
+		t.Fatalf("error is not a valid public fault: %v", err)
 	}
-	return public.Code
+	if public.Kind != kind || public.Code != code || public.Message != message || public.Retryable != retryable {
+		t.Fatalf("public fault=%+v", public)
+	}
+	if len(public.NextActions) != 1 || public.NextActions[0].Command != "help source inspect" || public.NextActions[0].Reason != "Review the bounded source-inspection process contract and executable." {
+		t.Fatalf("recovery=%+v", public.NextActions)
+	}
 }
 
 func TestRunUsesExactArgvEOFStdinAndOneAttempt(t *testing.T) {
@@ -97,15 +144,17 @@ func TestRunCapturesBoundedSuccessfulStderr(t *testing.T) {
 
 func TestRunClassifiesPostStartFailuresWithoutRetry(t *testing.T) {
 	tests := []struct {
-		name   string
-		mode   string
-		mutate func(*sourceprocess.Request)
-		code   string
+		name    string
+		mode    string
+		mutate  func(*sourceprocess.Request)
+		kind    fault.Kind
+		code    string
+		message string
 	}{
-		{name: "nonzero", mode: "nonzero", code: "source_command_failed"},
-		{name: "timeout", mode: "sleep", mutate: func(value *sourceprocess.Request) { value.Timeout = 30 * time.Millisecond }, code: "source_command_timeout"},
-		{name: "stdout bound", mode: "large_stdout", mutate: func(value *sourceprocess.Request) { value.StdoutLimit = 128 }, code: "source_stdout_too_large"},
-		{name: "stderr bound", mode: "large_stderr", mutate: func(value *sourceprocess.Request) { value.StderrLimit = 128 }, code: "source_stderr_too_large"},
+		{name: "nonzero", mode: "nonzero", kind: fault.KindRejected, code: "source_command_failed", message: "The source process exited without a successful result."},
+		{name: "timeout", mode: "sleep", mutate: func(value *sourceprocess.Request) { value.Timeout = 30 * time.Millisecond }, kind: fault.KindUnavailable, code: "source_command_timeout", message: "The source process exceeded its declared timeout."},
+		{name: "stdout bound", mode: "large_stdout", mutate: func(value *sourceprocess.Request) { value.StdoutLimit = 128 }, kind: fault.KindContract, code: "source_stdout_too_large", message: "The source process stdout exceeded the 4 MiB limit."},
+		{name: "stderr bound", mode: "large_stderr", mutate: func(value *sourceprocess.Request) { value.StderrLimit = 128 }, kind: fault.KindContract, code: "source_stderr_too_large", message: "The source process stderr exceeded the 256 KiB limit."},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -116,9 +165,10 @@ func TestRunClassifiesPostStartFailuresWithoutRetry(t *testing.T) {
 				test.mutate(&request)
 			}
 			result, err := New().Run(context.Background(), request)
-			if got := publicCode(t, err); got != test.code || result.Attempts != 1 {
-				t.Fatalf("code = %q, attempts = %d, error = %v", got, result.Attempts, err)
+			if result.Attempts != 1 {
+				t.Fatalf("attempts = %d, error = %v", result.Attempts, err)
 			}
+			assertExactSourceFault(t, err, test.kind, test.code, test.message, false)
 			if validateErr := result.Validate(request, false); validateErr != nil {
 				t.Fatalf("result.Validate() = %v", validateErr)
 			}
@@ -130,9 +180,10 @@ func TestRunRejectsPreflightWithoutAttempt(t *testing.T) {
 	request := helperRequest(10 * time.Second)
 	request.Executable = filepath.Join(t.TempDir(), "missing")
 	result, err := New().Run(context.Background(), request)
-	if got := publicCode(t, err); got != "source_executable_not_found" || result.Attempts != 0 {
-		t.Fatalf("code = %q, attempts = %d", got, result.Attempts)
+	if result.Attempts != 0 || result.ExitCode != -1 {
+		t.Fatalf("result=%+v", result)
 	}
+	assertExactSourceFault(t, err, fault.KindNotFound, "source_executable_not_found", "The source executable was not found.", false)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -140,6 +191,75 @@ func TestRunRejectsPreflightWithoutAttempt(t *testing.T) {
 	if !errors.Is(err, context.Canceled) || result.Attempts != 0 {
 		t.Fatalf("canceled result = %+v, error = %v", result, err)
 	}
+}
+
+func TestRunBoundClassifiesUnavailableIdentityWithExactZeroAttemptFault(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing")
+	request := sourceprocess.BoundRequest{
+		Process: sourceprocess.Request{
+			Executable: path, Args: []string{}, Timeout: 10 * time.Second,
+			StdoutLimit: 4096, StderrLimit: 1024,
+		},
+		ExpectedIdentity: sourceprocess.Identity{
+			ResolvedPath: path, SHA256: strings.Repeat("a", 64), Size: 1,
+		},
+	}
+	result, err := New().RunBound(context.Background(), request)
+	if result.Attempts != 0 || result.ExitCode != -1 {
+		t.Fatalf("result=%+v", result)
+	}
+	assertExactSourceFault(t, err, fault.KindUnavailable, "source_identity_unavailable", "The source executable identity could not be read.", true)
+}
+
+func TestRunRejectsInvalidRequestWithExactZeroAttemptFault(t *testing.T) {
+	result, err := New().Run(context.Background(), sourceprocess.Request{})
+	if result.Attempts != 0 || result.ExitCode != -1 {
+		t.Fatalf("result=%+v", result)
+	}
+	assertExactSourceFault(t, err, fault.KindContract, "invalid_source_process_request", "The source process request is invalid.", false)
+}
+
+func TestRunBoundRejectsUnsafeExecutableWithExactZeroAttemptFault(t *testing.T) {
+	path := filepath.Clean(t.TempDir())
+	request := sourceprocess.BoundRequest{
+		Process: sourceprocess.Request{
+			Executable:  path,
+			Args:        []string{},
+			Timeout:     10 * time.Second,
+			StdoutLimit: 4096,
+			StderrLimit: 1024,
+		},
+		ExpectedIdentity: sourceprocess.Identity{
+			ResolvedPath: path,
+			SHA256:       strings.Repeat("a", 64),
+			Size:         1,
+		},
+	}
+	result, err := New().RunBound(context.Background(), request)
+	if result.Attempts != 0 || result.ExitCode != -1 {
+		t.Fatalf("result=%+v", result)
+	}
+	assertExactSourceFault(t, err, fault.KindInvalidInput, "unsafe_source_executable", "The resolved source executable is not a supported regular executable.", false)
+}
+
+func TestIdentifyExecutableClassifiesInvalidConstructedIdentityExactly(t *testing.T) {
+	t.Chdir(t.TempDir())
+	name := "relative-source"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	if err := os.WriteFile(name, []byte("synthetic executable"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	relative := "./" + name
+	if filepath.IsAbs(relative) {
+		t.Fatalf("fixture path is absolute: %q", relative)
+	}
+	identity, err := identifyExecutable(relative)
+	if !identity.IsZero() {
+		t.Fatalf("identity=%+v", identity)
+	}
+	assertExactSourceFault(t, err, fault.KindContract, "invalid_source_identity", "The resolved source executable identity is invalid.", false)
 }
 
 func TestRunClassifiesNativeStartFailureWithoutAttempt(t *testing.T) {
@@ -154,9 +274,10 @@ func TestRunClassifiesNativeStartFailureWithoutAttempt(t *testing.T) {
 	request := helperRequest(10 * time.Second)
 	request.Executable = path
 	result, err := New().Run(context.Background(), request)
-	if got := publicCode(t, err); got != "source_process_start_failed" || result.Attempts != 0 {
-		t.Fatalf("code=%q attempts=%d error=%v", got, result.Attempts, err)
+	if result.Attempts != 0 || result.ExitCode != -1 {
+		t.Fatalf("result=%+v error=%v", result, err)
 	}
+	assertExactSourceFault(t, err, fault.KindUnavailable, "source_process_start_failed", "The source process could not be started.", true)
 }
 
 func TestRunClassifiesWaitFailureAfterOneAttempt(t *testing.T) {
@@ -169,10 +290,10 @@ func TestRunClassifiesWaitFailureAfterOneAttempt(t *testing.T) {
 		return errors.New("ATSURA_SECRET_SYNTHETIC_WAIT_CAUSE")
 	}}
 	result, err := runner.Run(context.Background(), helperRequest(10*time.Second))
-	public, ok := fault.PublicCopy(err)
-	if !ok || public.Code != "source_process_wait_failed" || public.Retryable || result.Attempts != 1 {
-		t.Fatalf("result=%+v error=%v public=%+v", result, err, public)
+	if result.Attempts != 1 {
+		t.Fatalf("result=%+v error=%v", result, err)
 	}
+	assertExactSourceFault(t, err, fault.KindUnavailable, "source_process_wait_failed", "The source process result could not be collected.", false)
 }
 
 func TestRunClassifiesCancellationAfterStartAsNonRetryable(t *testing.T) {
@@ -183,10 +304,10 @@ func TestRunClassifiesCancellationAfterStartAsNonRetryable(t *testing.T) {
 	runner.afterStart = func(string) { cancel() }
 	request := helperRequest(10 * time.Second)
 	result, err := runner.Run(ctx, request)
-	public, ok := fault.PublicCopy(err)
-	if !ok || public.Code != "source_execution_canceled" || public.Retryable || result.Attempts != 1 {
-		t.Fatalf("result = %+v, error = %#v", result, err)
+	if result.Attempts != 1 {
+		t.Fatalf("result=%+v error=%v", result, err)
 	}
+	assertExactSourceFault(t, err, fault.KindCanceled, "source_execution_canceled", "The caller canceled after the source process started; its downstream outcome is not classified as replay-safe.", false)
 }
 
 func TestIdentifyReturnsIdentityWithoutStartingProcess(t *testing.T) {
@@ -200,94 +321,81 @@ func TestIdentifyReturnsIdentityWithoutStartingProcess(t *testing.T) {
 }
 
 func TestRunDetectsExecutableDriftBeforeAndAfterStart(t *testing.T) {
-	copyExecutable := func(t *testing.T) string {
-		t.Helper()
-		value, err := os.ReadFile(os.Args[0])
-		if err != nil {
-			t.Fatal(err)
-		}
-		path := filepath.Join(t.TempDir(), "helper")
-		if err := os.WriteFile(path, value, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		return path
-	}
-	replace := func(path string) {
-		replacement := path + ".replacement"
-		_ = os.WriteFile(replacement, []byte("changed executable"), 0o700)
-		_ = os.Rename(replacement, path)
-	}
-
-	beforePath := copyExecutable(t)
+	beforePath := copyTestExecutable(t)
 	beforeRequest := helperRequest(10 * time.Second)
 	beforeRequest.Executable = beforePath
-	result, err := (&Runner{beforeStart: replace}).Run(context.Background(), beforeRequest)
-	if got := publicCode(t, err); got != "source_identity_changed" || result.Attempts != 0 {
-		t.Fatalf("before drift code = %q, attempts = %d", got, result.Attempts)
+	var replaceErr error
+	result, err := (&Runner{beforeStart: func(path string) { replaceErr = replaceTestExecutable(path) }}).Run(context.Background(), beforeRequest)
+	if replaceErr != nil {
+		t.Fatal(replaceErr)
 	}
+	if result.Attempts != 0 {
+		t.Fatalf("before drift attempts=%d error=%v", result.Attempts, err)
+	}
+	assertExactSourceFault(t, err, fault.KindRejected, "source_identity_changed", "The resolved source executable changed before it could be started.", false)
 
 	t.Setenv("ATSURA_SOURCEEXEC_HELPER", "1")
 	t.Setenv("ATSURA_SOURCEEXEC_MODE", "default")
-	afterPath := copyExecutable(t)
+	afterPath := copyTestExecutable(t)
 	afterRequest := helperRequest(10 * time.Second)
 	afterRequest.Executable = afterPath
-	result, err = (&Runner{afterStart: replace}).Run(context.Background(), afterRequest)
-	if got := publicCode(t, err); got != "source_identity_changed" || result.Attempts != 1 {
-		t.Fatalf("after drift code = %q, attempts = %d", got, result.Attempts)
+	replaceErr = nil
+	result, err = (&Runner{afterStart: func(path string) { replaceErr = replaceTestExecutable(path) }}).Run(context.Background(), afterRequest)
+	if replaceErr != nil {
+		t.Fatal(replaceErr)
 	}
+	if result.Attempts != 1 {
+		t.Fatalf("after drift attempts=%d error=%v", result.Attempts, err)
+	}
+	assertExactSourceFault(t, err, fault.KindRejected, "source_identity_changed", "The resolved source executable changed during execution.", false)
 }
 
 func TestRunBoundRequiresExpectedIdentityAtEveryRaceBoundary(t *testing.T) {
-	copyExecutable := func(t *testing.T) string {
-		t.Helper()
-		value, err := os.ReadFile(os.Args[0])
-		if err != nil {
-			t.Fatal(err)
-		}
-		path := filepath.Join(t.TempDir(), "helper")
-		if err := os.WriteFile(path, value, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		return path
-	}
-	replace := func(path string) {
-		replacement := path + ".replacement"
-		_ = os.WriteFile(replacement, []byte("changed executable"), 0o700)
-		_ = os.Rename(replacement, path)
-	}
-
-	initialPath := copyExecutable(t)
+	initialPath := copyTestExecutable(t)
 	initialRequest := helperRequest(10 * time.Second)
 	initialRequest.Executable = initialPath
 	initialRunner := New()
 	initialBound := boundHelperRequest(t, initialRunner, initialRequest)
-	replace(initialPath)
-	result, err := initialRunner.RunBound(context.Background(), initialBound)
-	if got := publicCode(t, err); got != "source_identity_changed" || result.Attempts != 0 {
-		t.Fatalf("initial mismatch code=%q attempts=%d", got, result.Attempts)
+	if err := replaceTestExecutable(initialPath); err != nil {
+		t.Fatal(err)
 	}
+	result, err := initialRunner.RunBound(context.Background(), initialBound)
+	if result.Attempts != 0 {
+		t.Fatalf("initial mismatch attempts=%d error=%v", result.Attempts, err)
+	}
+	assertExactSourceFault(t, err, fault.KindRejected, "source_identity_changed", "The resolved source executable does not match the bundle-bound identity.", false)
 
-	beforePath := copyExecutable(t)
+	beforePath := copyTestExecutable(t)
 	beforeRequest := helperRequest(10 * time.Second)
 	beforeRequest.Executable = beforePath
-	beforeRunner := &Runner{beforeStart: replace}
+	var replaceErr error
+	beforeRunner := &Runner{beforeStart: func(path string) { replaceErr = replaceTestExecutable(path) }}
 	beforeBound := boundHelperRequest(t, beforeRunner, beforeRequest)
 	result, err = beforeRunner.RunBound(context.Background(), beforeBound)
-	if got := publicCode(t, err); got != "source_identity_changed" || result.Attempts != 0 {
-		t.Fatalf("pre-start mismatch code=%q attempts=%d", got, result.Attempts)
+	if replaceErr != nil {
+		t.Fatal(replaceErr)
 	}
+	if result.Attempts != 0 {
+		t.Fatalf("pre-start mismatch attempts=%d error=%v", result.Attempts, err)
+	}
+	assertExactSourceFault(t, err, fault.KindRejected, "source_identity_changed", "The resolved source executable changed before it could be started.", false)
 
 	t.Setenv("ATSURA_SOURCEEXEC_HELPER", "1")
 	t.Setenv("ATSURA_SOURCEEXEC_MODE", "default")
-	afterPath := copyExecutable(t)
+	afterPath := copyTestExecutable(t)
 	afterRequest := helperRequest(10 * time.Second)
 	afterRequest.Executable = afterPath
-	afterRunner := &Runner{afterStart: replace}
+	replaceErr = nil
+	afterRunner := &Runner{afterStart: func(path string) { replaceErr = replaceTestExecutable(path) }}
 	afterBound := boundHelperRequest(t, afterRunner, afterRequest)
 	result, err = afterRunner.RunBound(context.Background(), afterBound)
-	if got := publicCode(t, err); got != "source_identity_changed" || result.Attempts != 1 {
-		t.Fatalf("post-start mismatch code=%q attempts=%d", got, result.Attempts)
+	if replaceErr != nil {
+		t.Fatal(replaceErr)
 	}
+	if result.Attempts != 1 {
+		t.Fatalf("post-start mismatch attempts=%d error=%v", result.Attempts, err)
+	}
+	assertExactSourceFault(t, err, fault.KindRejected, "source_identity_changed", "The resolved source executable changed during execution.", false)
 	if validateErr := result.ValidateBound(afterBound, false); validateErr != nil {
 		t.Fatalf("ValidateBound() = %v", validateErr)
 	}

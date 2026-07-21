@@ -17,6 +17,7 @@ import (
 	"github.com/tasuku43/atsura/internal/app/specinit"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
+	"github.com/tasuku43/atsura/internal/domain/tailoringplan"
 	"github.com/tasuku43/atsura/internal/infra/bundlejson"
 	"github.com/tasuku43/atsura/internal/infra/catalogjson"
 	"github.com/tasuku43/atsura/internal/infra/githubcli"
@@ -28,6 +29,10 @@ import (
 	"github.com/tasuku43/atsura/internal/infra/terminalconfirm"
 	"github.com/tasuku43/atsura/internal/infra/trustfile"
 )
+
+type bundleExecutionService interface {
+	Execute(context.Context, operation.Intent, string, tailoringplan.Attempt) (bundleexecute.Result, error)
+}
 
 // CLI contains injected streams and application services.
 type CLI struct {
@@ -45,7 +50,7 @@ type CLI struct {
 	drafts     *specinit.Service
 	authority  *bundleauthority.Service
 	previews   *planpreview.Service
-	executions *bundleexecute.Service
+	executions bundleExecutionService
 }
 
 // New builds the production CLI with offline template adapters.
