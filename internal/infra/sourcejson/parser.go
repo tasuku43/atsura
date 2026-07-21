@@ -1,5 +1,5 @@
 // Package sourcejson strictly parses bounded source JSON into typed domain
-// values without deciding which fields the policy selects.
+// values without deciding which fields a wrapper transformation selects.
 package sourcejson
 
 import (

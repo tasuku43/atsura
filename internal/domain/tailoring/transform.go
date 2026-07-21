@@ -49,7 +49,7 @@ func (r OutputResult) Validate() error {
 	return nil
 }
 
-// TransformJSON applies the schema-1 select and rename plan to an object or
+// TransformJSON applies the typed select and rename plan to an object or
 // array of objects without parsing bytes or performing I/O.
 func TransformJSON(plan OutputPlan, source JSONValue) (OutputResult, error) {
 	if err := plan.Validate(); err != nil {

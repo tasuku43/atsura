@@ -446,6 +446,44 @@ func TestCatalogRequiresCommonRuntimeFailures(t *testing.T) {
 	}
 }
 
+func TestExecuteEffectIsNonMutationAndRequiresNonRetryableOutputRecovery(t *testing.T) {
+	reconcile := utilitySpec("inspect")
+	execute := utilitySpec("execute")
+	execute.Effect = operation.EffectExecute
+	filtered := make([]CommandError, 0, len(execute.Agent.Errors))
+	for _, declared := range execute.Agent.Errors {
+		if declared.Code != "output_write_failed" {
+			filtered = append(filtered, declared)
+		}
+	}
+	execute.Agent.Errors = append(filtered, declaredCommandError(
+		fault.KindInternal,
+		"execute_output_write_failed",
+		false,
+		"inspect",
+		"Inspect the output boundary without replaying the source process.",
+	))
+	if err := NewCatalog(reconcile, execute).Validate(); err != nil {
+		t.Fatalf("valid execute utility: %v", err)
+	}
+
+	withMutation := cloneCommandSpec(execute)
+	withMutation.Agent.Mutation = &MutationContract{TargetKind: "source", TargetInputs: []string{}}
+	if err := NewCatalog(reconcile, withMutation).Validate(); err == nil || !strings.Contains(err.Error(), "must not declare a mutation contract") {
+		t.Fatalf("execute mutation contract error = %v", err)
+	}
+
+	retryable := cloneCommandSpec(execute)
+	for index := range retryable.Agent.Errors {
+		if retryable.Agent.Errors[index].Code == "execute_output_write_failed" {
+			retryable.Agent.Errors[index].Retryable = true
+		}
+	}
+	if err := NewCatalog(reconcile, retryable).Validate(); err == nil || !strings.Contains(err.Error(), "execute_output_write_failed") {
+		t.Fatalf("retryable execute output error = %v", err)
+	}
+}
+
 func TestInputRelationsMustLeaveEveryDeclaredInputUsable(t *testing.T) {
 	base := utilitySpec("inspect")
 	base.Args = "[--a <value>] [--b <value>] [--c <value>]"

@@ -60,3 +60,14 @@ func TestSourceInspectRejectsUnknownAdapterBeforeProbe(t *testing.T) {
 		t.Fatalf("exit = %d, stdout = %q, stderr = %q, calls = %d", exit, out.String(), errOut.String(), adapter.calls)
 	}
 }
+
+func TestSourceInspectOutputFailureIsNotSourceReplayPermission(t *testing.T) {
+	var errOut bytes.Buffer
+	command := New(strings.NewReader(""), shortWriter{}, &errOut)
+	adapter := &cliSourceInspector{}
+	command.sources = sourceinspect.New(map[string]sourceinspect.InspectorPort{"github-cli": adapter})
+	exit := command.RunContext(context.Background(), []string{"source", "inspect", "--adapter", "github-cli", "--executable", "fixture"})
+	if exit != ExitInternal || adapter.calls != 1 || !strings.Contains(errOut.String(), "code: execute_output_write_failed") || !strings.Contains(errOut.String(), "retryable: false") {
+		t.Fatalf("exit=%d calls=%d stderr=%q", exit, adapter.calls, errOut.String())
+	}
+}

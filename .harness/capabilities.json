@@ -21,13 +21,13 @@
   },
   {
     "id": "tailoring.preview",
-    "status": "public",
-    "reason": ""
+    "status": "deferred",
+    "reason": "The authorization-centered preview was retired; a schema-3 wrapper-stage preview is the next bounded slice."
   },
   {
     "id": "tailoring.execute",
-    "status": "public",
-    "reason": ""
+    "status": "deferred",
+    "reason": "Bundle-backed source execution remains paused until the purpose-specific surface and wrapper plan contract is validated."
   },
   {
     "id": "tailoring.catalog.inspect",
@@ -36,11 +36,26 @@
   },
   {
     "id": "tailoring.policy.validate",
+    "status": "deferred",
+    "reason": "Authorization policy schemas 1 and 2 are retired and intentionally have no active validator."
+  },
+  {
+    "id": "tailoring.policy.init",
+    "status": "deferred",
+    "reason": "Authorization policy draft generation is retired in favor of schema-3 tailoring specifications."
+  },
+  {
+    "id": "tailoring.schema.migrate",
     "status": "public",
     "reason": ""
   },
   {
-    "id": "tailoring.policy.init",
+    "id": "tailoring.spec.validate",
+    "status": "public",
+    "reason": ""
+  },
+  {
+    "id": "tailoring.spec.init",
     "status": "public",
     "reason": ""
   },

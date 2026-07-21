@@ -1,312 +1,255 @@
 # Harness
 
-The harness is the executable counterpart of the theses, product contract, architecture, security model, and release policy. Its goal is not to maximize the number of tools. Its goal is to make important regressions fail through one understandable interface.
+The harness turns Atsura's product, architecture, and security claims into
+repeatable checks. A capability is complete only when `task check` passes. The
+current thesis-correction milestone also requires `task security` because it
+changes schema trust, source-process classification, adoption vocabulary, and
+migration behavior.
 
-## One gate, several profiles
+Do not weaken a check to preserve the superseded authorization-centered model.
+Update the governing contract and its mechanical claim together.
 
-`./scripts/check.sh` is the canonical check implementation. Every other entry point delegates to it.
+## Required commands
 
-| Profile | Task alias | Intended use | Includes |
-|---|---|---|---|
-| `fast` | `task check:fast` | Short local feedback loop | Formatting, architecture checks, capability/schema contracts, focused unit and contract tests |
-| `full` | `task check` | Required implementation gate | Fast profile plus vet, race, tidy/diff checks |
-| `security` | `task security` | Security and dependency changes | Repository guard, module integrity, pinned static and vulnerability analysis |
-| `release` | `task release:check` | Packaging and release changes | Artifact, metadata, checksum, Formula, and workflow contracts |
-| `public` | `task public:check` | Bootstrap completion and public publication | Ready-profile identity, forbidden-data, required-file, license, capability/schema contracts, and public-boundary checks |
+```sh
+task check:fast
+task check
+task security
+task public:check
+task release:check
+```
 
-Direct invocation is supported for automation:
+The underlying stable interface is:
 
 ```sh
 ./scripts/check.sh fast
 ./scripts/check.sh full
 ./scripts/check.sh security
-./scripts/check.sh release
 ./scripts/check.sh public
+./scripts/check.sh release
 ```
 
-Every profile starts with a local-toolchain preflight after the gate sanitizes its Go environment. The preflight requires the exact Go version declared by `go.mod` under `GOTOOLCHAIN=local` and verifies the selected binary, its reported version, `GOVERSION`, `GOROOT`, `GOTOOLDIR`, and the compiler in that tool directory as one installation. A mismatch fails once with those values and remediation guidance before formatting, tests, downloads, or release builds begin.
+`task check` is the implementation completion gate. Publication additionally
+requires `task public:check`; release additionally requires
+`task release:check`. Public and release profiles are not completion gates for
+the current non-publication correction milestone unless its changes affect
+their tracked fixtures.
 
-All profiles require Git, Go, and `gofmt`. The `release` profile additionally requires ShellCheck 0.9.0 or newer, Ruby, `tar`, `unzip`, and either `sha256sum` or `shasum`. Pinned Go security and action-lint tools must already exist in the module cache or be downloadable over the network. The release preflight reports missing system tools together before the long gate begins; network availability is documented rather than actively probed because a network probe would be nondeterministic and provider-specific.
+## Executable claims
 
-The canonical gate and release packager force module mode and neutralize ambient Go workspace, toolchain, experiment, FIPS, and flag settings before invoking Go. This prevents a local or CI `GOFLAGS` value from silently selecting no tests and keeps agent, developer, and workflow evidence on the same checked command set. A release fixture launches the public profile with hostile values and proves that its first Go-backed check observes only the sanitized contract.
+### Repository identity and layering
 
-CI is the completion authority. Pull-request CI runs `full` and the
-security/public boundary profiles in parallel. The repository installs no
-automatic Codex Stop hook: a per-turn gate adds latency and does not prove
-completion. Optional local automation must delegate to one named profile and
-must not claim equivalence to a profile it did not run.
+Tests and lint must prove:
 
-## Harness components
-
-### `.harness/project.json`
-
-This schema-versioned file is the machine-readable source for template identity, bootstrap state, exact runnable defaults, and repository policy. The bootstrap tool validates it before replacement and changes its profile from `template` to `ready` only after successful application. The stored word `ready` means identity-ready only; it does not assert product, security, legal, or release readiness.
-
-`binary_name` is a portable lowercase executable basename of at most 96 bytes, leaving room for the mandatory Windows `.exe` suffix under the 100-byte cross-format archive-entry limit. Validation rejects the case-insensitive Windows device names `CON`, `AUX`, `PRN`, `NUL`, `COM1` through `COM9`, and `LPT1` through `LPT9`; adding `.exe` does not make those names extractable on Windows. It also rejects `LICENSE` case-insensitively because every release archive reserves that entry name. These are parts of the default cross-format release-matrix contract, not naming-style preferences.
-
-Policy that must be reviewed by both humans and tools belongs here when it is finite and structural, such as forbidden private identifiers or expected module and binary names. Product reasoning remains in documentation.
-
-Schema 2 adds `public_guard.documentation_locale`, one explicit BCP-47-like
-language tag for the intended locale of trusted repository documentation and
-CLI-authored prose. The template uses `en`. A schema-1 derived repository must
-first choose that locale in its thesis or product contract, add the field, and
-then set `schema_version` to 2; the loader applies no default and performs no
-automatic migration. Bootstrap and later profile writes preserve the selected
-value.
-
-Repository guard mechanically enforces only a narrow English/Japanese canary:
-when the tag is English, Japanese script is rejected in trusted Markdown prose.
-Fenced code, bounded inline code spans, block quotes, parsed inline/reference
-Markdown link destinations, historical `Complete` or `Superseded` work packets,
-non-Markdown external fixtures, CLI-authored Go strings, other scripts, and
-non-English locales are not linguistically classified. Blank lines, quotes, and
-fences bound inline parsing; malformed or escaped link-like text remains prose.
-Link labels and `Draft`, `Accepted`, or `Active` work-packet prose remain trusted
-documentation and are checked. Stable machine identifiers and external provider
-data are never translated by this setting. Both `en` and the valid three-letter
-`eng` language tag activate the English canary.
+- `.harness/project.json` remains the identity source of truth;
+- `cmd/atr` and `internal/cli` remain the public composition root;
+- domain has no outward dependency, application does not import
+  infrastructure, and adapter packages do not define product policy; and
+- YAML and other third-party codecs remain confined to the approved layer.
 
 ### `tools/bootstrap`
 
-Bootstrap derives its validated exact replacement set from the protected provenance values in `projectconfig.Defaults`. It maps the runnable module, repository, binary, display identity, and associated project metadata to `.harness/project.json`; it does not search-and-guess arbitrary names. The defaults declaration itself is excluded from replacement so a derived repository can prove the source values.
+Bootstrap tests preserve the foundry identity recorded in
+`projectconfig.Defaults` as protected provenance while previewing and applying
+only the derived identity supplied through the project manifest. They cover
+transactional replacement, path renames, rollback, Go formatting, and residue
+cleanup. Product-direction changes must not reinterpret those protected
+defaults or bypass the bootstrap transaction.
 
-Always preview first:
+### Source catalog evidence
 
-```sh
-go run ./tools/bootstrap --dry-run
-go run ./tools/bootstrap
-```
+Contract tests must prove:
 
-Bootstrap failure must leave the repository in a diagnosable state and must not claim identity readiness. Bootstrap changes identity; it cannot complete theses, threat models, or release promises. `ReadyProblems` therefore requires every runnable and user-facing derived field to change, while allowing a deliberate reuse of the GitHub owner or license.
+- source adapters declare namespaced kind, contract version, compatible source
+  range, exact probe argv, and finite attempts/time/bytes;
+- source identity and probe evidence are preserved in the catalog;
+- verified built-ins, observed extensions, and unverified dynamic entries stay
+  distinct;
+- alternate synthetic adapters satisfy shared contracts without GitHub- or
+  host-specific fields; and
+- catalog evidence is never interpreted as allow/deny or source safety.
 
-### `.agents/skills/bootstrap-derived-cli`
+Inspection command catalog entries declare `EffectExecute` because their
+bounded probes start a source-owned process.
 
-`$bootstrap-derived-cli` is the first-run Codex workflow for a derived repository. It does not implement a second replacement engine: it resolves missing identity decisions, invokes `tools/bootstrap` in preview-then-apply order, verifies the resulting module/import/command paths and gates, then requires a project-specific thesis and security handoff before `$add-capability`. `tools/repoguard` requires both the Skill instructions and their Codex interface metadata, while the Skill's workflow delegates mechanical safety to the same bootstrap and check commands used by humans and CI.
+### Tailoring specification schema 3
 
-The Skill deliberately leaves provider selection, OAuth versus PAT, credential storage, side-effect approval, user tasks, and release ownership to the derived project's theses and security model. A `ready` profile proves only that identity replacement completed; treat it as identity-ready when communicating state.
+Domain, codec, application, and CLI tests must prove:
 
-### `tools/archlint`
+- schema version 3 is required and catalog-bound;
+- `surface.default` is explicitly `inherit` or `exclude`;
+- commands are exact, sorted, unique, verified catalog paths with bounded
+  reasons;
+- presence is explicitly `include` or `exclude`;
+- included entries have an explicit option surface and complete wrapper;
+- excluded entries have neither options nor wrapper;
+- option defaults and overrides are exact, sorted, unique, disjoint, and
+  catalog-observed;
+- identity wrappers contain no transformations;
+- transform wrappers contain at least one supported transformation;
+- before/after lists are explicit and reject unsupported actions;
+- arbitrary shell, script, jq, RTK, plugin, and runtime-LLM actions are
+  rejected; and
+- bounded strict decoding rejects aliases, excessive depth/nodes/bytes,
+  duplicate or unknown fields, and trailing documents.
 
-Architecture lint checks production dependency direction, rejects unclassified production packages, and keeps each `cmd/` entrypoint limited to argument/stream handoff, signal cancellation, the CLI composition root, and process exit. It merges Go package information for the native build and every release target on Linux, macOS, and Windows, so a platform-specific file cannot hide a forbidden dependency from the host CI platform. Each `go list -json` process is decoded from stdout only; stderr remains a separate diagnostic channel and cannot corrupt the package stream. Source checks reject detached application, infrastructure, and CLI contexts, default HTTP clients, application-layer `fmt` presentation/scanning calls, built-in `print`/`println` in domain, application, CLI, and command packages, authentication-binding issuance outside infrastructure, and command-entrypoint access outside the narrow selector allowlist. Domain and application packages cannot import `log`, `log/slog`, or Cgo. Reviewed user-facing presentation belongs in CLI and must use its injected streams; observability and native integration are explicit derived-project infrastructure policies. Any allowed exception must be narrow, named, and tested.
+Canonical round-trip fixtures must produce stable normalized bytes and digest.
 
-The template also rejects every third-party import from `cmd` and `internal/cli` by default. Vendor SDKs, authenticated transports, and other effectful clients belong in `internal/infra`, where third-party imports remain available and the dependency/security gates review them. A derived project may allow a CLI parser or renderer only by adding its exact package path to `allowedCLIThirdPartyImports` in `tools/archlint/main.go`. The same change must include an accepted ADR or thesis consequence, license and dependency review, and a regression test proving that sibling packages, module-wide prefixes, SDKs, and transports remain rejected. Wildcards and prefix allowlists are not valid exceptions.
+### Surface composition and resolution
 
-### `tools/repoguard`
+Pure domain tests own the complete truth table:
 
-Repository guard checks public-boundary and repository-shape policy, including bootstrap state, forbidden identifiers, likely secrets, invalid or leftover identity, work-packet lifecycle consistency, required public files, and the configured documentation locale. Its English-locale check is the narrow trusted-Markdown Japanese-script canary described above, not general language detection. Its publishable path set comes from a successful Git enumeration. Tracked paths already absent from the working tree are omitted so an unstaged bootstrap rename is valid, while untracked destinations remain included. Git errors, symbolic links, special files, and other inspection errors still fail closed. A derived project extends its policy when it adds credentials, private migrations, generated content, or publication constraints.
-
-Work-goal status is one of `Draft`, `Accepted`, `Active`, `Complete`, or
-`Superseded`. `Accepted` remains a valid pre-execution state for existing
-derived histories; new work may move directly from Draft to Active. Complete
-requires every acceptance checkbox in every visible Acceptance section and
-every task checkbox to be checked across the standard GFM unordered and ordered
-list markers. Metadata is read only from the contiguous top-level
-`- Key: value` block directly below the first top-level ATX H1 (`# ...`).
-Fenced examples and HTML comments do not supply metadata, headings, or
-checkboxes; valid top-level and list-container CommonMark fences are
-recognized. A
-Superseded goal names one canonical raw relative path to a non-template
-repository goal, and its successor chain must terminate rather than cycle. The
-guard reads each goal and successor through the same regular-file/no-symlink
-repository boundary. When adopting this guard in an existing derived
-repository, maintainers must review an inconsistent historical Complete packet
-and either supply its evidence, return it to Active, or supersede it explicitly.
-A migration must not check boxes automatically.
-
-### `tools/contractlint`
-
-Contract lint validates the executable catalog before checking two repository ledgers:
-
-- [`.harness/capabilities.json`](../.harness/capabilities.json) records supported and deliberately unsupported user capabilities without copying command paths. Each public capability ID must appear in at least one `AgentContract.CapabilityID`, every catalog capability must be public, and an `internal`, `deferred`, or `excluded` entry must remain absent from the catalog and explain why.
-- [`.harness/schemas.json`](../.harness/schemas.json) pins publishable external-schema fixtures by repository-relative path and exact SHA-256 digest. Each entry also records provenance and license. An explicit empty array is valid before the project adopts an external schema.
-
-Both ledgers are strict JSON and must themselves be regular files reached without symbolic links. Unknown or duplicate object keys, duplicate IDs, malformed lowercase dot IDs, trailing values, and implicit `null` lists fail. Capability command paths remain owned only by the catalog; adding them to the ledger creates forbidden duplication rather than useful documentation.
-
-Capability status has a narrow meaning:
-
-| Status | Meaning |
+| Default/entry | Expected surface result |
 |---|---|
-| `public` | At least one catalog command exposes this supported user capability |
-| `internal` | The implementation may use it, but no public command may expose it |
-| `deferred` | The product may add it later, but it is unsupported now |
-| `excluded` | The current product contract deliberately does not support it |
+| `inherit`, no entry, verified built-in | Included with inherited options and identity wrapper |
+| `exclude`, no entry | Absent |
+| explicit `include` | Included exactly as declared |
+| explicit `exclude` | Absent with no wrapper |
 
-Several commands may share one public capability ID when discover and act commands form one user workflow. Conversely, one command declares exactly one primary capability; splitting a command across unrelated outcomes is a product-design signal, not a ledger shortcut. Non-public entries require a reason so an agent does not mistake absence for an implementation gap.
+Negative tests must prove that an excluded entry with a wrapper, an included
+entry without a complete wrapper, and a wrapper-only or membership-only
+shortcut are invalid. Resolving an absent command returns
+`command_not_in_surface`, produces no plan, and starts zero source processes.
 
-Schema paths must be canonical repository-relative paths below a `testdata` directory. Every path component is inspected without following symbolic links, and the target must be a regular file. A digest mismatch requires reviewing the upstream change and updating the manifest deliberately; the tool never rewrites a digest. `repoguard public` separately checks the same fixture content for public-repository policy, so a matching digest is not permission to publish a secret or unlicensed material.
+### Bundle schema 2 and adoption
 
-Run the focused check with:
+Tests must prove:
 
-```sh
-task contracts:check
-```
+- a canonical bundle binds exact source identity, adapter evidence, normalized
+  catalog and digest, normalized schema-3 specification and digest, and the
+  derived surface with wrappers;
+- canonical bytes exclude timestamps, machine/user identity, credentials,
+  source output, and random values;
+- every embedded digest and derived surface is recomputed on load;
+- catalog, specification, surface, wrapper, source, and bundle drift are
+  distinguishable;
+- alternate vendor-neutral adapter fixtures compile to the same shared bundle
+  contract; and
+- schema-1 bundles are rejected rather than reinterpreted.
 
-The same tool runs in `fast`, therefore in `full`, and directly in `public`. There is no CI-only capability or schema interpretation.
+Adoption tests must prove that only the full exact digest is accepted through a
+controlling terminal; the receipt is user-local and content-bound; unrelated
+receipts survive replacement; malformed or unsafe storage fails closed; and
+the review summary counts surface and wrapper facts rather than source
+permissions, decisions, or inferred effects.
 
-When adding an external API, first record every considered user capability in the capability ledger, including deliberately deferred and excluded outcomes. Promote an ID to `public` only in the same change that adds a validated catalog contract. When vendoring an upstream schema or response fixture, record its source and publication license, compute the digest from the exact bytes, and add adapter contract tests. A schema digest proves identity, not compatibility: tests must still fail when a reviewed upstream change violates the domain mapping.
+Trust-store writes remain Atsura-owned create/write mutations and must pass
+through the central mutation invoker with exact target and impact contracts.
 
-### Tests
+### Wrapper plan contract
 
-The test suite has complementary levels:
+The current milestone exercises pure included/absent resolution and normalized
+wrapper definitions, not process execution. Tests must nevertheless keep the
+future plan boundary unambiguous:
 
-- Domain tests fix pure invariants.
-- Application tests fix task interpretation, orchestration, and ambiguity behavior.
-- Each interpretation-sensitive capability adds task-owned semantic-result
-  tests for its declared task identity and the target, parent, and/or scope
-  dimensions it actually carries. The tests preserve scoped empty collections
-  and interpretation-relevant state distinctions, reject field/reference-kind
-  laundering where multiple kinds exist, and add negative-inference canaries
-  where display details could be mistaken for facts. The template sample
-  mechanically covers exact-ID binding, repository target mismatch, successful
-  empty output, same-label identity separation, and no partial pagination
-  result; it is not a universal result type.
-- Authentication, pagination, and mutation-boundary tests prove rejection/cancellation before downstream calls, exact secret-free authentication binding, complete standard runtime-fault declarations, and complete-or-no-result behavior.
-- Catalog output tests validate `complete|paged` delivery independently from
-  `not_applicable|exhaustive|bounded_window|differential_window` collection
-  coverage. Pagination tests require an exact optional-input/top-level-string
-  opaque cursor binding, typed empty-cursor completion, and JSON-only
-  presentation for paged delivery, forbid that binding for complete delivery,
-  and reject paged plus `not_applicable`. Renderer fixtures reject an omitted,
-  null, or non-string cursor.
-- Infrastructure tests fix protocol conversion and boundary failure.
-- CLI tests fix routing, help, rendering, exit behavior, the catalog-owned typed
-  argv parser, and the distinction among absent, defaulted, and explicitly
-  supplied values. Negative fixtures cover type/range/enumeration,
-  repeatability, dependency/conflict, duplicate scalar, and syntax drift.
-- Agent-help shape, edge-equivalence, and derived-scale size tests keep root
-  discovery index-only while grouped scoped workflows retain the complete
-  invocation, reference, and recovery contract without producer/consumer
-  Cartesian growth.
-- JSON-output contract tests compare each single-shape built-in renderer's
-  schema version, envelope, and item keys with its catalog `CommandOutput`
-  declaration and enforce the always-present string cursor for any paged probe.
-  Help's catalog fields describe root `view: index`; separate exact-key tests
-  cover both that view and the input-selected `view: scope` variant.
-- Adversarial output tests keep TSV/JSON records and stdout/stderr ownership intact across controls, Unicode format/line separators, existing backslashes, and printable prompt-like data while preserving opaque IDs exactly.
-- Catalog tests scan every public command for completeness and unique paths.
-- Catalog syntax tests reject command/namespace prefix collisions,
-  bracket/`a|b`/exact-literal usage drift from `Required`/`AllowedValues`,
-  fault-code signature conflicts across command and agent-help global errors,
-  and missing common runtime failure declarations.
-- Reference-graph tests connect discover producers to act consumers by kind and exact field/argument declarations.
-- Opaque-ID round-trip tests pass discovery output unchanged into action input.
-- Negative tests prove rejection before side effects.
-- Release tests inspect actual artifacts and metadata, not only workflow text.
-  Archive tests cover deterministic multi-entry order, canonical metadata,
-  create-only output, regular-file identity checks, exact executable/license/
-  optional-notice bytes, and independent reopen verification.
-- Work-packet tests retain the Accepted compatibility state; reject unsupported
-  status, unchecked GFM acceptance/tasks, malformed fence evasion, template or
-  cyclic successor chains, and missing successors; and retain
-  regular-file/no-symlink repository policy.
+- identical validated inputs resolve identically;
+- an included command resolves to one complete identity or transform wrapper;
+- an excluded command resolves to no plan authority;
+- wrapper stages contain no allow/confirm/deny or source
+  read/create/write/target/impact fields; and
+- pure preview/resolution fakes observe zero source-process attempts.
 
-A global coverage percentage is not a substitute for these contracts. Add tests at the boundary where a future regression would otherwise pass unnoticed.
+When runtime resumes, preview and execution must share one plan constructor and
+tests must compare their plan identity directly.
 
-## Claims-to-checks discipline
+### Source execution effect and process boundary
 
-Every strong statement should identify its enforcement path.
+Operation tests must prove:
 
-| Claim type | Preferred enforcement |
-|---|---|
-| Layer dependency | Go-aware architecture lint and import-boundary tests |
-| Finite domain state | Types, constructors, and table-driven negative tests |
-| Catalog completeness | Whole-catalog contract tests |
-| Output delivery versus collection coverage | Independent finite enums and catalog tests, including complete bounded/differential windows and paged exhaustive traversal |
-| Operationally closed supported outcome | Reviewed agent-readiness transcript with zero undeclared external reconstruction, plus task-owned deterministic-composition tests and declared field extraction |
-| Request-bound semantic result | Per-capability domain/application tests for declared task identity and every applicable request dimension; the sample proves exact-ID/mismatch/empty/no-partial behavior, while scoped or relationship-rich capabilities add their own scope, state, contextual-kind, and negative-inference fixtures |
-| Action target composition | Reachable reference-graph validation and byte-preserving round trips for reference-bound acts; complete, exclusive, reference-free declarations for command-bound fixed targets |
-| Side-effect ordering | Fake adapter counters and failure-before-I/O tests |
-| Mutation outcome classification | Structured-fault-first/cause-stripping tests, non-retryable unclassified outcome fallback, and read-only recovery validation |
-| Confirmed mutation output | One effect-aware finalizer, late-cancellation regression, non-retryable mutation short-write fault, and read-only recovery validation |
-| Authentication precondition | Secret-free session contract, zero-downstream-call tests, and catalog validation of every standard gate fault's code/kind/retryability |
-| Authentication binding | Opaque JSON-excluded/fmt-redacted binding type, infrastructure-only issuance lint, exact pass-through test, and derived two-account/stale-binding/refresh-race adapter fixtures |
-| Pagination completeness | Cursor loop/budget/cancellation tests, retryability/catalog agreement, and no-partial-result assertion |
-| Public paged continuation | Catalog validation of one exact same-kind optional input/top-level output binding, non-`not_applicable` coverage, JSON-only presentation, and agent-help/reference-workflow projection |
-| Non-secret authentication configuration | Bounded strict codec, unknown-schema and unsafe-file rejection, opened-directory confinement, immediate identity revalidation, Unix directory sync, explicit Windows limitation, fail-closed source precedence, and read-only status tests |
-| Human authentication handoff | Agent-readiness records environment exports, re-entry, browser/terminal transfers, OS integration, ceremonial inputs, and first-run/steady-state invocations |
-| Retry safety | Timeout/attempt/idempotency validation and adapter contract tests |
-| Rate evidence versus replay permission | Fault validation permits positive `retry_after` on non-retryable rate limits only, plus text/JSON projection tests |
-| Executable command inputs | Catalog validation, one shared typed parser, handler integration tests, and exact human/agent-help input projection |
-| Agent recovery | Catalog fault declarations, exact-path/help-selector executable grammar tests, and structured error snapshots |
-| Bounded agent discovery | Fixed root-index shape, 512-byte per-command entry validation, 100-command growth/selection tests, and a derived-scale grouped-workflow whole-response budget with edge-equivalence checks |
-| Meaningful derived identity | Field-level `ReadyProblems` tests that reject unchanged runnable/user-facing identity while allowing owner/license reuse, plus protected-defaults bootstrap tests |
-| Work-packet lifecycle consistency | Repository validation of finite status, all GFM completion checkboxes, CommonMark fence handling, explicit non-template acyclic supersession, and regular-file paths |
-| Bootstrap working-tree paths | Temporary-Git deletion/untracked-destination regression, successful Git enumeration requirement, selected-path no-link/regular-file validation, and full shape scan |
-| Local Go consistency | Gate preflight comparison of required/reported/compiler versions and GOROOT/GOTOOLDIR, with a mixed-installation shell fixture |
-| External text structure | Visible-projection unit/E2E tests plus scoped I/O trust metadata; printable meaning remains explicitly out of scope |
-| Per-command YAML safety | Regular-file and symlink checks, a 64 KiB read bound, strict known fields, alias/multi-document rejection, domain validation, zero-process plan tests, and structured failure contracts |
-| Release-quality local tailoring | Required read effect, shared plan-compiler tests, process fake counters, no-shell adapter tests, executable digest/revalidation tests, fixed timeout and byte bounds, strict JSON fixtures, exact execution-envelope tests, agent-readiness replay, and all four completion profiles on one committed tree |
-| Vendor-neutral adapter core | Import-boundary lint, schemas containing only namespaced adapter kind/version, and conformance fixtures for the real reference adapter plus an alternate synthetic source and host consumer |
-| Canonical tailoring bundle | Canonical-byte golden tests, semantic round trips, digest recomputation, forbidden ambient-field negative tests, and clean regeneration diffs |
-| Schema-2 artifact workflow | Bounded regular-file and symlink tests, strict YAML/JSON hostile fixtures, catalog/policy digest mismatch tests, shared validate/build application tests, CLI output-schema tests, and proof that build creates no trust state |
-| Bundle trust and drift | Interactive-terminal trust tests, user-local exact-digest receipt fixtures, repository-untrusted tests, source/catalog/policy/bundle mismatch tests, and zero-attempt application counters |
-| Source inspection safety | Adapter-owned fixed probe argv, aggregate attempt/time/byte budgets, hostile/malformed/extension fixtures, provenance validation, and proof that inspection performs no provider task |
-| Host integration ownership | Malformed/concurrent settings fixtures, exact-owned-entry update/remove tests, unrelated-setting preservation, strict protocol decoding, and install/status/remove E2E |
-| Host-independent enforcement | Shared decision fixtures replayed through manual and synthetic host consumers, allow/confirm/deny equivalence, compound managed-command rejection, and zero-attempt bypass tests |
-| Documentation locale | Versioned project policy, explicit schema-1 migration diagnostic, locale preservation test, and narrow English/Japanese trusted-Markdown fixtures; broader linguistic conformance remains manual |
-| Public capability coverage | Exact bidirectional match between capability ledger and catalog `CapabilityID` values |
-| External schema compatibility | Vendored fixture, generator, and drift test |
-| Secret or private-data exclusion | Repository policy, scanner, and synthetic fixtures |
-| Reproducible generation | Regenerate and require a clean diff |
-| Artifact integrity | Deterministic multi-entry packer, independent reopen verifier, exact supporting-file extraction, build metadata inspection, checksums, and install tests |
-| Documentation command | Execute or parse the canonical snippet where practical |
+- `EffectExecute` validates and has stable JSON/text encoding;
+- unknown effects fail closed;
+- Execute is not treated as Read, Create, or Write;
+- Execute carries no Atsura mutation contract; and
+- every mutation-only switch handles Execute explicitly rather than relying on
+  `effect != read`.
 
-If no practical mechanical check exists, state the manual review step and why automation is not reliable. Do not describe a manual convention as mechanically guaranteed.
+Existing source-inspection process tests retain exact executable/argv,
+no-shell, identity revalidation, time/byte limits, declared attempt counts, and
+non-retryable post-start uncertainty. Bundle runtime is outside this milestone
+and must not be presented as implemented.
 
-## Adding an invariant
+### Retired-schema migration
 
-1. State the invariant and the failure it prevents in the governing document.
-2. Identify the smallest code mutation that would violate it.
-3. Put validation at the narrowest shared boundary.
-4. Add a test or lint fixture that fails for the mutation.
-5. Give the failure an actionable message with file, rule, and next step.
-6. Add the check to the appropriate `scripts/check.sh` profile.
-7. Confirm local Task and CI paths exercise the same implementation.
+Fixtures for specification schemas 1 and 2 and bundle schema 1 must prove:
 
-Do not add a grep that checks only whether a function name exists when the real claim concerns behavior. Prefer types, AST analysis, runtime validation, and contract tests in that order of semantic strength.
+- retired documents are rejected before adoption or source start;
+- no allow/confirm/deny, source read/create/write, target, or impact value is
+  silently converted;
+- deprecated public paths return the stable migration fault and an exact
+  catalog-declared recovery command;
+- migration diagnostics persist no trust or configuration state; and
+- every migration path starts zero source processes.
 
-## Generated and automated changes
+### CLI catalog and output
 
-Generation is allowed when it reduces hand-maintained duplication without making the public product dynamic at runtime.
+Catalog tests must prove:
 
-- Inputs and tool versions are reviewed and pinned.
-- Generated output is committed only when repository policy requires it.
-- Regeneration is deterministic.
-- Generated code cannot register public commands implicitly.
-- Generated schema fixtures must retain reviewed provenance and license metadata and an exact manifest digest.
-- Automated updates use pull requests and the same profiles as human changes.
-- A passing generator does not classify a new capability or side effect on behalf of a reviewer.
+- every current and migration-only public command is registered once in
+  `cli.Catalog`;
+- help, routing, typed parsing, capabilities, effects, outputs, faults, and
+  recovery paths derive from that catalog;
+- current output uses `specification`, `surface`, and `wrapper` vocabulary;
+- retired `policy` vocabulary appears only in migration diagnostics or
+  historical superseded documents;
+- exact output schemas reject undeclared fields and preserve absent versus
+  explicit empty where meaningful; and
+- root agent help remains a bounded capability index, with details reachable
+  by exact command or namespace help.
 
-## Failure handling
+### Host mapping
 
-A failed check is a work item, not an obstacle to bypass. Fix the implementation or, when policy is wrong, update the governing decision and its enforcement together. Do not:
+Host integration is outside the current milestone. Its future conformance
+tests must keep transport values separate from core meaning: host
+`allow`/`ask`/`deny` may map `rewrite`, `not_managed`,
+`command_not_in_surface`, `invalid_invocation`, or `interaction_required`, but
+must never become a source-operation permission model.
 
-- delete a negative test without replacing its guarantee;
-- add a broad lint exclusion;
-- switch a pinned tool to `latest` to obtain a passing result;
-- make CI and local checks silently diverge;
-- suppress output that a contributor needs to act on the failure.
+### External text and secrets
 
-Record nondeterministic failures with inputs, platform, and logs in the active work packet before changing timeouts or retries.
+Hostile fixtures must cover source help, catalog labels, YAML strings, source
+output, paths, and host payloads containing controls, Unicode separators,
+prompt-like text, and secret-shaped values. Visible rendering must preserve
+terminal and JSON/TSV framing without filtering printable meaning. Persistent
+fixtures must assert that credentials, raw stdout/stderr, environment
+snapshots, transcripts, and agent reasoning are absent.
 
-## Completion rules
+## Test ownership
 
-- Ordinary implementation: `task check`
-- Security boundary or dependency: `task check` and `task security`
-- Public repository change: `task check` and `task public:check`
-- Release or packaging change: `task check` and `task release:check`
-- First public release: all profiles, plus the manual review in [Public Repository](05_public_repository.md)
+- Domain tests own specification, surface, wrapper, bundle, digest, effect,
+  and pure resolution invariants.
+- Application tests own ordering, port calls, adoption assessment, mutation
+  invocation, and zero-attempt behavior.
+- Infrastructure tests own bounded strict codecs, executable identity, process
+  limits, safe local persistence, and adapter protocol mechanics.
+- CLI tests own catalog registration, typed argv, help, output schemas,
+  migration recovery, and stdout/stderr routing.
+- End-to-end fixtures own clean-state specification through bundle status and
+  adoption without real provider or network effects.
+- Architecture and public guards own dependency direction and secret-free
+  repository state.
 
-For Atsura v0.1, “release-quality” means the finite `plan preview` and
-read-only `run` outcomes satisfy their catalog, security, and compatibility
-contracts on one commit and all `full`, `security`, `public`, and `release`
-profiles pass for that commit. It does not mean every thesis mechanism exists,
-and it does not authorize a tag or publication without the separate manual
-release review.
+## Correction milestone gate
 
-For Atsura v1, completion additionally requires the ADR 0004 bundle workflow,
-adapter conformance matrix, trust/drift state machine, gateway and host-adapter
-E2E journeys, migration documentation, and all four profiles to pass on one
-final committed clean tree. Passing the GitHub CLI or Claude Code fixtures does
-not permit vendor-specific fields in shared schemas or imply compatibility with
-untested vendors.
+This milestone is complete only when all of the following are true on the same
+tree:
+
+1. focused domain, codec, application, CLI, and migration tests pass;
+2. schema-3 specification and schema-2 bundle canonical fixtures pass;
+3. surface/wrapper truth-table and `EffectExecute` negative tests pass;
+4. retired authorization schemas fail with zero source attempts;
+5. `task check` passes;
+6. `task security` passes; and
+7. repository search finds no live source-wrapper requirement for
+   allow/confirm/deny, source read/create/write, or source target/impact outside
+   explicit migration and superseded-history contexts.
+
+The gate does not claim bundle execution, raw execution, host installation, or
+release readiness.
+
+## Evidence discipline
+
+Record exact commands, fixture identities, attempt counts, and gate results in
+the active work packet while the change is open. Promote durable decisions to
+theses, architecture, security, an accepted ADR, types, and tests. Delete the
+temporary packet after its evidence is represented by the final committed tree
+and completion report.

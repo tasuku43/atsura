@@ -26,7 +26,7 @@ func TestEffectZeroValueFailsClosed(t *testing.T) {
 
 func TestSemanticEnumsRoundTripThroughTextAndJSON(t *testing.T) {
 	t.Run("effect", func(t *testing.T) {
-		for _, value := range []Effect{EffectRead, EffectCreate, EffectWrite} {
+		for _, value := range []Effect{EffectRead, EffectExecute, EffectCreate, EffectWrite} {
 			text, err := value.MarshalText()
 			if err != nil {
 				t.Fatalf("MarshalText(%v) error = %v", value, err)
@@ -216,6 +216,10 @@ func TestIntentValidatesEffectSpecificTargets(t *testing.T) {
 			intent: Intent{Command: "doctor", Effect: EffectRead},
 		},
 		{
+			name:   "source execution without mutation declarations",
+			intent: Intent{Command: "source inspect", Effect: EffectExecute},
+		},
+		{
 			name: "create with parent scope",
 			intent: Intent{
 				Command: "items create",
@@ -241,6 +245,20 @@ func TestIntentValidatesEffectSpecificTargets(t *testing.T) {
 		{
 			name:    "read with target",
 			intent:  Intent{Command: "doctor", Effect: EffectRead, Target: TargetRef{Kind: "system", ID: "local"}},
+			wantErr: true,
+		},
+		{
+			name:    "source execution with mutation target",
+			intent:  Intent{Command: "source inspect", Effect: EffectExecute, Target: TargetRef{Kind: "source", ID: "local"}},
+			wantErr: true,
+		},
+		{
+			name: "source execution with mutation impact",
+			intent: Intent{
+				Command: "source inspect",
+				Effect:  EffectExecute,
+				Impact:  declaredSingleImpact(),
+			},
 			wantErr: true,
 		},
 		{

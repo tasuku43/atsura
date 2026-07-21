@@ -111,10 +111,10 @@ func (r *Runner) Run(ctx context.Context, request sourceprocess.Request) (source
 		return result, fault.New(fault.KindContract, "source_stderr_too_large", "The source process stderr exceeded the 256 KiB limit.", false, helpAction())
 	}
 	if err := ctx.Err(); err != nil {
-		return result, err
+		return result, fault.Wrap(fault.KindCanceled, "source_execution_canceled", "The caller canceled after the source process started; its downstream outcome is not classified as replay-safe.", false, err, helpAction())
 	}
 	if errors.Is(runCtx.Err(), context.DeadlineExceeded) {
-		return result, fault.Wrap(fault.KindUnavailable, "source_command_timeout", "The source process exceeded its declared timeout.", true, waitErr, helpAction())
+		return result, fault.Wrap(fault.KindUnavailable, "source_command_timeout", "The source process exceeded its declared timeout.", false, waitErr, helpAction())
 	}
 	postIdentity, identityErr := identifyExecutable(resolved)
 	if identityErr != nil || postIdentity != identity {
@@ -125,7 +125,7 @@ func (r *Runner) Run(ctx context.Context, request sourceprocess.Request) (source
 		if errors.As(waitErr, &exitError) {
 			return result, fault.Wrap(fault.KindRejected, "source_command_failed", "The source process exited without a successful result.", false, waitErr, helpAction())
 		}
-		return result, fault.Wrap(fault.KindUnavailable, "source_process_wait_failed", "The source process result could not be collected.", true, waitErr, helpAction())
+		return result, fault.Wrap(fault.KindUnavailable, "source_process_wait_failed", "The source process result could not be collected.", false, waitErr, helpAction())
 	}
 	return result, nil
 }
@@ -188,7 +188,7 @@ func identityFault(err error) *fault.Error {
 }
 
 func helpAction() fault.NextAction {
-	return fault.NextAction{Command: "help run", Reason: "Review the local run contract and source executable."}
+	return fault.NextAction{Command: "help source inspect", Reason: "Review the bounded source-inspection process contract and executable."}
 }
 
 type limitedBuffer struct {

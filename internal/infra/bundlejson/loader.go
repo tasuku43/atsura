@@ -3,6 +3,7 @@ package bundlejson
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/tasuku43/atsura/internal/domain/fault"
@@ -32,8 +33,21 @@ func (l *Loader) Load(ctx context.Context, path string) (tailoringbundle.Bundle,
 	if err != nil {
 		return tailoringbundle.Bundle{}, "", fileFault(err)
 	}
+	var header struct {
+		SchemaVersion int             `json:"schema_version"`
+		Build         json.RawMessage `json:"build"`
+	}
+	if err := strictjson.Decode(raw, &header, 96); err != nil {
+		return tailoringbundle.Bundle{}, "", fault.Wrap(fault.KindInvalidInput, "invalid_bundle_file", "The bundle build JSON is invalid.", false, err, helpAction())
+	}
+	if header.SchemaVersion == 1 {
+		return tailoringbundle.Bundle{}, "", fault.New(fault.KindInvalidInput, "legacy_tailoring_schema", "Bundle build schema 1 used the retired authorization model and cannot be adopted as schema 2.", false, helpAction())
+	}
+	if header.SchemaVersion != 2 {
+		return tailoringbundle.Bundle{}, "", fault.New(fault.KindInvalidInput, "invalid_bundle_file", "The bundle build JSON must use schema version 2.", false, helpAction())
+	}
 	var value document
-	if err := strictjson.Decode(raw, &value, 96); err != nil || value.SchemaVersion != 1 {
+	if err := strictjson.Decode(raw, &value, 96); err != nil {
 		return tailoringbundle.Bundle{}, "", fault.Wrap(fault.KindInvalidInput, "invalid_bundle_file", "The bundle build JSON is invalid.", false, err, helpAction())
 	}
 	if err := value.Build.Bundle.Validate(); err != nil {

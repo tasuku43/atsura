@@ -10,22 +10,18 @@ import (
 	"github.com/tasuku43/atsura/internal/app/bundleauthority"
 	"github.com/tasuku43/atsura/internal/app/bundlebuild"
 	"github.com/tasuku43/atsura/internal/app/doctorcmd"
-	"github.com/tasuku43/atsura/internal/app/planpreview"
-	"github.com/tasuku43/atsura/internal/app/policyinit"
 	"github.com/tasuku43/atsura/internal/app/samplecmd"
 	"github.com/tasuku43/atsura/internal/app/sourceinspect"
-	"github.com/tasuku43/atsura/internal/app/tailorrun"
+	"github.com/tasuku43/atsura/internal/app/specinit"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
 	"github.com/tasuku43/atsura/internal/infra/bundlejson"
 	"github.com/tasuku43/atsura/internal/infra/catalogjson"
 	"github.com/tasuku43/atsura/internal/infra/githubcli"
-	"github.com/tasuku43/atsura/internal/infra/policyyaml"
 	"github.com/tasuku43/atsura/internal/infra/sampledata"
 	"github.com/tasuku43/atsura/internal/infra/sourceexec"
-	"github.com/tasuku43/atsura/internal/infra/sourcejson"
+	"github.com/tasuku43/atsura/internal/infra/specyaml"
 	"github.com/tasuku43/atsura/internal/infra/systemdoctor"
-	"github.com/tasuku43/atsura/internal/infra/tailoringyaml"
 	"github.com/tasuku43/atsura/internal/infra/terminalconfirm"
 	"github.com/tasuku43/atsura/internal/infra/trustfile"
 )
@@ -40,12 +36,10 @@ type CLI struct {
 
 	catalog   Catalog
 	doctor    *doctorcmd.Service
-	plans     *planpreview.Service
-	runs      *tailorrun.Service
 	samples   *samplecmd.Service
 	sources   *sourceinspect.Service
 	bundles   *bundlebuild.Service
-	drafts    *policyinit.Service
+	drafts    *specinit.Service
 	authority *bundleauthority.Service
 }
 
@@ -75,21 +69,18 @@ func newCLIWithSamples(
 		errOut = io.Discard
 	}
 	trustPath, _ := trustfile.DefaultPath()
-	processes := sourceexec.New()
 	return &CLI{
 		In: in, Out: out, Err: errOut,
 		Version: "dev",
 		catalog: catalog,
 		doctor:  doctorcmd.New(inspector),
-		plans:   planpreview.New(tailoringyaml.New()),
-		runs:    tailorrun.New(tailoringyaml.New(), processes, sourcejson.New()),
 		samples: samplecmd.New(repository),
 		sources: sourceinspect.New(map[string]sourceinspect.InspectorPort{
 			"github-cli": githubcli.New(sourceexec.New()),
 		}),
-		bundles:   bundlebuild.New(catalogjson.New(), policyyaml.New()),
-		drafts:    policyinit.New(catalogjson.New()),
-		authority: bundleauthority.New(bundlejson.New(), processes, trustfile.New(trustPath), terminalconfirm.New()),
+		bundles:   bundlebuild.New(catalogjson.New(), specyaml.New()),
+		drafts:    specinit.New(catalogjson.New()),
+		authority: bundleauthority.New(bundlejson.New(), sourceexec.New(), trustfile.New(trustPath), terminalconfirm.New()),
 	}
 }
 
@@ -166,7 +157,7 @@ func (c *CLI) RunContext(ctx context.Context, args []string) int {
 	}
 
 	intent := operation.Intent{Command: command.Path, Effect: command.Effect}
-	if command.Effect == operation.EffectRead {
+	if command.Effect == operation.EffectRead || command.Effect == operation.EffectExecute {
 		if err := intent.Validate(); err != nil {
 			return c.fail(ctx, fault.Wrap(
 				fault.KindContract,

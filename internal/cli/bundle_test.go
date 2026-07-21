@@ -21,7 +21,7 @@ type cliTrustStore struct{ state bundletrust.State }
 
 func (s *cliTrustStore) Inspect(context.Context, string) bundletrust.State { return s.state }
 func (s *cliTrustStore) Add(context.Context, string) (bool, error) {
-	s.state = bundletrust.StateTrusted
+	s.state = bundletrust.StateAdopted
 	return true, nil
 }
 
@@ -30,7 +30,7 @@ type cliConfirmation struct{}
 func (cliConfirmation) Confirm(context.Context, bundletrust.Summary) error { return nil }
 
 func installTrustedBundleAuthority(command *CLI) {
-	command.authority = bundleauthority.New(bundlejson.New(), sourceexec.New(), &cliTrustStore{state: bundletrust.StateTrusted}, cliConfirmation{})
+	command.authority = bundleauthority.New(bundlejson.New(), sourceexec.New(), &cliTrustStore{state: bundletrust.StateAdopted}, cliConfirmation{})
 }
 
 func bundleArtifactPaths(t *testing.T) (string, string) {
@@ -64,33 +64,42 @@ func bundleArtifactPaths(t *testing.T) (string, string) {
 	if err := os.WriteFile(catalogPath, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	policyPath := filepath.Join(directory, "policy.yaml")
-	policy := fmt.Sprintf(`schema_version: 2
+	specificationPath := filepath.Join(directory, "spec.yaml")
+	specification := fmt.Sprintf(`schema_version: 3
 catalog_digest: %s
-rules:
+surface:
+  default: exclude
+commands:
   - command: [item, list]
-    visibility: visible
-    effect: read
-    decision: allow
+    presence: include
     reason: Return a compact inventory.
-    append_args: ["--json=id,name"]
-    output:
-      input: json
-      select: [id, name]
-      rename: []
-      render: compact_json
+    options:
+      default: inherit
+      include: []
+      exclude: []
+    wrapper:
+      kind: transform
+      before: []
+      invoke:
+        append_args: ["--json=id,name"]
+      output:
+        input: json
+        select: [id, name]
+        rename: []
+        render: compact_json
+      after: []
 `, digest)
-	if err := os.WriteFile(policyPath, []byte(policy), 0o600); err != nil {
+	if err := os.WriteFile(specificationPath, []byte(specification), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return catalogPath, policyPath
+	return catalogPath, specificationPath
 }
 
-func bundleArtifactPath(t *testing.T, catalogPath, policyPath string) string {
+func bundleArtifactPath(t *testing.T, catalogPath, specificationPath string) string {
 	t.Helper()
 	var out, errOut bytes.Buffer
 	command := New(strings.NewReader(""), &out, &errOut)
-	if code := command.RunContext(context.Background(), bundleCommandArgs("bundle build", catalogPath, policyPath)); code != ExitOK {
+	if code := command.RunContext(context.Background(), bundleCommandArgs("bundle build", catalogPath, specificationPath)); code != ExitOK {
 		t.Fatalf("bundle build code = %d, stderr = %q", code, errOut.String())
 	}
 	path := filepath.Join(t.TempDir(), "bundle.json")
@@ -100,28 +109,28 @@ func bundleArtifactPath(t *testing.T, catalogPath, policyPath string) string {
 	return path
 }
 
-func bundleCommandArgs(path, catalog, policy string) []string {
-	return []string{strings.Split(path, " ")[0], strings.Split(path, " ")[1], "--catalog", catalog, "--policy", policy}
+func bundleCommandArgs(path, catalog, specification string) []string {
+	return []string{strings.Split(path, " ")[0], strings.Split(path, " ")[1], "--catalog", catalog, "--spec", specification}
 }
 
-func TestPolicyValidateAndBundleBuildCloseCanonicalFileWorkflow(t *testing.T) {
-	catalogPath, policyPath := bundleArtifactPaths(t)
+func TestSpecValidateAndBundleBuildCloseCanonicalFileWorkflow(t *testing.T) {
+	catalogPath, specificationPath := bundleArtifactPaths(t)
 	var validationOut, validationErr bytes.Buffer
 	validator := New(strings.NewReader(""), &validationOut, &validationErr)
-	if code := validator.RunContext(context.Background(), bundleCommandArgs("policy validate", catalogPath, policyPath)); code != ExitOK {
-		t.Fatalf("policy validate code = %d, stderr = %q", code, validationErr.String())
+	if code := validator.RunContext(context.Background(), bundleCommandArgs("spec validate", catalogPath, specificationPath)); code != ExitOK {
+		t.Fatalf("spec validate code = %d, stderr = %q", code, validationErr.String())
 	}
-	var validation policyValidationDocument
+	var validation specificationValidationDocument
 	if err := json.Unmarshal(validationOut.Bytes(), &validation); err != nil {
 		t.Fatal(err)
 	}
-	if !validation.Validation.Valid || len(validation.Validation.PolicyDigest) != 64 || validation.Validation.RuleCount != 1 || validation.Validation.VisibleCount != 1 {
+	if !validation.Validation.Valid || len(validation.Validation.SpecificationDigest) != 64 || validation.Validation.CommandCount != 1 || validation.Validation.IncludedCount != 1 || validation.Validation.TransformWrapperCount != 1 {
 		t.Fatalf("validation = %+v", validation)
 	}
 
 	var buildOut, buildErr bytes.Buffer
 	builder := New(strings.NewReader(""), &buildOut, &buildErr)
-	if code := builder.RunContext(context.Background(), bundleCommandArgs("bundle build", catalogPath, policyPath)); code != ExitOK {
+	if code := builder.RunContext(context.Background(), bundleCommandArgs("bundle build", catalogPath, specificationPath)); code != ExitOK {
 		t.Fatalf("bundle build code = %d, stderr = %q", code, buildErr.String())
 	}
 	var build bundleBuildDocument
@@ -129,15 +138,15 @@ func TestPolicyValidateAndBundleBuildCloseCanonicalFileWorkflow(t *testing.T) {
 		t.Fatal(err)
 	}
 	digest, err := build.Build.Bundle.Digest()
-	if err != nil || digest != build.Build.BundleDigest || build.Build.Bundle.PolicyDigest != validation.Validation.PolicyDigest {
+	if err != nil || digest != build.Build.BundleDigest || build.Build.Bundle.SpecificationDigest != validation.Validation.SpecificationDigest {
 		t.Fatalf("build = %+v, digest = %q, error = %v", build, digest, err)
 	}
 }
 
 func TestBundleStatusAndTrustUseExactBundleWithoutSourceProcess(t *testing.T) {
-	catalogPath, policyPath := bundleArtifactPaths(t)
-	bundlePath := bundleArtifactPath(t, catalogPath, policyPath)
-	trust := &cliTrustStore{state: bundletrust.StateUntrusted}
+	catalogPath, specificationPath := bundleArtifactPaths(t)
+	bundlePath := bundleArtifactPath(t, catalogPath, specificationPath)
+	trust := &cliTrustStore{state: bundletrust.StateNotAdopted}
 	newCommand := func() (*CLI, *bytes.Buffer, *bytes.Buffer) {
 		var out, errOut bytes.Buffer
 		command := New(strings.NewReader("redirected input must not confirm"), &out, &errOut)
@@ -153,7 +162,7 @@ func TestBundleStatusAndTrustUseExactBundleWithoutSourceProcess(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &statusDocument); err != nil {
 		t.Fatal(err)
 	}
-	if statusDocument.Status.Trust != bundletrust.StateUntrusted || statusDocument.Status.Source != bundletrust.SourceCurrent || statusDocument.Status.Executable || statusDocument.Status.SourceProcessAttempts != 0 {
+	if statusDocument.Status.Adoption != bundletrust.StateNotAdopted || statusDocument.Status.Source != bundletrust.SourceCurrent || statusDocument.Status.Adopted || statusDocument.Status.SourceProcessAttempts != 0 {
 		t.Fatalf("status = %+v", statusDocument.Status)
 	}
 
@@ -165,45 +174,45 @@ func TestBundleStatusAndTrustUseExactBundleWithoutSourceProcess(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &trustDocument); err != nil {
 		t.Fatal(err)
 	}
-	if !trustDocument.Trust.Trusted || trustDocument.Trust.AlreadyTrusted || trustDocument.Trust.SourceProcessAttempts != 0 || trust.state != bundletrust.StateTrusted {
+	if !trustDocument.Trust.Adopted || trustDocument.Trust.AlreadyAdopted || trustDocument.Trust.SourceProcessAttempts != 0 || trust.state != bundletrust.StateAdopted {
 		t.Fatalf("trust = %+v, store = %q", trustDocument.Trust, trust.state)
 	}
 }
 
-func TestPolicyInitProducesValidHiddenDenyDraft(t *testing.T) {
+func TestSpecInitProducesValidIdentityWrapperDraft(t *testing.T) {
 	catalogPath, _ := bundleArtifactPaths(t)
 	var out, errOut bytes.Buffer
 	command := New(strings.NewReader(""), &out, &errOut)
-	args := []string{"policy", "init", "--catalog", catalogPath, "--effect", "read", "--", "item", "list"}
+	args := []string{"spec", "init", "--catalog", catalogPath, "--", "item", "list"}
 	if code := command.RunContext(context.Background(), args); code != ExitOK {
-		t.Fatalf("policy init code = %d, stderr = %q", code, errOut.String())
+		t.Fatalf("spec init code = %d, stderr = %q", code, errOut.String())
 	}
-	if !strings.Contains(out.String(), "visibility: hidden") || !strings.Contains(out.String(), "decision: deny") || strings.Contains(out.String(), "output:") {
+	if !strings.Contains(out.String(), "default: exclude") || !strings.Contains(out.String(), "presence: include") || !strings.Contains(out.String(), "kind: identity") || strings.Contains(out.String(), "decision:") {
 		t.Fatalf("draft = %s", out.String())
 	}
-	policyPath := filepath.Join(t.TempDir(), "draft.yaml")
-	if err := os.WriteFile(policyPath, out.Bytes(), 0o600); err != nil {
+	specificationPath := filepath.Join(t.TempDir(), "draft.yaml")
+	if err := os.WriteFile(specificationPath, out.Bytes(), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var validateOut, validateErr bytes.Buffer
 	validator := New(strings.NewReader(""), &validateOut, &validateErr)
-	if code := validator.RunContext(context.Background(), bundleCommandArgs("policy validate", catalogPath, policyPath)); code != ExitOK {
+	if code := validator.RunContext(context.Background(), bundleCommandArgs("spec validate", catalogPath, specificationPath)); code != ExitOK {
 		t.Fatalf("draft validation code = %d, stderr = %q", code, validateErr.String())
 	}
 }
 
-func TestBundleBuildRejectsCatalogPolicyMismatch(t *testing.T) {
-	catalogPath, policyPath := bundleArtifactPaths(t)
-	raw, err := os.ReadFile(policyPath)
+func TestBundleBuildRejectsCatalogSpecificationMismatch(t *testing.T) {
+	catalogPath, specificationPath := bundleArtifactPaths(t)
+	raw, err := os.ReadFile(specificationPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(policyPath, []byte(strings.Replace(string(raw), "catalog_digest: ", "catalog_digest: b", 1)), 0o600); err != nil {
+	if err := os.WriteFile(specificationPath, []byte(strings.Replace(string(raw), "catalog_digest: ", "catalog_digest: b", 1)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var out, errOut bytes.Buffer
 	command := New(strings.NewReader(""), &out, &errOut)
-	if code := command.RunContext(context.Background(), bundleCommandArgs("bundle build", catalogPath, policyPath)); code != ExitUsage || out.Len() != 0 || !strings.Contains(errOut.String(), "invalid_policy") {
+	if code := command.RunContext(context.Background(), bundleCommandArgs("bundle build", catalogPath, specificationPath)); code != ExitUsage || out.Len() != 0 || !strings.Contains(errOut.String(), "invalid_specification") {
 		t.Fatalf("code/output/error = %d/%q/%q", code, out.String(), errOut.String())
 	}
 }

@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
@@ -17,7 +15,6 @@ import (
 // It fails whether a renderer drifts alone or its catalog declaration drifts
 // without a matching public output change.
 func TestJSONOutputMatchesCatalogContract(t *testing.T) {
-	t.Setenv(sourceHelperModeEnvironment, "success")
 	type probe struct {
 		path  string
 		args  []string
@@ -29,12 +26,8 @@ func TestJSONOutputMatchesCatalogContract(t *testing.T) {
 		stderr := &bytes.Buffer{}
 		return New(strings.NewReader(""), stdout, stderr), stdout, stderr
 	}
-	planPath := filepath.Join(t.TempDir(), "plan.yaml")
-	if err := os.WriteFile(planPath, []byte(planPreviewYAML), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	catalogPath, schema2PolicyPath := bundleArtifactPaths(t)
-	bundlePath := bundleArtifactPath(t, catalogPath, schema2PolicyPath)
+	catalogPath, specificationPath := bundleArtifactPaths(t)
+	bundlePath := bundleArtifactPath(t, catalogPath, specificationPath)
 	newBundleAuthority := func() (*CLI, *bytes.Buffer, *bytes.Buffer) {
 		command, stdout, stderr := newDefault()
 		installTrustedBundleAuthority(command)
@@ -48,12 +41,10 @@ func TestJSONOutputMatchesCatalogContract(t *testing.T) {
 			},
 		},
 		{path: "help", args: []string{"help", "--format=agent"}, build: newDefault, view: "index"},
-		{path: "policy validate", args: bundleCommandArgs("policy validate", catalogPath, schema2PolicyPath), build: newDefault},
-		{path: "bundle build", args: bundleCommandArgs("bundle build", catalogPath, schema2PolicyPath), build: newDefault},
+		{path: "spec validate", args: bundleCommandArgs("spec validate", catalogPath, specificationPath), build: newDefault},
+		{path: "bundle build", args: bundleCommandArgs("bundle build", catalogPath, specificationPath), build: newDefault},
 		{path: "bundle status", args: []string{"bundle", "status", "--bundle", bundlePath}, build: newBundleAuthority},
 		{path: "bundle trust", args: []string{"bundle", "trust", "--bundle", bundlePath}, build: newBundleAuthority},
-		{path: "plan preview", args: []string{"plan", "preview", "--config", planPath, "--", "gh", "pr", "list"}, build: newDefault},
-		{path: "run", args: runSourceArgs(runPolicyFile(t, "allow")), build: newDefault},
 		{path: "sample list", args: []string{"sample", "list", "--format=json"}, build: newDefault},
 		{path: "sample read", args: []string{"sample", "read", "--id", "smp_2f4a6c8e0b1d", "--format=json"}, build: newDefault},
 	}

@@ -1,291 +1,273 @@
 # Atsura Product Theses
 
-These theses describe the intended Atsura experience. The v0.1 slice is the
-current executable evidence; ADR 0004 selects the finite v1 target. They remain
-hypotheses tested through narrow supported outcomes rather than claims that the
-complete vision already exists.
+These theses define Atsura's product direction. They are working hypotheses,
+but they govern implementation until evidence justifies another revision. ADR
+0005 corrects the authorization-centered interpretation introduced by ADR
+0004 while retaining its vendor-neutral, compiled-bundle architecture.
 
 ## North star
 
-**Given an existing CLI and user-approved per-command YAML, Atsura gives a
-coding agent a deterministic, inspectable CLI surface. Every attempted command
-becomes either a reasoned rejection or a reviewable execution plan for the
-exact source CLI, without reimplementing that CLI or requiring a language model
-at runtime.**
+**Atsura is a deterministic framework for compiling an existing CLI into a
+purpose-specific wrapper surface for coding agents. It changes which commands
+and options exist in that surface and how those commands invoke and transform
+the source CLI. It does not decide whether the user is authorized to perform
+the source operation.**
 
-The primary user is a maintainer of a coding-agent environment. That maintainer
-wants to shape which parts of an existing CLI an agent can see, how accepted
-commands behave, and how much output returns to the agent.
+The primary user is a maintainer of a coding-agent environment. The maintainer
+wants a smaller, purpose-specific CLI whose shape and wrapper behavior can be
+reviewed, reproduced, explained, and used without a runtime language model.
 
 ## Intended experience
 
 ```text
 source-inspector adapter -> provenance-bearing command catalog
-per-command YAML + catalog -> deterministic, content-addressed bundle
-trusted bundle + attempted command
-  -> gateway or coding-agent adapter requests one plan
-  -> preview renders the plan without side effects
+catalog + reviewed tailoring specification
+  -> deterministic, content-addressed bundle
+  -> purpose-specific command and option surface
+  -> wrapper pipeline for every included command
+
+adopted bundle + attempted source invocation
+  -> resolve command in the tailored surface
+  -> compile one wrapper execution plan
+  -> preview the plan without starting the source
      or
-  -> execution revalidates and applies the plan through a wrapper
-       -> built-in pre-processing
-       -> exact source CLI invocation
-       -> built-in post-processing and output transformation
+  -> apply typed stages around one identity-bound source invocation
 ```
 
-An execution hook can reject a command that was attempted. Preventing the agent
-from discovering a command in the first place also requires the eventual
-agent-facing help or command-discovery integration to use the tailored surface.
-Those are related outcomes, not the same mechanism.
+Source-CLI inspectors and coding-agent hosts are adapters. They can extend
+tested compatibility or translate a host protocol, but cannot create a second
+surface model, add wrapper semantics, or turn Atsura into an authorization
+engine.
 
-The catalog, policy, bundle, plan, and execution semantics are vendor-neutral.
-Source-CLI inspectors and coding-agent hosts are adapters to those contracts.
-An adapter can extend tested compatibility but cannot add policy meaning or
-create a parallel execution path.
+## Thesis 1: The tailored surface is a purpose-specific CLI
 
-## Thesis 1: The tailored surface is the product
+A command excluded from a tailored surface is absent from that CLI. It is not
+an operation that Atsura found unsafe or refused to authorize. Resolution must
+therefore use capability vocabulary such as `command_not_in_surface`, not
+permission vocabulary such as `policy_rejected`.
 
-YAML, hooks, catalogs, wrappers, and renderers are mechanisms. The user outcome
-is a purpose-specific CLI surface for a coding agent.
-
-That surface may:
-
-- hide source commands or options from agent discovery;
-- allow, require confirmation for, or reject an attempted operation;
-- add, remove, or replace arguments and defaults;
-- select a source CLI's structured-output mode;
-- apply bounded processing before or after the source process;
-- substantially reshape output rather than merely shorten it;
-- explain every applied rule and transformation; and
-- provide a separately selected raw route to the source CLI.
-
-The initial product does not need every dimension, but a feature that only
-shortens text does not validate the central thesis.
+Surface composition has an explicit default. An omitted command is inherited
+or excluded because the specification says so, never because omission is
+silently treated as denial. The same principle applies independently to the
+options visible for an included command.
 
 ### Consequences
 
-- Public tasks describe tailored user outcomes, not YAML mechanics.
-- A hidden capability and a rejected invocation are represented distinctly.
-- Raw execution is outside the tailored guarantee and is never an automatic
-  fallback.
-
-## Thesis 2: YAML is reviewed configuration, not executable code
-
-The working product direction is per-command YAML. It declares differences
-from an observed source CLI model and the processing required for that command.
-
-The initial configuration uses typed Atsura actions whose meaning, inputs,
-effects, and failure behavior are known to the deterministic core. It does not
-embed arbitrary shell code.
-
-### Consequences
-
-- The exact YAML schema and file locations remain versioned product decisions.
-- Repository-provided YAML and user-trusted YAML have distinct provenance.
-- Unknown fields, unsupported actions, ambiguous matches, and invalid rule
-  combinations fail before source execution.
-- jq expressions, RTK invocation, generic external transformers, plugins, and
-  shell scripts require later explicit trust and dependency decisions.
+- Source catalog evidence is not a permission list.
+- Hiding improves the agent-facing capability surface; it is not an OS sandbox.
+- A host may encode surface absence as its protocol's `deny` response, but that
+  is transport mapping rather than a core authorization decision.
+- Source CLI, operating system, credential, and remote-provider authorization
+  remain authoritative.
 
 ### Mechanical enforcement target
 
-The first YAML slice must use bounded strict decoding, reject unknown
-configuration, and prove that invalid or untrusted policy makes zero
-source-process attempts.
+The specification model must represent `inherit` or `exclude` as an explicit
+surface default, represent command membership separately from wrapper behavior,
+and return no execution plan for a command absent from the compiled surface.
 
-## Thesis 3: One plan drives preview and execution
+## Thesis 2: YAML is a tailoring specification, not an authorization policy
 
-An execution plan is the typed result of compiling validated source evidence,
-trusted YAML, the attempted invocation, and relevant environment facts.
+Reviewed YAML describes the deterministic difference between source CLI
+evidence and one purpose-specific wrapper surface. It may describe:
+
+- command and option inclusion or exclusion;
+- identity wrappers that preserve source invocation and output;
+- deterministic argv additions, removals, replacements, and defaults;
+- selection of source-native structured output;
+- typed processing before and after the source process;
+- typed output transformation; and
+- the reason for each explicit change.
+
+The implemented schema may support these dimensions incrementally. Unsupported
+actions remain explicit unknowns rather than generic strings or embedded code.
+Arbitrary shell, arbitrary scripts, external transformers, and a runtime
+language model are not part of the initial specification.
+
+### Consequences
+
+- The product vocabulary is `tailoring specification`, `surface`, `wrapper`,
+  and `pipeline`, not source-operation policy or permission.
+- Source wrapper rules do not require allow/confirm/deny, read/create/write, or
+  authorization target/impact declarations.
+- Repository-provided specifications remain untrusted until a user adopts the
+  exact compiled bundle.
+- Unknown fields, actions, ambiguous matches, and invalid stage combinations
+  fail before a source process starts.
+
+### Mechanical enforcement target
+
+Strict bounded decoding, versioned migration diagnostics, domain types, and
+canonical round trips must reject the retired authorization schemas rather than
+silently reinterpret them.
+
+## Thesis 3: Surface membership and wrapper behavior are independent
+
+Every source command is resolved along two independent dimensions:
+
+1. whether it exists in the purpose-specific surface; and
+2. if it exists, which wrapper pipeline applies.
+
+An included command may use an identity wrapper or a transforming wrapper. An
+excluded command has no wrapper and produces no execution plan. Changing a
+wrapper never implicitly adds a command, and changing membership never invents
+a transformation.
+
+The wrapper pipeline keeps these ordered stages distinct:
+
+```text
+typed before actions
+  -> deterministic invocation transformation
+  -> exact identity-bound source invocation
+  -> typed output transformation
+  -> typed after actions
+```
+
+### Mechanical enforcement target
+
+Domain validation must reject an excluded entry with a wrapper, an included
+entry without a complete wrapper, an identity wrapper containing transforms,
+and a transform wrapper containing no transformation.
+
+## Thesis 4: One plan explains and applies one wrapper pipeline
+
+A wrapper execution plan is not an authorization decision. It is the complete,
+typed result of resolving an included command against source evidence, one
+adopted bundle, and the attempted invocation.
 
 A complete plan identifies at least:
 
-- the source executable evidence;
+- the matched tailored command;
+- bundle and source identity;
 - original and transformed argv;
-- the matched rules and reasons;
-- the allow, confirm, or reject decision;
-- built-in pre-processing;
-- source invocation;
-- post-processing and output transformation; and
-- raw-versus-tailored mode.
+- applied specification entry and reason;
+- before actions;
+- the exact source invocation;
+- declared source-output input format;
+- output transformation;
+- after actions; and
+- tailored or raw mode.
 
-Preview and execution do not implement separate policy logic. Preview renders
-the plan without side effects. Execution builds or revalidates the same plan
-immediately before applying it. A previously displayed plan is not executable
-authority when the YAML, source binary, catalog, or relevant environment has
-changed.
-
-### Mechanical enforcement target
-
-Identical validated inputs must produce an identical typed plan. Preview and
-execution tests must prove equivalent decisions and transformations, while
-execution additionally proves immediate identity and configuration
-revalidation.
-
-## Thesis 4: Invocation and output transformation are separate stages
-
-`invoke` determines which source executable and argv run. `output`
-determines how successful source output is parsed, selected, aggregated,
-renamed, and rendered for the agent.
-
-Output transformation is a first-class product capability. It may replace the
-source presentation with a substantially different compact structure, provided
-the plan declares the transformation and the result does not invent facts.
-
-The preferred first path is:
-
-1. request a source CLI's structured output when reliably available;
-2. parse through a bounded declared input format;
-3. apply typed built-in selection, mapping, aggregation, and ordering actions;
-4. render a declared agent-facing shape.
-
-### Consequences
-
-- Output processing is not hidden inside a generic pre/post shell command.
-- Transform failure does not change argv, run another source command, retry the
-  source command, or silently expose raw output.
-- Source exit behavior and transform failure remain distinguishable.
-- RTK-equivalent breadth is a research target, not a current compatibility
-  claim.
+For an included command, successfully constructing the complete plan means the
+wrapper can be applied. For a command absent from the surface, plan construction
+returns a surface-resolution failure. Preview and execution share this plan
+logic; an old preview is never runtime authority after bundle or source drift.
 
 ### Mechanical enforcement target
 
-Output fixtures must cover substantial reshaping, hostile source data, bounded
-parsing, exact declared result shape, and transform failure after exactly one
-source attempt.
+Identical validated inputs produce identical plans. Preview starts zero source
+processes. Execution revalidates bundle and source identity and starts at most
+the number of source attempts declared by the wrapper contract.
 
-## Thesis 5: Agents propose; the deterministic core enforces
+## Thesis 5: The source CLI owns source-operation meaning and authorization
 
-A coding agent may study a user's purpose or usage evidence and propose YAML.
-The proposal does not become trusted policy or authorization until a
-user-controlled workflow accepts it.
+Atsura does not infer remote effects, safety, or authorization from command
+names, help prose, or a maintainer-supplied read/write label. The source CLI
+owns its domain semantics, authentication, authorization, destinations,
+prompts, and downstream side effects.
 
-Runtime rule matching, plan construction, confirmation requirements,
-invocation rewriting, and output transformation are deterministic.
-
-### Consequences
-
-- Routine execution does not depend on model availability or prompt wording.
-- Every decision and transformation is attributable to trusted YAML and source
-  evidence.
-- Source CLI authentication and authorization remain authoritative.
-- Source binary or catalog drift invalidates a controlled plan instead of
-  silently inheriting prior permission.
-
-## Thesis 6: Release quality closes one supported outcome
-
-Release quality is not the number of planned mechanisms. A supported outcome
-is release-quality when a user can discover it, execute it within finite
-bounds, interpret its complete machine result without an undeclared parser,
-recover from every declared failure, and install the same reviewed artifacts
-the project tested.
-
-Every supported outcome therefore declares its inputs, effects, trust
-selection, destinations, attempts, timeout, byte and complexity limits,
-success shape, failures, compatibility, and explicit exclusions. Tests prove
-zero side effects before authorization and the exact attempt count after the
-controlled boundary. Full, security, public, and release gates must pass on one
-committed tree before that tree is called release-quality.
-
-### Current v0.1 boundary
-
-The first release-quality outcome is deliberately read-only:
-
-**A maintainer explicitly selects one reviewed schema-1 YAML file, runs one
-JSON-producing source command through `atr run`, and receives the plan-declared
-selected and renamed records after at most one direct no-shell source-process
-attempt.**
-
-Schema 1 requires `effect: read`. Atsura does not infer that effect from a
-command name; the maintainer reviews and asserts it. Create/write, confirmation,
-hooks, implicit policy activation, and raw execution require later outcomes
-with their own enforceable contracts.
-
-### Selected v1 outcome
-
-The v1 ideal is one compiled tailoring bundle. A maintainer inspects a
-supported installed source through a bounded adapter, reviews typed YAML,
-builds and explicitly trusts the exact bundle digest, and then uses that same
-bundle through the manual gateway or a coding-agent host adapter. Preview,
-explain, allow/confirm/deny, invocation rewriting, substantial typed output
-transformation, drift diagnosis, and explicit raw execution share the same
-source identity and plan semantics.
-
-GitHub CLI 2.x and project-local Claude Code are the first real compatibility
-adapters. They are deliberately not named in shared domain schemas. A second
-source CLI or coding agent should require a conforming adapter and compatibility
-evidence, not a redesign of policy or bundle semantics.
-
-## Thesis 7: One bundle is the adapter-independent authority
-
-Compiled content, rather than a mutable YAML path or host configuration, is
-the reviewed runtime authority. The bundle deterministically binds source
-identity, adapter contract, catalog evidence, normalized policy, and tailored
-surface. Its digest is its identity; trust is user-local and exact-digest.
-
-Gateways and host adapters consume and revalidate this bundle. They do not
-recompile policy, infer effects, or broaden permission. Unknown adapter kinds,
-changed source identity, changed content, and missing trust fail before source
-effects.
+Atsura still owns the safety of its own behavior. Starting an identity-bound
+source process is declared honestly as source-owned execution, not disguised
+as an Atsura read. Atsura-owned local mutations—such as bundle trust-store
+writes and integration installation or removal—continue to require explicit
+effect, target, impact, central mutation invocation, and uncertain-outcome
+handling.
 
 ### Mechanical enforcement target
 
-Canonical-byte and conformance tests must prove identical semantic inputs
-produce one digest, shared schemas contain no reference-adapter fields, and an
-alternate synthetic source and host consumer can use the same core contracts.
+`operation.EffectExecute` represents starting a source-owned process and cannot
+carry an Atsura mutation target or impact. `EffectCreate` and `EffectWrite`
+retain the existing mutation contracts for Atsura-owned state. Unknown effects
+remain non-executable.
 
-## First hypothesis and evidence sequence
+## Thesis 6: Output transformation is a first-class wrapper stage
 
-The first vertical slice should provide this result:
+Invocation transformation chooses the exact source executable and argv. Output
+transformation interprets successful source output and produces the declared
+agent-facing result. They are separate stages and share no generic shell escape
+hatch.
 
-**A maintainer can supply a small per-command YAML file and preview the
-deterministic plan for one synthetic source invocation, including the decision,
-exact argv, built-in output transformation, matched rules, and reasons, without
-starting the source process.**
+The preferred path is to request source-native structured output when the
+adapter can verify it, parse it within declared bounds, apply typed built-ins,
+and render a task-specific structure without inventing facts.
 
-`atr plan preview` is the first executable test of this hypothesis. Its
-schema-1 vocabulary deliberately supports only one exact executable and argv
-prefix, an explicit read effect, allow or deny, appended argv, and a typed JSON
-select/rename/compact render description.
+Transform failure never changes argv, retries the source process, selects raw
+mode, or silently exposes unreviewed raw output. RTK-equivalent breadth remains
+a research target rather than a present compatibility claim.
 
-Success evidence includes:
+## Thesis 7: Agents propose; the deterministic core compiles
 
-- identical inputs produce identical plan output;
-- invalid or untrusted YAML produces no plan and no source attempt;
-- invocation and output stages remain separate and inspectable;
-- a nontrivial output reshape is fully described by typed built-in actions; and
-- a maintainer can identify every change without reading implementation source.
+A coding agent may propose a tailoring specification from a role, purpose, or
+usage evidence. A user-controlled workflow adopts the exact compiled result.
+Runtime surface resolution, plan construction, argv transformation, and output
+processing are deterministic and attributable to the bundle.
 
-`atr run` is the executed evidence step. It compiles the same policy and
-invocation, rejects any non-read or deny plan before execution, resolves and
-revalidates one source executable, performs at most one direct attempt, and
-applies the declared transform only to bounded successful JSON. Nonzero exit,
-timeout, cancellation, drift, overflow, or transform failure produces no raw
-success and no automatic retry.
+Host transports do not define core semantics. A Claude Code adapter may need
+to emit `allow`, `ask`, or `deny`, but it translates core states such as
+`rewrite`, `not_managed`, `command_not_in_surface`, `invalid_invocation`, or
+`interaction_required`. It does not decide source-operation permission.
+
+## Thesis 8: Bundle trust adopts a surface and wrapper set
+
+One canonical bundle binds source identity, adapter contract, catalog evidence,
+normalized tailoring specification, compiled surface, and wrapper behavior.
+Its digest is its identity. Trust is a user-local decision to adopt that exact
+purpose-specific CLI, not a grant of permission to source operations.
+
+A trust summary therefore describes included and excluded surface entries,
+option changes, identity and transforming wrappers, argv changes, processing
+stages, output transformations, source identity, and bundle digest. It does not
+count source permissions, decisions, or inferred effects.
+
+Raw execution is a separate, explicit tailoring bypass. It revalidates the
+bundle-bound source identity but applies no surface selection, argv transform,
+or output transform. Raw is never automatic fallback, a recovery suggestion,
+or part of the tailored agent surface.
+
+## Release-quality hypothesis
+
+Release quality closes one supported maintainer result rather than maximizing
+mechanism count. A result is supported only when it is discoverable, bounded,
+machine-interpretable without undeclared reconstruction, recoverable through
+declared faults, and verified against the same artifacts users install.
+
+The next minimal evidence slice after this thesis correction should be:
+
+**A maintainer can create a catalog-bound specification with an explicit
+surface default, include one verified command with either an identity or typed
+transforming wrapper, build and adopt the exact bundle, and preview the
+resolved wrapper pipeline without starting the source process.**
+
+This slice tests the corrected vocabulary before source runtime or host
+integration resumes.
 
 ## Current non-goals
 
-- Reimplementing a source CLI or its remote APIs.
-- Supporting every source CLI or coding-agent host without an adapter and a
-  reviewed compatibility claim.
-- Automatic intact-output or raw-execution fallback.
+- Deciding whether a user may perform a source operation.
+- Replacing source CLI, OS, credential, or remote-provider authorization.
+- Claiming that hidden commands are sandboxed or impossible to invoke elsewhere.
+- Reimplementing source CLI domain semantics or remote APIs.
+- Arbitrary shell, scripts, jq, RTK, plugins, or external transformers in the
+  initial specification.
+- Automatic raw or intact-output fallback.
 - Requiring a language model for routine execution.
-- Allowing arbitrary shell as the initial pre/post or output mechanism.
-- Claiming RTK compatibility or executing RTK from policy.
-- Treating an agent proposal as user authorization.
-- Treating the experimental preview command or schema as stable.
+- Implementing source refresh, bundle runtime execution, raw, or host adapters
+  during the thesis-correction milestone.
 - Publishing or releasing Atsura.
 
-## Open questions after the v1 decision
+## Open questions
 
-- Which source and host adapters should follow the first reference adapters?
-- Which catalog evidence can each future source adapter honestly verify?
-- Whether multiple named bundles per repository belong in v1.x or later.
-- Which built-in pre-processing, post-processing, and output actions should
-  follow the finite v1 action set?
+- Which argv replacement/default actions and typed before/after actions form
+  the first finite wrapper vocabulary?
+- How should an agent-facing option surface represent positional arguments and
+  mutually dependent source options?
+- Which source and host adapters should follow the first compatibility fixtures?
+- What stronger executable identity mechanism can close the remaining
+  check-to-exec race on each supported platform?
 - When, if ever, should jq, RTK, external transformers, plugins, or scripts be
   admitted?
-- How, if at all, should usage history be collected?
-- What stronger evidence should supplement v0.1 path resolution and SHA-256
-  revalidation for plugins, interpreters, children, and version claims?
+- How, if at all, should usage evidence be collected without storing secrets or
+  raw confidential output?
 
-These questions require vertical-slice evidence or primary-source research.
+These questions require a vertical slice or primary-source research. They are
+not authorization questions to be answered by adding allow/deny fields.

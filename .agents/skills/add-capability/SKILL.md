@@ -83,9 +83,31 @@ display name, order, proximity, quoting, or indentation.
 
 ## 3. Declare the operation contract
 
-For every external action, specify:
+First classify the boundary honestly:
 
-- effect: read, create, or write; unknown is never executable;
+- `read` observes without starting a caller-selected source operation;
+- `execute` starts an identity-bound source process whose downstream semantics,
+  authentication, authorization, and remote effects remain source-owned;
+- `create` or `write` mutates state owned by this CLI; and
+- unknown is never executable.
+
+For source-owned execution, specify:
+
+- exact executable identity and separate argv, never a shell fragment;
+- finite timeout, output bounds, and maximum attempts;
+- validation performed before the process boundary;
+- zero-attempt versus post-start failure classification;
+- non-retryable handling for every unclassified post-start outcome and success
+  output-write failure; and
+- audit-safe fields and secret/raw-output fields.
+
+Do not require or infer allow/confirm/deny, read/create/write, target, or impact
+for the downstream source operation. A host protocol may translate surface or
+interaction states into transport decisions, but those values do not enter the
+core source-wrapper model.
+
+For every Atsura-owned create/write action, specify:
+
 - target, scope, and all generic impact dimensions (cardinality, notification, access change, destructive);
 - choose exactly one target-binding mode for `RoleAct`: required opaque reference input(s), or one complete command-bound `tool_local` fixed target when the command path identifies a CLI-owned singleton;
 - for reference-bound create, exactly one required argument/flag opaque `parent_input`, no `target_id_input`, and no other `target_inputs`;
@@ -98,8 +120,9 @@ For every external action, specify:
 - audit-safe fields and secret fields;
 - allowed network destination.
 
-Route all equivalent effects through one central enforcement boundary. A new
-command must not create a second raw transport or bypass validation.
+Route equivalent Atsura-owned mutations through one central invoker. Route
+source launches through one bounded process boundary. A new command must not
+create a second raw transport or bypass validation.
 
 ## 4. Update the command catalog
 
@@ -306,6 +329,12 @@ Add the smallest set that proves the capability:
   false versus omitted/defaulted booleans, unsupported boolean spellings, and
   positional-only dash-prefixed values;
 - rejection tests proving invalid input causes zero external calls;
+- surface truth-table tests for explicit inherit/exclude defaults, explicit
+  include/exclude entries, option overrides, identity/transform wrappers, and
+  no plan for surface absence;
+- source-execution tests proving `EffectExecute` has no mutation contract,
+  preserves exact identity/argv, starts at most once, and never advertises a
+  post-start unknown outcome or output failure as safe to retry;
 - catalog tests rejecting missing, extra, duplicate, optional, non-CLI, non-opaque, and reference-kind-mismatched mutation bindings;
 - catalog tests rejecting optional act references and closed required-reference cycles;
 - authentication/policy/cancellation tests proving zero downstream mutation;

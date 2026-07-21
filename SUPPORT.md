@@ -1,8 +1,10 @@
 # Support
 
-Atsura is pre-release and maintained on a best-effort basis. Support covers the
-documented schema-1 `plan preview` and read-only local `run` outcome, repository
-development, and the verification harness.
+Atsura is pre-release and maintained on a best-effort basis. Support currently
+covers source inspection through the registered GitHub CLI adapter, schema-3
+tailoring specification creation and validation, schema-2 bundle compilation,
+exact-digest bundle status and interactive adoption, repository development,
+and the verification harness.
 
 ## Where to ask
 
@@ -20,16 +22,31 @@ output, or embargoed details in issues, discussions, or pull requests.
 - A minimal synthetic reproduction.
 - Relevant bounded output with secrets and personal data removed.
 - The smallest failing verification profile.
+- For artifact problems, the schema version and digest fields without
+  confidential catalog or source content.
 
 ## Current boundary
 
-The supported tailoring boundary requires an explicitly selected policy and a
-local JSON-producing source executable. It supports exact prefix matching,
-allow/deny, appended arguments, and built-in select/rename output. Source-help
-inspection, vendor-specific compatibility, hooks, implicit policy activation,
-mutations, confirmation, raw fallback, history, RTK or external transformers,
-and published release installation are product proposals rather than existing
-capabilities.
+The supported tailoring boundary is the artifact workflow:
+
+```text
+atr source inspect
+atr spec init / spec validate
+atr bundle build / bundle status / bundle trust
+```
+
+Specification schema 3 composes command and option membership independently
+from identity or transforming wrapper behavior. Bundle schema 2 binds the exact
+source, catalog, normalized specification, and compiled surface. `bundle trust`
+means user adoption of one exact purpose-specific bundle; it is not source
+authorization.
+
+Bundle-backed plan preview and source execution, source refresh, hooks, host
+adapters, raw bypass, history, RTK or external transformers, additional source
+adapters, and published release installation are not current capabilities.
+Retired policy schemas 1 and 2, bundle schema 1, `plan preview`, and `run` are
+supported only by explicit zero-execution migration diagnostics and are not
+automatically converted.
 
 Before requesting help, read [README.md](README.md), [AGENTS.md](AGENTS.md), and
 the [documentation map](docs/README.md), then run the smallest relevant

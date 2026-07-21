@@ -162,7 +162,7 @@ go run ./cmd/atr sample read --id smp_2f4a6c8e0b1d --format json
 go run ./cmd/atr --error-format json sample read --id smp_000000000000
 ```
 
-The root agent contract must be schema version 6 with `view: index`, reveal the
+The root agent contract must be schema version 7 with `view: index`, reveal the
 `sample` namespace and both exact paths, and contain no input, output,
 authentication, error, mutation, fixed-target, or workflow detail. Its
 `scope_request` must identify the selector fields and exact invocation template.
@@ -196,13 +196,14 @@ measurements were 1,517 bytes for root agent help, 5,359 bytes for exact
 `sample read` help, and 8,359 bytes for the `sample` namespace. The 512-byte
 limit continues to bound each root selection entry.
 
-With schema 6, measured on 2026-07-21 after adding the two tailoring commands,
-the current root is 2,045 bytes, exact `sample read` help is 5,845 bytes, the
-`sample` namespace is 8,734 bytes, and exact `run` help is 10,529 bytes. The
-root increase is limited to selection entries; invocation and failure detail
-remain scoped.
+With schema 7, measured on 2026-07-21 for the schema-correction catalog, the
+current root is 4,755 bytes, exact `sample read` help is 5,845 bytes, and the
+`sample` namespace is 8,734 bytes. Exact artifact contracts remain scoped:
+`spec validate` is 8,967 bytes, `bundle build` is 8,386 bytes, `bundle status`
+is 7,527 bytes, and `bundle trust` is 8,743 bytes. The root contains selection
+entries rather than those complete invocation and failure contracts.
 
-Schema 6 retains the fixed derived-scale regression with six selected commands, 18
+Schema 7 retains the fixed derived-scale regression with six selected commands, 18
 producer endpoints, 18 consumer endpoints, and 324 implicit same-kind edges.
 The grouped document is 26,643 UTF-8 bytes; a pair-expanded representation of
 the same facts is 179,909 bytes. The fixed corpus has a 65,536-byte
@@ -235,77 +236,108 @@ Validation must also cover:
 
 The sample is not evidence that a real API adapter is secure. A derived CLI repeats the scenario with fake adapter fixtures, authentication failures, pagination, cancellation, policy denial, and upstream error mappings before enabling a real network integration.
 
-## Scenario C: Atsura plan preview MVP
+## Scenario C: Atsura artifact compilation
 
 ### Outcome
 
-Given one reviewed per-command YAML file and an attempted source invocation, a
-maintainer can see the exact decision, argv change, matched command, reason,
-and typed output plan without installing or starting the source CLI.
+Given one installed supported source CLI, a maintainer can produce exact
+catalog evidence, create and review a schema-3 purpose-specific surface, and
+compile one deterministic schema-2 bundle without starting a bundle-backed
+source invocation.
 
 ### Runnable probe
 
-```sh
-go run ./cmd/atr help --format agent
-go run ./cmd/atr help plan preview --format agent
-go run ./cmd/atr plan preview --config examples/plan-preview.yaml -- gh pr list --state open
-go run ./cmd/atr --error-format json plan preview --config examples/plan-preview.yaml -- git status
-```
-
-The first two invocations satisfy the unknown-surface bound of root selection
-plus one scoped contract. A caller that already knows `plan preview` needs only
-the scoped-help invocation. The successful task requires zero external
-reconstruction: `plan` is the declared JSON envelope and contains the exact
-original and transformed argv. It reports `source_process_attempts: 0`. The
-mismatch returns `not_found` with code `plan_rule_not_matched`, emits no success
-stdout, and names `help plan preview` as its next action.
-
-This scenario validates plan inspection only. It does not validate source
-discovery, hook interception, execution, or actual output transformation.
-
-## Scenario D: Atsura local tailored run
-
-### Outcome
-
-Given one explicitly selected schema-1 policy, a maintainer can run one
-declared read-only JSON-producing source command and consume only its selected
-and renamed records without an undeclared parser.
-
-### Runnable probe
-
-From the repository root:
+From the repository root, with `gh` installed:
 
 ```sh
 go run ./cmd/atr help --format agent
-go run ./cmd/atr help run --format agent
-go run ./cmd/atr plan preview --config examples/run-local.yaml -- go run ./tools/sourcefixture --limit=2
-go run ./cmd/atr run --config examples/run-local.yaml -- go run ./tools/sourcefixture --limit=2
+go run ./cmd/atr help spec --format agent
+go run ./cmd/atr source inspect --adapter github-cli --executable gh > /tmp/atsura-catalog.json
+go run ./cmd/atr spec init --catalog /tmp/atsura-catalog.json -- pr list > /tmp/atsura-spec.yaml
+go run ./cmd/atr spec validate --catalog /tmp/atsura-catalog.json --spec /tmp/atsura-spec.yaml
+go run ./cmd/atr bundle build --catalog /tmp/atsura-catalog.json --spec /tmp/atsura-spec.yaml > /tmp/atsura-bundle.json
+go run ./cmd/atr bundle status --bundle /tmp/atsura-bundle.json
 ```
 
-The root index plus exact scoped help meets the two-invocation unknown-surface
-bound. Known-path discovery takes one scoped-help invocation. The preview makes
-zero source attempts and exposes the exact appended `--format=json` argument.
-The run makes exactly one direct attempt and returns schema-1 `execution` JSON
-whose `records` contain only ordered `id`, `title`, and `state` fields. Reading
-those declared fields is direct consumption, so the routine-success external
-processing count is zero.
+Root selection plus one `spec` namespace request meets the two-invocation
+unknown-surface bound. The source inspection reports the adapter's exact
+bounded offline probe count. The generated specification is exclude-by-default
+and contains one exact included verified command with inherited options and an
+identity wrapper. Validation returns the normalized specification, its digest,
+and surface/wrapper counts. Repeating bundle build with identical catalog and
+specification bytes produces the same bundle digest. Status starts no source
+process and reports `not_adopted` before adoption.
+
+The static [schema-3 example](../examples/tailoring-spec.schema3.yaml) is
+structural evidence only: its placeholder digest is deliberately not silently
+rebound. `spec init` is the executable route to a catalog-bound draft.
 
 ### Recovery probes
 
-- A deny policy returns `rejected` / `policy_rejected` before process start.
-- A command-prefix mismatch returns `not_found` / `plan_rule_not_matched`
-  before process start and points to `plan preview`.
-- An absent executable returns `not_found` / `source_executable_not_found` with
-  no attempt.
-- Nonzero exit, timeout, cancellation, identity drift, capture overflow,
-  malformed or duplicate JSON, and transform mismatch produce no success
-  stdout, no raw fallback, and no Atsura retry.
-- Successful bounded source stderr is visibly escaped on Atsura stderr and
-  cannot alter the JSON success structure.
+- A schema-1 or schema-2 specification returns `invalid_input` /
+  `legacy_tailoring_schema`, starts no source process, and points to exact
+  `spec` help.
+- A bundle-schema-1 document returns the same stable migration code and is not
+  adopted or converted.
+- Catalog digest mismatch, unverified command provenance, unknown fields,
+  aliases, multiple YAML documents, unsupported option overrides, and an
+  identity wrapper with transformations fail before bundle compilation.
+- Deprecated `policy init`, `policy validate`, `plan preview`, and `run`
+  invocations return only their migration diagnostic and never read the
+  historical configuration or start the supplied source command.
+- Source inspection timeout, wait failure, or cancellation after process start
+  is non-retryable because the outcome is not inferred from an `execute`
+  effect.
 
-This scenario validates only the generic local read boundary. It makes no
-claim about vendor CLI compatibility, source-help discovery, hook interception,
-mutations, implicit trust, or raw execution.
+This scenario validates artifact inspection, specification composition, and
+deterministic compilation. It does not validate bundle runtime, wrapper-plan
+preview, output transformation at runtime, raw bypass, or host integration.
+
+## Scenario D: Atsura bundle adoption
+
+### Outcome
+
+Given one current schema-2 bundle, a maintainer can review its exact source,
+surface, wrapper, and digest summary on a controlling terminal and explicitly
+adopt that purpose-specific CLI definition without granting source-operation
+permission.
+
+### Runnable probe
+
+Continue from Scenario C in an interactive terminal:
+
+```sh
+go run ./cmd/atr help --format agent
+go run ./cmd/atr help bundle trust --format agent
+go run ./cmd/atr bundle status --bundle /tmp/atsura-bundle.json
+go run ./cmd/atr bundle trust --bundle /tmp/atsura-bundle.json
+go run ./cmd/atr bundle status --bundle /tmp/atsura-bundle.json
+```
+
+The root index plus exact scoped help meets the two-invocation unknown-surface
+bound. Known-path discovery takes one scoped-help invocation. The first status
+reports `not_adopted`. Trust displays the exact digest and compiled
+surface/wrapper summary on the controlling terminal and records only that
+digest after explicit confirmation. The final status reports `adopted: true`.
+Status and trust both report `source_process_attempts: 0`.
+
+### Recovery probes
+
+- Redirected stdin or the absence of a controlling terminal cannot create an
+  adoption receipt.
+- Source identity drift rejects adoption and points to `bundle status` without
+  starting the source executable.
+- Changed catalog, specification, surface, wrapper, or bundle bytes produce a
+  different digest and do not inherit adoption.
+- A malformed or mismatched bundle fails strict loading before confirmation.
+- Output failure after confirmed adoption is non-retryable and points to status
+  reconciliation rather than repeating the mutation.
+- An old exact-digest receipt remains inert for a schema-2 bundle with a
+  different digest; migration never copies or removes receipts automatically.
+
+This scenario validates an Atsura-owned adoption-store mutation. Adoption is
+not source authorization, command approval, runtime activation, or proof that
+hidden commands are inaccessible through another route.
 
 ## Review record
 

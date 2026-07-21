@@ -30,6 +30,7 @@ func TestPolicyRejectsOmittedOrUnsafeRetryContracts(t *testing.T) {
 		policy Policy
 	}{
 		{effect: operation.EffectRead, policy: Policy{}},
+		{effect: operation.EffectExecute, policy: SingleAttempt(time.Second, IdempotencyUnsafe)},
 		{effect: operation.EffectRead, policy: Policy{Timeout: time.Second, MaxAttempts: 1}},
 		{effect: operation.EffectWrite, policy: Policy{Timeout: time.Second, MaxAttempts: 2, Idempotency: IdempotencyUnsafe}},
 		{effect: operation.EffectRead, policy: Policy{Timeout: time.Second, MaxAttempts: 2, Idempotency: IdempotencyUnsafe}},

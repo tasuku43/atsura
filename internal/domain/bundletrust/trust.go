@@ -1,5 +1,7 @@
-// Package bundletrust defines the vendor-neutral user trust and drift states
-// for one content-addressed tailoring bundle.
+// Package bundletrust defines exact-digest user adoption receipts and source
+// drift states for one content-addressed tailoring bundle. The package name is
+// retained for the public `bundle trust` command; a receipt grants no source
+// operation permission.
 package bundletrust
 
 import (
@@ -18,9 +20,9 @@ var ErrInvalidStore = errors.New("invalid bundle trust store")
 type State string
 
 const (
-	StateTrusted   State = "trusted"
-	StateUntrusted State = "untrusted"
-	StateInvalid   State = "invalid"
+	StateAdopted    State = "adopted"
+	StateNotAdopted State = "not_adopted"
+	StateInvalid    State = "invalid"
 )
 
 type SourceState string
@@ -31,34 +33,39 @@ const (
 	SourceUnavailable SourceState = "unavailable"
 )
 
-// Receipt records only exact reviewed content identity. All authority facts
-// are recomputed from the validated bundle when status or execution is asked.
+// Receipt records only exact reviewed bundle identity. Surface, wrapper, and
+// source facts are recomputed from the validated bundle whenever status is
+// requested.
 type Receipt struct {
 	BundleDigest string `json:"bundle_digest"`
 }
 
-// Store is the one user-local, non-secret trust authority document.
+// Store is the one user-local, non-secret bundle-adoption document.
 type Store struct {
 	SchemaVersion int       `json:"schema_version"`
 	Receipts      []Receipt `json:"receipts"`
 }
 
-// Summary is the material authority shown on a controlling terminal before a
-// receipt is added. It deliberately contains no captured source output.
+// Summary is the material surface-and-wrapper summary shown on a controlling
+// terminal before an adoption receipt is added. It contains no captured source
+// output and no source-operation permission classification.
 type Summary struct {
-	BundleDigest  string
-	CatalogDigest string
-	PolicyDigest  string
-	SourcePath    string
-	SourceSHA256  string
-	SourceVersion string
-	VisibleCount  int
-	ReadCount     int
-	CreateCount   int
-	WriteCount    int
-	AllowCount    int
-	ConfirmCount  int
-	DenyCount     int
+	BundleDigest              string
+	CatalogDigest             string
+	SpecificationDigest       string
+	SourcePath                string
+	SourceSHA256              string
+	SourceVersion             string
+	SurfaceDefault            string
+	IncludedCommandCount      int
+	ExcludedCommandCount      int
+	IdentityWrapperCount      int
+	TransformWrapperCount     int
+	OptionOverrideCount       int
+	ArgvTransformationCount   int
+	BeforeActionCount         int
+	AfterActionCount          int
+	OutputTransformationCount int
 }
 
 func EmptyStore() Store {

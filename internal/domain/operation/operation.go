@@ -16,6 +16,7 @@ type Effect uint8
 const (
 	EffectUnknown Effect = iota
 	EffectRead
+	EffectExecute
 	EffectCreate
 	EffectWrite
 )
@@ -24,6 +25,8 @@ func (e Effect) String() string {
 	switch e {
 	case EffectRead:
 		return "read"
+	case EffectExecute:
+		return "execute"
 	case EffectCreate:
 		return "create"
 	case EffectWrite:
@@ -48,6 +51,8 @@ func (e *Effect) UnmarshalText(text []byte) error {
 	switch string(text) {
 	case "read":
 		parsed = EffectRead
+	case "execute":
+		parsed = EffectExecute
 	case "create":
 		parsed = EffectCreate
 	case "write":
@@ -80,15 +85,16 @@ func (e *Effect) UnmarshalJSON(data []byte) error {
 // effect model.
 func (e Effect) Validate() error {
 	switch e {
-	case EffectRead, EffectCreate, EffectWrite:
+	case EffectRead, EffectExecute, EffectCreate, EffectWrite:
 		return nil
 	default:
 		return fmt.Errorf("effect is missing or invalid: %d", e)
 	}
 }
 
-// TargetRef identifies the object, or parent scope, affected by a mutation.
-// Read operations deliberately use the zero value.
+// TargetRef identifies the object, or parent scope, affected by an Atsura-owned
+// mutation. Read operations and source-owned process execution deliberately use
+// the zero value.
 type TargetRef struct {
 	Kind     string `json:"kind,omitempty"`
 	ParentID string `json:"parent_id,omitempty"`
@@ -247,9 +253,9 @@ func (d Declaration) validate(name string) error {
 	return nil
 }
 
-// Impact captures policy-relevant facts that apply across API-backed CLIs.
-// Product-specific impact remains a domain-owned extension in derived
-// projects; this base contract deliberately does not encode vendor concepts.
+// Impact captures facts required before an Atsura-owned mutation. Product-
+// specific impact remains a domain-owned extension in derived projects; this
+// base contract deliberately does not encode vendor concepts.
 type Impact struct {
 	Cardinality  Cardinality `json:"cardinality,omitempty"`
 	Notification Declaration `json:"notification,omitempty"`
@@ -304,6 +310,13 @@ func (i Intent) Validate() error {
 		}
 		if !i.Impact.IsZero() {
 			return fmt.Errorf("read intent must not declare mutation impact")
+		}
+	case EffectExecute:
+		if !i.Target.IsZero() {
+			return fmt.Errorf("execute intent must not declare a mutation target")
+		}
+		if !i.Impact.IsZero() {
+			return fmt.Errorf("execute intent must not declare mutation impact")
 		}
 	case EffectCreate:
 		if !validName(i.Target.Kind) || !validRefPart(i.Target.ParentID) || i.Target.ID != "" {

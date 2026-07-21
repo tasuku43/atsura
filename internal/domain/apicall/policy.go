@@ -51,6 +51,9 @@ func (p Policy) Validate(effect operation.Effect) error {
 	if err := effect.Validate(); err != nil {
 		return err
 	}
+	if effect == operation.EffectExecute {
+		return fmt.Errorf("API call policy does not model source-process execution")
+	}
 	if p.Timeout <= 0 {
 		return fmt.Errorf("API timeout must be positive")
 	}

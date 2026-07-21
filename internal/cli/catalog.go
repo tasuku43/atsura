@@ -417,9 +417,13 @@ func stringPointer(value string) *string {
 	return &value
 }
 
+func isMutationEffect(effect operation.Effect) bool {
+	return effect == operation.EffectCreate || effect == operation.EffectWrite
+}
+
 func artifactInputErrors(command string, includeBundle bool) []CommandError {
 	errors := []CommandError{
-		declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help "+command, "Pass exact catalog and schema-2 policy paths."),
+		declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help "+command, "Pass exact catalog and schema-3 specification paths."),
 		declaredCommandError(fault.KindNotFound, "catalog_file_not_found", false, "source inspect", "Generate and select a source inspection JSON file."),
 		declaredCommandError(fault.KindPermission, "catalog_file_permission_denied", false, "source inspect", "Correct catalog file permissions."),
 		declaredCommandError(fault.KindInvalidInput, "unsafe_catalog_file", false, "source inspect", "Use a stable regular source inspection file."),
@@ -427,13 +431,14 @@ func artifactInputErrors(command string, includeBundle bool) []CommandError {
 		declaredCommandError(fault.KindUnavailable, "catalog_file_read_failed", true, "source inspect", "Retry after the catalog file is readable."),
 		declaredCommandError(fault.KindInvalidInput, "invalid_catalog_file", false, "source inspect", "Regenerate strict source inspection JSON."),
 		declaredCommandError(fault.KindRejected, "catalog_digest_mismatch", false, "source inspect", "Regenerate and review source inspection JSON."),
-		declaredCommandError(fault.KindNotFound, "policy_file_not_found", false, "help policy validate", "Select an existing schema-2 policy file."),
-		declaredCommandError(fault.KindPermission, "policy_file_permission_denied", false, "help policy validate", "Correct policy file permissions."),
-		declaredCommandError(fault.KindInvalidInput, "unsafe_policy_file", false, "help policy validate", "Use a stable regular policy file."),
-		declaredCommandError(fault.KindInvalidInput, "policy_file_too_large", false, "help policy validate", "Reduce policy below 256 KiB."),
-		declaredCommandError(fault.KindUnavailable, "policy_file_read_failed", true, "help policy validate", "Retry after the policy file is readable."),
-		declaredCommandError(fault.KindInvalidInput, "invalid_policy_yaml", false, "help policy validate", "Correct the strict schema-2 YAML syntax."),
-		declaredCommandError(fault.KindInvalidInput, "invalid_policy", false, "help policy validate", "Correct the catalog-bound policy semantics."),
+		declaredCommandError(fault.KindNotFound, "specification_file_not_found", false, "help spec validate", "Select an existing schema-3 specification file."),
+		declaredCommandError(fault.KindPermission, "specification_file_permission_denied", false, "help spec validate", "Correct specification file permissions."),
+		declaredCommandError(fault.KindInvalidInput, "unsafe_specification_file", false, "help spec validate", "Use a stable regular specification file."),
+		declaredCommandError(fault.KindInvalidInput, "specification_file_too_large", false, "help spec validate", "Reduce the specification below 256 KiB."),
+		declaredCommandError(fault.KindUnavailable, "specification_file_read_failed", true, "help spec validate", "Retry after the specification file is readable."),
+		declaredCommandError(fault.KindInvalidInput, "invalid_specification_yaml", false, "help spec validate", "Correct the strict schema-3 YAML syntax."),
+		declaredCommandError(fault.KindInvalidInput, "legacy_tailoring_schema", false, "help spec init", "Create a schema-3 surface and wrapper specification without automatic conversion."),
+		declaredCommandError(fault.KindInvalidInput, "invalid_specification", false, "help spec validate", "Correct the catalog-bound surface and wrapper semantics."),
 	}
 	if includeBundle {
 		errors = append(errors, declaredCommandError(fault.KindContract, "invalid_bundle", false, "help bundle build", "Repair canonical bundle compilation."))
@@ -456,7 +461,25 @@ func bundleFileErrors(command string) []CommandError {
 		declaredCommandError(fault.KindInvalidInput, "bundle_file_too_large", false, "bundle build", "Build a bundle within the 2 MiB limit."),
 		declaredCommandError(fault.KindUnavailable, "bundle_file_read_failed", true, "bundle status", "Retry after the bundle file is readable."),
 		declaredCommandError(fault.KindInvalidInput, "invalid_bundle_file", false, "bundle build", "Rebuild and review strict canonical bundle JSON."),
+		declaredCommandError(fault.KindInvalidInput, "legacy_tailoring_schema", false, "help bundle build", "Rebuild with a schema-3 specification and bundle schema 2."),
 		declaredCommandError(fault.KindRejected, "bundle_digest_mismatch", false, "bundle build", "Rebuild and review the changed bundle content."),
+	}
+}
+
+func legacyMigrationCommand(path, summary, args, outcome, recovery string, inputs []CommandInput, handler commandHandler) CommandSpec {
+	return CommandSpec{
+		Path: path, Summary: summary, Args: args, Effect: operation.EffectRead, Role: RoleUtility,
+		Agent: AgentContract{
+			CapabilityID: "tailoring.schema.migrate", Outcome: outcome, Inputs: inputs,
+			Output:        CommandOutput{Formats: []OutputFormat{OutputFormatNone}, DefaultFormat: OutputFormatNone, Fields: []OutputField{}, Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable},
+			Prerequisites: []string{"This deprecated path exists only to return a deterministic migration diagnostic and never reads the retired file or starts a source process."},
+			Errors: []CommandError{
+				declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help "+path, "Use the deprecated command's exact historical syntax to obtain migration guidance."),
+				declaredCommandError(fault.KindInvalidInput, "legacy_tailoring_schema", false, recovery, "Create or validate a schema-3 tailoring specification; automatic authorization-to-surface conversion is not available."),
+				declaredCommandError(fault.KindCanceled, "operation_canceled", true, path, "Retry when the caller is ready."),
+			},
+		},
+		handler: handler,
 	}
 }
 
@@ -537,13 +560,13 @@ func DefaultCatalog() Catalog {
 						{Name: "summary", Type: OutputFieldTypeString, Description: "Concise description of the command task."},
 						{Name: "capability_id", Type: OutputFieldTypeString, Description: "Stable product capability identifier."},
 						{Name: "outcome", Type: OutputFieldTypeString, Description: "User outcome the command can achieve."},
-						{Name: "effect", Type: OutputFieldTypeString, Description: "Declared read, create, or write effect."},
+						{Name: "effect", Type: OutputFieldTypeString, Description: "Declared read, execute, create, or write effect."},
 						{Name: "role", Type: OutputFieldTypeString, Description: "Declared utility, discover, or act workflow role."},
 					},
 					Delivery:           OutputDeliveryComplete,
 					CollectionCoverage: CollectionCoverageExhaustive,
 					JSONEnvelope:       "commands",
-					JSONSchemaVersion:  6,
+					JSONSchemaVersion:  7,
 				},
 				Prerequisites: []string{},
 				Errors: []CommandError{
@@ -555,37 +578,61 @@ func DefaultCatalog() Catalog {
 			},
 			handler: runHelp,
 		},
+		legacyMigrationCommand(
+			"policy init",
+			"Explain migration from the retired policy-init schema",
+			"--catalog <path> --effect read|create|write -- <command>",
+			"Return a stable zero-execution migration diagnostic for the retired schema-2 policy draft command",
+			"help spec init",
+			[]CommandInput{
+				{Name: "--catalog", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Historical catalog path; the migration handler does not read it.", AllowedValues: []string{}},
+				{Name: "--effect", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Historical source-effect value; it is not converted into surface semantics.", AllowedValues: []string{"read", "create", "write"}},
+				{Name: "command", Source: InputSourceArgument, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalityRepeatable, Description: "Historical exact command path after the positional-only marker.", AllowedValues: []string{}},
+			},
+			runPolicyInit,
+		),
+		legacyMigrationCommand(
+			"policy validate",
+			"Explain migration from retired policy schemas",
+			"--catalog <path> --policy <path>",
+			"Return a stable zero-execution migration diagnostic for retired authorization-centered policy schemas",
+			"help spec validate",
+			[]CommandInput{
+				{Name: "--catalog", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Historical catalog path; the migration handler does not read it.", AllowedValues: []string{}},
+				{Name: "--policy", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Historical policy path; the migration handler does not read it.", AllowedValues: []string{}},
+			},
+			runPolicyValidate,
+		),
 		CommandSpec{
-			Path:    "policy init",
-			Summary: "Create a hidden deny-by-default schema-2 policy draft",
-			Args:    "--catalog <path> --effect read|create|write -- <command>",
+			Path:    "spec init",
+			Summary: "Create a schema-3 surface and identity-wrapper draft",
+			Args:    "--catalog <path> -- <command>",
 			Effect:  operation.EffectRead,
 			Role:    RoleUtility,
 			Agent: AgentContract{
-				CapabilityID: "tailoring.policy.init",
-				Outcome:      "Create a schema-2 YAML draft for one exact verified catalog command without inferring safety or enabling execution",
+				CapabilityID: "tailoring.spec.init",
+				Outcome:      "Create an exclude-by-default schema-3 tailoring specification containing one exact verified command with inherited options and an identity wrapper",
 				Inputs: []CommandInput{
 					{Name: "--catalog", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read the exact bounded JSON document emitted by source inspect.", AllowedValues: []string{}},
-					{Name: "--effect", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Declare the source operation effect without inferring it from help.", AllowedValues: []string{"read", "create", "write"}},
 					{Name: "command", Source: InputSourceArgument, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalityRepeatable, Description: "Select one exact verified source command path after the positional-only marker.", AllowedValues: []string{}},
 				},
 				Output: CommandOutput{
 					Formats: []OutputFormat{OutputFormatText}, DefaultFormat: OutputFormatText,
 					Fields: []OutputField{
-						{Name: "schema_version", Type: OutputFieldTypeInteger, Description: "Generated policy schema version; always two."},
+						{Name: "schema_version", Type: OutputFieldTypeInteger, Description: "Generated tailoring specification schema version; always three."},
 						{Name: "catalog_digest", Type: OutputFieldTypeString, Description: "Exact canonical catalog digest bound into the draft."},
-						{Name: "rules", Type: OutputFieldTypeArray, Description: "One hidden deny rule with the user-declared effect and no executable transformations."},
+						{Name: "surface", Type: OutputFieldTypeObject, Description: "Exclude-by-default purpose-specific command surface."},
+						{Name: "commands", Type: OutputFieldTypeArray, Description: "One included command with inherited options and an identity wrapper."},
 					},
 					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable,
 				},
 				Prerequisites: []string{"A source inspect JSON document containing the exact command as verified_builtin evidence."},
 				Errors: []CommandError{
-					declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help policy init", "Pass a catalog, effect, and exact command path."),
-					declaredCommandError(fault.KindInvalidInput, "invalid_policy_effect", false, "help policy init", "Choose read, create, or write."),
-					declaredCommandError(fault.KindNotFound, "catalog_command_not_found", false, "help policy init", "Select an exact command present in the catalog."),
+					declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help spec init", "Pass a catalog and exact command path."),
+					declaredCommandError(fault.KindNotFound, "catalog_command_not_found", false, "help spec init", "Select an exact command present in the catalog."),
 					declaredCommandError(fault.KindRejected, "unverified_catalog_command", false, "source inspect", "Use only verified built-in command evidence."),
 					declaredCommandError(fault.KindContract, "invalid_source_catalog", false, "source inspect", "Regenerate a valid source catalog."),
-					declaredCommandError(fault.KindContract, "invalid_policy_draft", false, "help policy init", "Inspect fail-closed draft construction."),
+					declaredCommandError(fault.KindContract, "invalid_specification_draft", false, "help spec init", "Inspect schema-3 draft construction."),
 					declaredCommandError(fault.KindNotFound, "catalog_file_not_found", false, "source inspect", "Generate and select a source inspection JSON file."),
 					declaredCommandError(fault.KindPermission, "catalog_file_permission_denied", false, "source inspect", "Correct catalog file permissions."),
 					declaredCommandError(fault.KindInvalidInput, "unsafe_catalog_file", false, "source inspect", "Use a stable regular source inspection file."),
@@ -593,82 +640,85 @@ func DefaultCatalog() Catalog {
 					declaredCommandError(fault.KindUnavailable, "catalog_file_read_failed", true, "source inspect", "Retry after the catalog file is readable."),
 					declaredCommandError(fault.KindInvalidInput, "invalid_catalog_file", false, "source inspect", "Regenerate strict source inspection JSON."),
 					declaredCommandError(fault.KindRejected, "catalog_digest_mismatch", false, "source inspect", "Regenerate and review source inspection JSON."),
-					declaredCommandError(fault.KindContract, "output_contract_exceeded", false, "help policy init", "Reduce the bounded draft output."),
-					declaredCommandError(fault.KindContract, "output_encoding_failed", false, "help policy init", "Repair deterministic YAML projection."),
-					declaredCommandError(fault.KindInternal, "internal_error", false, "help policy init", "Inspect catalog loading and draft construction."),
-					declaredCommandError(fault.KindInternal, "output_write_failed", true, "policy init", "Retry with a writable output stream."),
-					declaredCommandError(fault.KindCanceled, "operation_canceled", true, "policy init", "Retry when the caller is ready."),
+					declaredCommandError(fault.KindContract, "output_contract_exceeded", false, "help spec init", "Reduce the bounded draft output."),
+					declaredCommandError(fault.KindContract, "output_encoding_failed", false, "help spec init", "Repair deterministic YAML projection."),
+					declaredCommandError(fault.KindInternal, "internal_error", false, "help spec init", "Inspect catalog loading and draft construction."),
+					declaredCommandError(fault.KindInternal, "output_write_failed", true, "spec init", "Retry with a writable output stream."),
+					declaredCommandError(fault.KindCanceled, "operation_canceled", true, "spec init", "Retry when the caller is ready."),
 				},
 			},
-			handler: runPolicyInit,
+			handler: runSpecInit,
 		},
 		CommandSpec{
-			Path:    "policy validate",
-			Summary: "Validate and normalize a catalog-bound schema-2 policy",
-			Args:    "--catalog <path> --policy <path>",
+			Path:    "spec validate",
+			Summary: "Validate and normalize a catalog-bound schema-3 specification",
+			Args:    "--catalog <path> --spec <path>",
 			Effect:  operation.EffectRead,
 			Role:    RoleUtility,
 			Agent: AgentContract{
-				CapabilityID: "tailoring.policy.validate",
-				Outcome:      "Validate one strict schema-2 YAML policy against exact source inspection evidence and return its canonical digest and normalized rules",
+				CapabilityID: "tailoring.spec.validate",
+				Outcome:      "Validate one strict schema-3 YAML tailoring specification against exact source catalog evidence and return its canonical digest and surface-wrapper counts",
 				Inputs: []CommandInput{
 					{Name: "--catalog", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read the exact bounded JSON document emitted by source inspect.", AllowedValues: []string{}},
-					{Name: "--policy", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read one bounded strict schema-2 YAML policy.", AllowedValues: []string{}},
+					{Name: "--spec", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read one bounded strict schema-3 tailoring specification.", AllowedValues: []string{}},
 				},
 				Output: CommandOutput{
 					Formats: []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
 					Fields: []OutputField{
 						{Name: "valid", Type: OutputFieldTypeBoolean, Description: "True only after strict syntax and catalog-bound semantic validation."},
-						{Name: "catalog_digest", Type: OutputFieldTypeString, Description: "Exact canonical catalog digest required by the policy."},
-						{Name: "policy_digest", Type: OutputFieldTypeString, Description: "SHA-256 identity of normalized canonical policy JSON."},
-						{Name: "rule_count", Type: OutputFieldTypeInteger, Description: "Number of exact command rules in the normalized policy."},
-						{Name: "visible_count", Type: OutputFieldTypeInteger, Description: "Number of rules projected into the tailored surface."},
-						{Name: "policy", Type: OutputFieldTypeObject, Description: "Normalized vendor-neutral schema-2 policy."},
+						{Name: "catalog_digest", Type: OutputFieldTypeString, Description: "Exact canonical catalog digest required by the specification."},
+						{Name: "specification_digest", Type: OutputFieldTypeString, Description: "SHA-256 identity of normalized canonical specification JSON."},
+						{Name: "command_count", Type: OutputFieldTypeInteger, Description: "Number of explicit command entries."},
+						{Name: "included_count", Type: OutputFieldTypeInteger, Description: "Number of explicit included command entries."},
+						{Name: "excluded_count", Type: OutputFieldTypeInteger, Description: "Number of explicit excluded command entries."},
+						{Name: "identity_wrapper_count", Type: OutputFieldTypeInteger, Description: "Number of explicit identity wrappers."},
+						{Name: "transform_wrapper_count", Type: OutputFieldTypeInteger, Description: "Number of explicit transforming wrappers."},
+						{Name: "specification", Type: OutputFieldTypeObject, Description: "Normalized vendor-neutral schema-3 tailoring specification."},
 					},
 					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable,
-					JSONEnvelope: "validation", JSONSchemaVersion: 1,
+					JSONEnvelope: "validation", JSONSchemaVersion: 2,
 				},
-				Prerequisites: []string{"A reviewed source inspect JSON document and schema-2 YAML policy; neither file is trusted persistently by this read."},
-				Errors:        artifactInputErrors("policy validate", false),
+				Prerequisites: []string{"A reviewed source inspect JSON document and schema-3 YAML specification; validation does not adopt either artifact."},
+				Errors:        artifactInputErrors("spec validate", false),
 			},
-			handler: runPolicyValidate,
+			handler: runSpecValidate,
 		},
 		CommandSpec{
 			Path:    "bundle build",
-			Summary: "Compile catalog and policy into one canonical tailoring bundle",
-			Args:    "--catalog <path> --policy <path>",
+			Summary: "Compile catalog and specification into one canonical bundle",
+			Args:    "--catalog <path> --spec <path>",
 			Effect:  operation.EffectRead,
 			Role:    RoleUtility,
 			Agent: AgentContract{
 				CapabilityID: "tailoring.bundle.build",
-				Outcome:      "Compile exact source evidence and a valid schema-2 policy into one deterministic vendor-neutral bundle without trusting or executing it",
+				Outcome:      "Compile exact source evidence and a valid schema-3 surface-wrapper specification into one deterministic bundle without adopting or executing it",
 				Inputs: []CommandInput{
 					{Name: "--catalog", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read the exact bounded JSON document emitted by source inspect.", AllowedValues: []string{}},
-					{Name: "--policy", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read one bounded strict schema-2 YAML policy.", AllowedValues: []string{}},
+					{Name: "--spec", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read one bounded strict schema-3 tailoring specification.", AllowedValues: []string{}},
 				},
 				Output: CommandOutput{
 					Formats: []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
 					Fields: []OutputField{
 						{Name: "bundle_digest", Type: OutputFieldTypeString, Description: "SHA-256 identity of the canonical embedded bundle JSON."},
-						{Name: "bundle", Type: OutputFieldTypeObject, Description: "Canonical catalog, normalized policy, recomputable digests, and tailored surface."},
+						{Name: "bundle", Type: OutputFieldTypeObject, Description: "Canonical catalog, normalized specification, recomputable digests, and purpose-specific surface with wrappers."},
 					},
 					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable,
-					JSONEnvelope: "build", JSONSchemaVersion: 1,
+					JSONEnvelope: "build", JSONSchemaVersion: 2,
 				},
-				Prerequisites: []string{"A source inspect JSON document and schema-2 policy that passes policy validate; build does not create a trust receipt."},
+				Prerequisites: []string{"A source inspect JSON document and schema-3 specification that passes spec validate; build does not create an adoption receipt."},
 				Errors:        artifactInputErrors("bundle build", true),
 			},
 			handler: runBundleBuild,
 		},
 		CommandSpec{
 			Path:    "bundle status",
-			Summary: "Inspect exact bundle trust and source drift without execution",
+			Summary: "Inspect exact bundle adoption and source drift without execution",
 			Args:    "--bundle <path>",
 			Effect:  operation.EffectRead,
 			Role:    RoleUtility,
 			Agent: AgentContract{
 				CapabilityID: "tailoring.bundle.status",
-				Outcome:      "Determine whether one exact canonical bundle is user-trusted and still bound to the current source executable without starting it",
+				Outcome:      "Determine whether one exact purpose-specific bundle is user-adopted and report its current source identity independently without starting it",
 				Inputs: []CommandInput{
 					{Name: "--bundle", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read the exact bounded JSON document emitted by bundle build.", AllowedValues: []string{}},
 				},
@@ -677,19 +727,19 @@ func DefaultCatalog() Catalog {
 					Fields: []OutputField{
 						{Name: "bundle_digest", Type: OutputFieldTypeString, Description: "Exact canonical bundle identity."},
 						{Name: "catalog_digest", Type: OutputFieldTypeString, Description: "Recomputed catalog identity embedded in the bundle."},
-						{Name: "policy_digest", Type: OutputFieldTypeString, Description: "Recomputed normalized policy identity embedded in the bundle."},
-						{Name: "trust", Type: OutputFieldTypeString, Description: "User-local trust state: trusted, untrusted, or invalid."},
+						{Name: "specification_digest", Type: OutputFieldTypeString, Description: "Recomputed normalized tailoring specification identity embedded in the bundle."},
+						{Name: "adoption", Type: OutputFieldTypeString, Description: "User-local exact-digest adoption state: adopted, not_adopted, or invalid; it does not grant source-operation permission."},
 						{Name: "source", Type: OutputFieldTypeString, Description: "Current executable state: current, drifted, or unavailable."},
-						{Name: "executable", Type: OutputFieldTypeBoolean, Description: "True only when exact trust and source identity are both current."},
+						{Name: "adopted", Type: OutputFieldTypeBoolean, Description: "True only when the exact bundle digest has a valid user-local adoption receipt."},
 						{Name: "source_path", Type: OutputFieldTypeString, Description: "Exact resolved source path embedded in the bundle."},
 						{Name: "source_sha256", Type: OutputFieldTypeString, Description: "Exact source byte identity embedded in the bundle."},
 						{Name: "source_version", Type: OutputFieldTypeString, Description: "Adapter-observed source version embedded in the bundle."},
 						{Name: "source_process_attempts", Type: OutputFieldTypeInteger, Description: "Always zero; status starts no source process."},
 					},
 					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable,
-					JSONEnvelope: "status", JSONSchemaVersion: 1,
+					JSONEnvelope: "status", JSONSchemaVersion: 2,
 				},
-				Prerequisites: []string{"One bundle build JSON document; repository presence does not imply trust."},
+				Prerequisites: []string{"One bundle build JSON document; repository presence does not imply adoption or source-operation permission."},
 				Errors: append(bundleFileErrors("bundle status"),
 					declaredCommandError(fault.KindContract, "output_contract_exceeded", false, "help bundle status", "Repair the bounded status projection."),
 					declaredCommandError(fault.KindContract, "output_encoding_failed", false, "help bundle status", "Repair deterministic status JSON."),
@@ -702,177 +752,71 @@ func DefaultCatalog() Catalog {
 		},
 		CommandSpec{
 			Path:    "bundle trust",
-			Summary: "Interactively trust one exact canonical bundle digest",
+			Summary: "Interactively adopt one exact tailoring bundle digest",
 			Args:    "--bundle <path>",
 			Effect:  operation.EffectWrite,
 			Role:    RoleAct,
 			Agent: AgentContract{
 				CapabilityID: "tailoring.bundle.trust",
-				Outcome:      "Display the material authority of one current bundle on a controlling terminal and add its exact digest to the user-local trust store after exact confirmation",
+				Outcome:      "Display one current bundle's exact source, surface, and wrapper summary on a controlling terminal and record its digest as user-adopted after exact confirmation",
 				Inputs:       []CommandInput{{Name: "--bundle", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read the exact bounded JSON document emitted by bundle build.", AllowedValues: []string{}}},
 				Output: CommandOutput{
 					Formats: []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
 					Fields: []OutputField{
-						{Name: "bundle_digest", Type: OutputFieldTypeString, Description: "Exact digest whose user-local trust was confirmed."},
-						{Name: "trusted", Type: OutputFieldTypeBoolean, Description: "True after the exact receipt is present."},
-						{Name: "already_trusted", Type: OutputFieldTypeBoolean, Description: "True when no store mutation was needed."},
-						{Name: "source", Type: OutputFieldTypeString, Description: "Source identity state; trust succeeds only when current."},
-						{Name: "source_process_attempts", Type: OutputFieldTypeInteger, Description: "Always zero; trust starts no source process."},
+						{Name: "bundle_digest", Type: OutputFieldTypeString, Description: "Exact digest whose user-local adoption was confirmed."},
+						{Name: "adopted", Type: OutputFieldTypeBoolean, Description: "True after the exact adoption receipt is present."},
+						{Name: "already_adopted", Type: OutputFieldTypeBoolean, Description: "True when no adoption-store mutation was needed."},
+						{Name: "source", Type: OutputFieldTypeString, Description: "Source identity state; adoption succeeds only when current."},
+						{Name: "source_process_attempts", Type: OutputFieldTypeInteger, Description: "Always zero; adoption starts no source process."},
 					},
 					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable,
-					JSONEnvelope: "trust", JSONSchemaVersion: 1,
+					JSONEnvelope: "trust", JSONSchemaVersion: 2,
 				},
-				Prerequisites: []string{"A current canonical bundle and an interactive controlling terminal; redirected stdin cannot grant trust."},
-				FixedTarget:   &FixedTarget{Kind: "bundle-trust-store", ID: "selected", Description: "This Atsura installation's user-local exact-digest bundle trust store.", Scope: FixedTargetScopeToolLocal},
-				Mutation:      &MutationContract{TargetKind: "bundle-trust-store", TargetInputs: []string{}, Impact: operation.Impact{Cardinality: operation.CardinalityOne, Notification: operation.DeclarationNo, AccessChange: operation.DeclarationYes, Destructive: operation.DeclarationNo}},
+				Prerequisites: []string{"A current canonical bundle and an interactive controlling terminal; redirected stdin cannot adopt a bundle, and adoption is not source authorization."},
+				FixedTarget:   &FixedTarget{Kind: "bundle-adoption-store", ID: "selected", Description: "This Atsura installation's user-local exact-digest bundle adoption store.", Scope: FixedTargetScopeToolLocal},
+				Mutation:      &MutationContract{TargetKind: "bundle-adoption-store", TargetInputs: []string{}, Impact: operation.Impact{Cardinality: operation.CardinalityOne, Notification: operation.DeclarationNo, AccessChange: operation.DeclarationYes, Destructive: operation.DeclarationNo}},
 				Errors: append(bundleFileErrors("bundle trust"),
-					declaredCommandError(fault.KindRejected, "invalid_bundle_trust_store", false, "bundle status", "Repair or reconcile invalid user-local trust state."),
-					declaredCommandError(fault.KindRejected, "bundle_source_drift", false, "bundle status", "Inspect source drift before building and trusting new evidence."),
-					declaredCommandError(fault.KindUnavailable, "bundle_trust_store_failed", false, "bundle status", "Reconcile trust state after a safe store failure."),
-					declaredCommandError(fault.KindContract, "invalid_mutation_contract", false, "help bundle trust", "Repair the trust mutation declaration."),
-					declaredCommandError(fault.KindContract, "missing_mutation_action", false, "help bundle trust", "Configure the trust store mutation action."),
+					declaredCommandError(fault.KindRejected, "invalid_bundle_trust_store", false, "bundle status", "Repair or reconcile invalid user-local adoption state."),
+					declaredCommandError(fault.KindRejected, "bundle_source_drift", false, "bundle status", "Inspect source drift before building and adopting new evidence."),
+					declaredCommandError(fault.KindUnavailable, "bundle_trust_store_failed", false, "bundle status", "Reconcile adoption state after a safe store failure."),
+					declaredCommandError(fault.KindContract, "invalid_mutation_contract", false, "help bundle trust", "Repair the adoption mutation declaration."),
+					declaredCommandError(fault.KindContract, "missing_mutation_action", false, "help bundle trust", "Configure the adoption-store mutation action."),
 					declaredCommandError(fault.KindRejected, "missing_mutation_policy", false, "help bundle trust", "Configure interactive exact-digest confirmation."),
-					declaredCommandError(fault.KindRejected, "mutation_rejected", false, "bundle status", "Review the authority summary and confirm only the exact digest."),
-					declaredCommandError(fault.KindContract, "unclassified_mutation_outcome", false, "bundle status", "Reconcile trust state before another mutation."),
+					declaredCommandError(fault.KindRejected, "mutation_rejected", false, "bundle status", "Review the surface-wrapper summary and confirm only the exact digest."),
+					declaredCommandError(fault.KindContract, "unclassified_mutation_outcome", false, "bundle status", "Reconcile adoption state before another mutation."),
 					declaredCommandError(fault.KindContract, "output_contract_exceeded", false, "help bundle trust", "Repair the bounded trust result projection."),
 					declaredCommandError(fault.KindContract, "output_encoding_failed", false, "help bundle trust", "Repair deterministic trust JSON."),
 					declaredCommandError(fault.KindInternal, "internal_error", false, "bundle status", "Inspect bundle authority wiring."),
-					declaredCommandError(fault.KindInternal, "mutation_output_write_failed", false, "bundle status", "Reconcile confirmed trust without repeating it."),
+					declaredCommandError(fault.KindInternal, "mutation_output_write_failed", false, "bundle status", "Reconcile confirmed adoption without repeating it."),
 					declaredCommandError(fault.KindCanceled, "operation_canceled", true, "bundle trust", "Retry when the caller is ready."),
 				),
 			},
 			handler: runBundleTrust,
 		},
-		CommandSpec{
-			Path:    "plan preview",
-			Summary: "Preview how YAML tailors one source command",
-			Args:    "--config <path> -- <command>",
-			Effect:  operation.EffectRead,
-			Role:    RoleUtility,
-			Agent: AgentContract{
-				CapabilityID: "tailoring.preview",
-				Outcome:      "Compile one per-command YAML policy and attempted invocation into an execution-free deterministic plan",
-				Inputs: []CommandInput{
-					{
-						Name: "--config", Source: InputSourceFlag, Required: true,
-						ValueKind: InputValueText, Cardinality: InputCardinalitySingle,
-						Description: "Read one bounded schema-1 YAML policy from this regular-file path.", AllowedValues: []string{},
-					},
-					{
-						Name: "command", Source: InputSourceArgument, Required: true,
-						ValueKind: InputValueText, Cardinality: InputCardinalityRepeatable,
-						Description: "Supply the exact source executable and argv after the positional-only marker.", AllowedValues: []string{},
-					},
-				},
-				Output: CommandOutput{
-					Formats:       []OutputFormat{OutputFormatJSON},
-					DefaultFormat: OutputFormatJSON,
-					Fields: []OutputField{
-						{Name: "decision", Type: OutputFieldTypeString, Description: "Matched allow or deny decision."},
-						{Name: "effect", Type: OutputFieldTypeString, Description: "Reviewed source operation effect; schema 1 accepts only read."},
-						{Name: "executable", Type: OutputFieldTypeBoolean, Description: "Whether the plan may proceed to a future execution boundary."},
-						{Name: "source_executable", Type: OutputFieldTypeString, Description: "Exact executable matched by the policy."},
-						{Name: "matched_command", Type: OutputFieldTypeString, Description: "Executable and command prefix matched by the policy."},
-						{Name: "original_argv", Type: OutputFieldTypeArray, Description: "Exact attempted executable and arguments."},
-						{Name: "transformed_argv", Type: OutputFieldTypeArray, Description: "Deterministically transformed argv, or an empty list for deny."},
-						{Name: "reason", Type: OutputFieldTypeString, Description: "Policy reason with unsafe structural runes rendered as visible escapes."},
-						{Name: "output", Type: OutputFieldTypeObject, Description: "Typed built-in output transformation planned after source execution."},
-						{Name: "source_process_attempts", Type: OutputFieldTypeInteger, Description: "Source process starts attempted while producing this preview; always zero."},
-					},
-					Delivery:           OutputDeliveryComplete,
-					CollectionCoverage: CollectionCoverageNotApplicable,
-					JSONEnvelope:       "plan",
-					JSONSchemaVersion:  1,
-				},
-				Prerequisites: []string{"A readable schema-1 per-command YAML file."},
-				Errors: []CommandError{
-					declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help plan preview", "Correct the command arguments."),
-					declaredCommandError(fault.KindNotFound, "plan_configuration_not_found", false, "help plan preview", "Correct the configuration path."),
-					declaredCommandError(fault.KindInvalidInput, "unsafe_plan_configuration", false, "help plan preview", "Use a stable regular file rather than a symbolic link."),
-					declaredCommandError(fault.KindInvalidInput, "plan_configuration_too_large", false, "help plan preview", "Reduce the configuration below its declared bound."),
-					declaredCommandError(fault.KindPermission, "plan_configuration_permission_denied", false, "help plan preview", "Correct local file permissions."),
-					declaredCommandError(fault.KindUnavailable, "plan_configuration_read_failed", true, "help plan preview", "Retry after the local file is readable."),
-					declaredCommandError(fault.KindInvalidInput, "invalid_plan_configuration", false, "help plan preview", "Correct the strict schema-1 YAML policy."),
-					declaredCommandError(fault.KindInvalidInput, "invalid_plan_invocation", false, "help plan preview", "Correct the source executable and argv."),
-					declaredCommandError(fault.KindNotFound, "plan_rule_not_matched", false, "help plan preview", "Use the policy's exact executable and command prefix."),
-					declaredCommandError(fault.KindContract, "output_contract_exceeded", false, "help plan preview", "Reduce the bounded plan output."),
-					declaredCommandError(fault.KindContract, "output_encoding_failed", false, "help plan preview", "Repair the plan JSON projection."),
-					declaredCommandError(fault.KindInternal, "internal_error", false, "help plan preview", "Inspect the configuration adapter and plan compiler."),
-					declaredCommandError(fault.KindInternal, "output_write_failed", true, "help plan preview", "Retry with a writable output stream."),
-					declaredCommandError(fault.KindCanceled, "operation_canceled", true, "help plan preview", "Retry when the caller is ready."),
-				},
+		legacyMigrationCommand(
+			"plan preview",
+			"Explain migration from retired configuration preview",
+			"--config <path> -- <command>",
+			"Return a stable zero-execution migration diagnostic for the retired authorization-plan preview",
+			"help spec validate",
+			[]CommandInput{
+				{Name: "--config", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Historical schema-1 configuration path; the migration handler does not read it.", AllowedValues: []string{}},
+				{Name: "command", Source: InputSourceArgument, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalityRepeatable, Description: "Historical source executable and argv after the positional-only marker; they are never started.", AllowedValues: []string{}},
 			},
-			handler: runPlanPreview,
-		},
-		CommandSpec{
-			Path:    "run",
-			Summary: "Run one allowed read command through a YAML policy",
-			Args:    "--config <path> -- <command>",
-			Effect:  operation.EffectRead,
-			Role:    RoleUtility,
-			Agent: AgentContract{
-				CapabilityID: "tailoring.execute",
-				Outcome:      "Execute one explicitly allowed read-only source invocation and return only its selected JSON fields",
-				Inputs: []CommandInput{
-					{Name: "--config", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Trust one bounded schema-1 YAML policy for this invocation only.", AllowedValues: []string{}},
-					{Name: "command", Source: InputSourceArgument, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalityRepeatable, Description: "Supply the exact source executable and argv after the positional-only marker.", AllowedValues: []string{}},
-				},
-				Output: CommandOutput{
-					Formats: []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
-					Fields: []OutputField{
-						{Name: "decision", Type: OutputFieldTypeString, Description: "Matched allow decision."},
-						{Name: "matched_command", Type: OutputFieldTypeString, Description: "Executable and command prefix matched by the policy."},
-						{Name: "reason", Type: OutputFieldTypeString, Description: "Policy reason with unsafe structural runes rendered as visible escapes."},
-						{Name: "result_shape", Type: OutputFieldTypeString, Description: "Validated source result shape: object or array."},
-						{Name: "fields", Type: OutputFieldTypeArray, Description: "Selected output field names after deterministic renaming."},
-						{Name: "records", Type: OutputFieldTypeArray, Description: "Complete selected JSON object records in source order."},
-						{Name: "source_process_attempts", Type: OutputFieldTypeInteger, Description: "Direct source-process starts; exactly one on success."},
-					},
-					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageExhaustive,
-					JSONEnvelope: "execution", JSONSchemaVersion: 1,
-				},
-				Prerequisites: []string{
-					"An explicitly selected readable schema-1 policy declaring effect read and decision allow.",
-					"A source executable that exits successfully with one supported JSON object or array of objects on stdout.",
-				},
-				Errors: []CommandError{
-					declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help run", "Correct the command arguments."),
-					declaredCommandError(fault.KindNotFound, "plan_configuration_not_found", false, "help run", "Correct the configuration path."),
-					declaredCommandError(fault.KindInvalidInput, "unsafe_plan_configuration", false, "help run", "Use a stable regular file rather than a symbolic link."),
-					declaredCommandError(fault.KindInvalidInput, "plan_configuration_too_large", false, "help run", "Reduce the configuration below its declared bound."),
-					declaredCommandError(fault.KindPermission, "plan_configuration_permission_denied", false, "help run", "Correct local file permissions."),
-					declaredCommandError(fault.KindUnavailable, "plan_configuration_read_failed", true, "help run", "Retry after the local file is readable."),
-					declaredCommandError(fault.KindInvalidInput, "invalid_plan_configuration", false, "help run", "Correct the strict schema-1 YAML policy."),
-					declaredCommandError(fault.KindInvalidInput, "invalid_plan_invocation", false, "help run", "Correct the source executable and argv."),
-					declaredCommandError(fault.KindNotFound, "plan_rule_not_matched", false, "plan preview", "Preview the policy against the exact source invocation."),
-					declaredCommandError(fault.KindRejected, "policy_rejected", false, "plan preview", "Review the deny decision before changing the policy."),
-					declaredCommandError(fault.KindRejected, "unsupported_source_effect", false, "help run", "Use run only for a reviewed read effect."),
-					declaredCommandError(fault.KindContract, "invalid_source_process_request", false, "help run", "Repair the compiled source process request."),
-					declaredCommandError(fault.KindContract, "invalid_source_process_result", false, "help run", "Inspect the bounded source-process adapter."),
-					declaredCommandError(fault.KindNotFound, "source_executable_not_found", false, "help run", "Install or select the declared source executable."),
-					declaredCommandError(fault.KindUnavailable, "source_identity_unavailable", true, "help run", "Retry after the executable identity is readable."),
-					declaredCommandError(fault.KindInvalidInput, "unsafe_source_executable", false, "help run", "Use a supported regular executable."),
-					declaredCommandError(fault.KindRejected, "source_identity_changed", false, "help run", "Review the executable before retrying."),
-					declaredCommandError(fault.KindContract, "invalid_source_identity", false, "help run", "Inspect the executable identity adapter."),
-					declaredCommandError(fault.KindUnavailable, "source_process_start_failed", true, "help run", "Retry after the source executable can be started."),
-					declaredCommandError(fault.KindContract, "source_stdout_too_large", false, "help run", "Reduce source stdout below 4 MiB."),
-					declaredCommandError(fault.KindContract, "source_stderr_too_large", false, "help run", "Reduce source stderr below 256 KiB."),
-					declaredCommandError(fault.KindUnavailable, "source_command_timeout", true, "help run", "Retry only after the source command can finish within 30 seconds."),
-					declaredCommandError(fault.KindRejected, "source_command_failed", false, "help run", "Correct the source command before retrying."),
-					declaredCommandError(fault.KindUnavailable, "source_process_wait_failed", true, "help run", "Retry after investigating local process collection."),
-					declaredCommandError(fault.KindContract, "source_json_invalid", false, "plan preview", "Verify that successful source stdout is supported JSON."),
-					declaredCommandError(fault.KindContract, "output_transform_failed", false, "plan preview", "Correct the selected fields for the source JSON shape."),
-					declaredCommandError(fault.KindContract, "invalid_run_result", false, "help run", "Inspect the local run result contract."),
-					declaredCommandError(fault.KindContract, "output_contract_exceeded", false, "help run", "Reduce the bounded tailored output."),
-					declaredCommandError(fault.KindContract, "output_encoding_failed", false, "help run", "Repair the tailored JSON projection."),
-					declaredCommandError(fault.KindInternal, "source_stderr_write_failed", true, "run", "Retry the read with a writable stderr stream."),
-					declaredCommandError(fault.KindInternal, "internal_error", false, "help run", "Inspect the run orchestration and adapters."),
-					declaredCommandError(fault.KindInternal, "output_write_failed", true, "run", "Retry the read with a writable stdout stream."),
-					declaredCommandError(fault.KindCanceled, "operation_canceled", true, "run", "Retry when the caller is ready."),
-				},
+			runPlanPreview,
+		),
+		legacyMigrationCommand(
+			"run",
+			"Explain migration from retired policy execution",
+			"--config <path> -- <command>",
+			"Return a stable zero-execution migration diagnostic for the retired authorization-policy run command",
+			"help spec validate",
+			[]CommandInput{
+				{Name: "--config", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Historical schema-1 configuration path; the migration handler does not read it.", AllowedValues: []string{}},
+				{Name: "command", Source: InputSourceArgument, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalityRepeatable, Description: "Historical source executable and argv after the positional-only marker; they are never started.", AllowedValues: []string{}},
 			},
-			handler: runTailored,
-		},
+			runRun,
+		),
 		CommandSpec{
 			Path:    "sample list",
 			Summary: "Discover offline samples and their opaque IDs",
@@ -971,7 +915,7 @@ func DefaultCatalog() Catalog {
 			Path:    "source inspect",
 			Summary: "Inspect one installed CLI through a bounded source adapter",
 			Args:    "--adapter <adapter> --executable <path-or-name>",
-			Effect:  operation.EffectRead,
+			Effect:  operation.EffectExecute,
 			Role:    RoleUtility,
 			Agent: AgentContract{
 				CapabilityID: "tailoring.catalog.inspect",
@@ -1007,13 +951,14 @@ func DefaultCatalog() Catalog {
 					declaredCommandError(fault.KindUnavailable, "source_process_start_failed", true, "help source inspect", "Retry after the executable can be started."),
 					declaredCommandError(fault.KindContract, "source_stdout_too_large", false, "help source inspect", "Use source evidence within the adapter byte budget."),
 					declaredCommandError(fault.KindContract, "source_stderr_too_large", false, "help source inspect", "Use source evidence within the adapter byte budget."),
-					declaredCommandError(fault.KindUnavailable, "source_command_timeout", true, "help source inspect", "Retry after the offline source probe can finish within five seconds."),
+					declaredCommandError(fault.KindUnavailable, "source_command_timeout", false, "help source inspect", "Review the uncertain post-start outcome before deciding whether to inspect again."),
 					declaredCommandError(fault.KindRejected, "source_command_failed", false, "help source inspect", "Correct the source probe failure before retrying."),
-					declaredCommandError(fault.KindUnavailable, "source_process_wait_failed", true, "help source inspect", "Retry after investigating local process collection."),
+					declaredCommandError(fault.KindUnavailable, "source_process_wait_failed", false, "help source inspect", "Review the uncertain post-start outcome before deciding whether to inspect again."),
+					declaredCommandError(fault.KindCanceled, "source_execution_canceled", false, "help source inspect", "Review the uncertain post-start outcome before deciding whether to inspect again."),
 					declaredCommandError(fault.KindContract, "output_contract_exceeded", false, "help source inspect", "Reduce the bounded catalog output."),
 					declaredCommandError(fault.KindContract, "output_encoding_failed", false, "help source inspect", "Repair the source catalog JSON projection."),
 					declaredCommandError(fault.KindInternal, "internal_error", false, "help source inspect", "Inspect the source adapter and orchestration."),
-					declaredCommandError(fault.KindInternal, "output_write_failed", true, "source inspect", "Retry with a writable output stream."),
+					declaredCommandError(fault.KindInternal, "execute_output_write_failed", false, "help source inspect", "Inspect the catalog output destination; do not assume source-process replay is safe."),
 					declaredCommandError(fault.KindCanceled, "operation_canceled", true, "source inspect", "Retry when the caller is ready."),
 				},
 			},
@@ -1165,7 +1110,8 @@ func (c Catalog) Validate() error {
 				}
 				requiresReadOnlyRecovery := declaredError.Code == "unclassified_mutation_outcome" ||
 					declaredError.Code == "mutation_output_write_failed" ||
-					(command.Effect != operation.EffectRead && declaredError.Kind == fault.KindRateLimited && !declaredError.Retryable)
+					declaredError.Code == "execute_output_write_failed" ||
+					(isMutationEffect(command.Effect) && declaredError.Kind == fault.KindRateLimited && !declaredError.Retryable)
 				if requiresReadOnlyRecovery && nextCommand.Effect != operation.EffectRead {
 					return fmt.Errorf("catalog command %q error %q must point to a read-only reconciliation command", command.Path, declaredError.Code)
 				}
@@ -1508,19 +1454,30 @@ func validateAgentContract(command CommandSpec) error {
 	}
 	_, noOutput := seenFormats[OutputFormatNone]
 	_, hasReadOutputFailure := seenErrors["output_write_failed"]
+	_, hasExecuteOutputFailure := seenErrors["execute_output_write_failed"]
 	_, hasMutationOutputFailure := seenErrors["mutation_output_write_failed"]
-	if command.Effect == operation.EffectRead && hasMutationOutputFailure {
-		return fmt.Errorf("read command must not declare mutation_output_write_failed")
+	if !isMutationEffect(command.Effect) && hasMutationOutputFailure {
+		return fmt.Errorf("non-mutation command must not declare mutation_output_write_failed")
 	}
-	if command.Effect != operation.EffectRead && hasReadOutputFailure {
+	if isMutationEffect(command.Effect) && hasReadOutputFailure {
 		return fmt.Errorf("mutating command must not declare retryable output_write_failed")
 	}
-	if noOutput && (hasReadOutputFailure || hasMutationOutputFailure) {
+	if command.Effect != operation.EffectExecute && hasExecuteOutputFailure {
+		return fmt.Errorf("non-execute command must not declare execute_output_write_failed")
+	}
+	if noOutput && (hasReadOutputFailure || hasExecuteOutputFailure || hasMutationOutputFailure) {
 		return fmt.Errorf("command without output must not declare an output write failure")
 	}
-	if !noOutput && command.Effect == operation.EffectRead {
-		if err := requireAgentError(seenErrors, "output_write_failed", fault.KindInternal, true); err != nil {
-			return err
+	if !noOutput {
+		switch command.Effect {
+		case operation.EffectRead:
+			if err := requireAgentError(seenErrors, "output_write_failed", fault.KindInternal, true); err != nil {
+				return err
+			}
+		case operation.EffectExecute:
+			if err := requireAgentError(seenErrors, "execute_output_write_failed", fault.KindInternal, false); err != nil {
+				return err
+			}
 		}
 	}
 	if contract.Authentication != nil {
@@ -1549,9 +1506,9 @@ func validateAgentContract(command CommandSpec) error {
 		}
 	}
 
-	if command.Effect == operation.EffectRead {
+	if !isMutationEffect(command.Effect) {
 		if contract.Mutation != nil {
-			return fmt.Errorf("read command must not declare a mutation contract")
+			return fmt.Errorf("read and execute commands must not declare a mutation contract")
 		}
 		return nil
 	}
@@ -2197,7 +2154,7 @@ func validateCommandReferenceRole(command CommandSpec) error {
 			return fmt.Errorf("consumed reference kind: %w", err)
 		}
 	}
-	if command.Effect != operation.EffectRead && command.Role != RoleAct {
+	if isMutationEffect(command.Effect) && command.Role != RoleAct {
 		return fmt.Errorf("mutating commands must use the act role")
 	}
 

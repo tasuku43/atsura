@@ -38,6 +38,8 @@ func (c *CLI) emitResult(ctx context.Context, output []byte) int {
 			return c.fail(ctx, err)
 		}
 		return c.emitComplete(ctx, output)
+	case operation.EffectExecute:
+		return c.emitExecuteResult(ctx, command, output)
 	case operation.EffectCreate, operation.EffectWrite:
 		return c.emitMutationResult(ctx, command, output)
 	default:
@@ -49,6 +51,39 @@ func (c *CLI) emitResult(ctx context.Context, output []byte) int {
 			fault.NextAction{Command: "help " + command.Path, Reason: "Declare the command effect before emitting output."},
 		))
 	}
+}
+
+// emitExecuteResult never represents a failed final write as replay-safe. The
+// source process has already started, and Atsura does not know the downstream
+// source operation's semantics or outcome.
+func (c *CLI) emitExecuteResult(ctx context.Context, command CommandSpec, output []byte) int {
+	var recovery []fault.NextAction
+	for _, declared := range command.Agent.Errors {
+		if declared.Code == "execute_output_write_failed" && declared.Kind == fault.KindInternal && !declared.Retryable {
+			recovery = cloneSlice(declared.NextActions)
+			break
+		}
+	}
+	if command.Effect != operation.EffectExecute || len(recovery) == 0 {
+		return c.fail(ctx, fault.New(
+			fault.KindContract,
+			"invalid_catalog",
+			"The source-execution output contract is invalid.",
+			false,
+			fault.NextAction{Command: "help " + command.Path, Reason: "Declare non-retryable source-execution output recovery."},
+		))
+	}
+	if _, err := writeOnce(c.Out, output); err != nil {
+		return c.fail(ctx, fault.Wrap(
+			fault.KindInternal,
+			"execute_output_write_failed",
+			"The source process completed, but its Atsura output could not be written completely.",
+			false,
+			err,
+			recovery...,
+		))
+	}
+	return ExitOK
 }
 
 // emitMutationResult writes a result after a mutation action has returned
@@ -65,7 +100,7 @@ func (c *CLI) emitMutationResult(ctx context.Context, command CommandSpec, outpu
 			break
 		}
 	}
-	if command.Effect == operation.EffectRead || len(recovery) == 0 {
+	if !isMutationEffect(command.Effect) || len(recovery) == 0 {
 		return c.fail(ctx, fault.New(
 			fault.KindContract,
 			"invalid_catalog",

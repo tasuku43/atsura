@@ -33,7 +33,7 @@ func fixtureCatalog() sourcecatalog.Catalog {
 }
 
 func inspectIntent() operation.Intent {
-	return operation.Intent{Command: "source inspect", Effect: operation.EffectRead}
+	return operation.Intent{Command: "source inspect", Effect: operation.EffectExecute}
 }
 
 func TestInspectAcceptsAlternateAdapterThroughSharedContract(t *testing.T) {
@@ -54,6 +54,10 @@ func TestInspectFailsBeforeAdapterForInvalidSelectionAndIntent(t *testing.T) {
 	_, err = service.Inspect(context.Background(), operation.Intent{Command: "doctor", Effect: operation.EffectRead}, "alternate", "fixture")
 	if err == nil || adapter.calls != 0 {
 		t.Fatalf("error = %v, calls = %d", err, adapter.calls)
+	}
+	_, err = service.Inspect(context.Background(), operation.Intent{Command: "source inspect", Effect: operation.EffectRead}, "alternate", "fixture")
+	if err == nil || adapter.calls != 0 {
+		t.Fatalf("read intent error = %v, calls = %d", err, adapter.calls)
 	}
 }
 

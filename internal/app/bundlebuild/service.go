@@ -1,4 +1,5 @@
-// Package bundlebuild validates schema-2 policy and compiles canonical bundles.
+// Package bundlebuild validates schema-3 tailoring specifications and compiles
+// canonical schema-2 bundles.
 package bundlebuild
 
 import (
@@ -17,20 +18,23 @@ type CatalogPort interface {
 	Load(context.Context, string) (sourcecatalog.Catalog, error)
 }
 
-type PolicyPort interface {
-	Load(context.Context, string) (tailoringbundle.Policy, error)
+type SpecificationPort interface {
+	Load(context.Context, string) (tailoringbundle.Specification, error)
 }
 
 type Service struct {
-	catalogs CatalogPort
-	policies PolicyPort
+	catalogs       CatalogPort
+	specifications SpecificationPort
 }
 
-type PolicyResult struct {
-	Policy       tailoringbundle.Policy
-	PolicyDigest string
-	RuleCount    int
-	VisibleCount int
+type SpecificationResult struct {
+	Specification         tailoringbundle.Specification
+	SpecificationDigest   string
+	CommandCount          int
+	IncludedCount         int
+	ExcludedCount         int
+	IdentityWrapperCount  int
+	TransformWrapperCount int
 }
 
 type BundleResult struct {
@@ -38,46 +42,57 @@ type BundleResult struct {
 	BundleDigest string
 }
 
-func New(catalogs CatalogPort, policies PolicyPort) *Service {
-	return &Service{catalogs: catalogs, policies: policies}
+func New(catalogs CatalogPort, specifications SpecificationPort) *Service {
+	return &Service{catalogs: catalogs, specifications: specifications}
 }
 
-func (s *Service) ValidatePolicy(ctx context.Context, intent operation.Intent, catalogPath, policyPath string) (PolicyResult, error) {
-	if err := s.preflight(ctx, intent, "policy validate"); err != nil {
-		return PolicyResult{}, err
+func (s *Service) ValidateSpecification(ctx context.Context, intent operation.Intent, catalogPath, specificationPath string) (SpecificationResult, error) {
+	if err := s.preflight(ctx, intent, "spec validate"); err != nil {
+		return SpecificationResult{}, err
 	}
-	catalog, policy, err := s.load(ctx, catalogPath, policyPath)
+	catalog, specification, err := s.load(ctx, catalogPath, specificationPath)
 	if err != nil {
-		return PolicyResult{}, err
+		return SpecificationResult{}, err
 	}
-	if err := policy.Validate(catalog); err != nil {
-		return PolicyResult{}, invalidPolicy(err)
+	if err := specification.Validate(catalog); err != nil {
+		return SpecificationResult{}, invalidSpecification(err)
 	}
-	digest, err := policy.Digest(catalog)
+	digest, err := specification.Digest(catalog)
 	if err != nil {
-		return PolicyResult{}, invalidPolicy(err)
+		return SpecificationResult{}, invalidSpecification(err)
 	}
-	visible := 0
-	for _, rule := range policy.Rules {
-		if rule.Visibility == tailoringbundle.VisibilityVisible {
-			visible++
+	result := SpecificationResult{
+		Specification: specification, SpecificationDigest: digest,
+		CommandCount: len(specification.Commands),
+	}
+	for _, entry := range specification.Commands {
+		switch entry.Presence {
+		case tailoringbundle.PresenceInclude:
+			result.IncludedCount++
+			if entry.Wrapper != nil && entry.Wrapper.Kind == tailoringbundle.WrapperIdentity {
+				result.IdentityWrapperCount++
+			} else if entry.Wrapper != nil && entry.Wrapper.Kind == tailoringbundle.WrapperTransform {
+				result.TransformWrapperCount++
+			}
+		case tailoringbundle.PresenceExclude:
+			result.ExcludedCount++
 		}
 	}
-	return PolicyResult{Policy: policy, PolicyDigest: digest, RuleCount: len(policy.Rules), VisibleCount: visible}, nil
+	return result, nil
 }
 
-func (s *Service) Build(ctx context.Context, intent operation.Intent, catalogPath, policyPath string) (BundleResult, error) {
+func (s *Service) Build(ctx context.Context, intent operation.Intent, catalogPath, specificationPath string) (BundleResult, error) {
 	if err := s.preflight(ctx, intent, "bundle build"); err != nil {
 		return BundleResult{}, err
 	}
-	catalog, policy, err := s.load(ctx, catalogPath, policyPath)
+	catalog, specification, err := s.load(ctx, catalogPath, specificationPath)
 	if err != nil {
 		return BundleResult{}, err
 	}
-	bundle, err := tailoringbundle.Compile(catalog, policy)
+	bundle, err := tailoringbundle.Compile(catalog, specification)
 	if err != nil {
-		if errors.Is(err, tailoringbundle.ErrInvalidPolicy) {
-			return BundleResult{}, invalidPolicy(err)
+		if errors.Is(err, tailoringbundle.ErrInvalidSpecification) {
+			return BundleResult{}, invalidSpecification(err)
 		}
 		return BundleResult{}, fault.Wrap(fault.KindContract, "invalid_bundle", "The canonical bundle could not be compiled.", false, err, bundleHelp())
 	}
@@ -98,25 +113,25 @@ func (s *Service) preflight(ctx context.Context, intent operation.Intent, comman
 	if err := intent.Validate(); err != nil || intent.Command != command || intent.Effect != operation.EffectRead {
 		return fmt.Errorf("bundle workflow requires the %s read intent", command)
 	}
-	if s == nil || portcheck.IsNil(s.catalogs) || portcheck.IsNil(s.policies) {
+	if s == nil || portcheck.IsNil(s.catalogs) || portcheck.IsNil(s.specifications) {
 		return fmt.Errorf("bundle workflow adapters are not configured")
 	}
 	return nil
 }
 
-func (s *Service) load(ctx context.Context, catalogPath, policyPath string) (sourcecatalog.Catalog, tailoringbundle.Policy, error) {
+func (s *Service) load(ctx context.Context, catalogPath, specificationPath string) (sourcecatalog.Catalog, tailoringbundle.Specification, error) {
 	catalog, err := s.catalogs.Load(ctx, catalogPath)
 	if err != nil {
-		return sourcecatalog.Catalog{}, tailoringbundle.Policy{}, preserve(err)
+		return sourcecatalog.Catalog{}, tailoringbundle.Specification{}, preserve(err)
 	}
-	policy, err := s.policies.Load(ctx, policyPath)
+	specification, err := s.specifications.Load(ctx, specificationPath)
 	if err != nil {
-		return sourcecatalog.Catalog{}, tailoringbundle.Policy{}, preserve(err)
+		return sourcecatalog.Catalog{}, tailoringbundle.Specification{}, preserve(err)
 	}
 	if err := ctx.Err(); err != nil {
-		return sourcecatalog.Catalog{}, tailoringbundle.Policy{}, err
+		return sourcecatalog.Catalog{}, tailoringbundle.Specification{}, err
 	}
-	return catalog, policy, nil
+	return catalog, specification, nil
 }
 
 func preserve(err error) error {
@@ -126,14 +141,14 @@ func preserve(err error) error {
 	return fault.Wrap(fault.KindInternal, "internal_error", "The bundle workflow could not load its inputs.", false, err, bundleHelp())
 }
 
-func invalidPolicy(err error) error {
-	return fault.Wrap(fault.KindInvalidInput, "invalid_policy", "The schema-2 policy is not valid for the selected catalog.", false, err, policyHelp())
+func invalidSpecification(err error) error {
+	return fault.Wrap(fault.KindInvalidInput, "invalid_specification", "The schema-3 tailoring specification is not valid for the selected catalog.", false, err, specificationHelp())
 }
 
-func policyHelp() fault.NextAction {
-	return fault.NextAction{Command: "help policy validate", Reason: "Correct the catalog-bound schema-2 policy."}
+func specificationHelp() fault.NextAction {
+	return fault.NextAction{Command: "help spec validate", Reason: "Correct the catalog-bound schema-3 tailoring specification."}
 }
 
 func bundleHelp() fault.NextAction {
-	return fault.NextAction{Command: "help bundle build", Reason: "Review the catalog, policy, and canonical bundle contract."}
+	return fault.NextAction{Command: "help bundle build", Reason: "Review the catalog, specification, and canonical bundle contract."}
 }

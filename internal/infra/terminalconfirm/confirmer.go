@@ -37,11 +37,13 @@ func (c *Confirmer) Confirm(ctx context.Context, summary bundletrust.Summary) er
 	}
 	defer terminal.Close()
 	prompt := fmt.Sprintf(
-		"Trust this exact Atsura bundle?\n  bundle: %s\n  catalog: %s\n  policy: %s\n  source: %s\n  source sha256: %s\n  source version: %s\n  visible commands: %d\n  effects: read=%d create=%d write=%d\n  decisions: allow=%d confirm=%d deny=%d\nType the full bundle digest to trust it:\n> ",
-		summary.BundleDigest, summary.CatalogDigest, summary.PolicyDigest, summary.SourcePath,
-		summary.SourceSHA256, summary.SourceVersion, summary.VisibleCount,
-		summary.ReadCount, summary.CreateCount, summary.WriteCount,
-		summary.AllowCount, summary.ConfirmCount, summary.DenyCount,
+		"Adopt this exact Atsura tailoring bundle?\n  bundle: %s\n  catalog: %s\n  specification: %s\n  source: %s\n  source sha256: %s\n  source version: %s\n  surface default: %s\n  commands: included=%d explicitly-excluded=%d\n  wrappers: identity=%d transform=%d\n  transforms: option-overrides=%d argv=%d before=%d after=%d output=%d\nType the full bundle digest to adopt it:\n> ",
+		summary.BundleDigest, summary.CatalogDigest, summary.SpecificationDigest, summary.SourcePath,
+		summary.SourceSHA256, summary.SourceVersion, summary.SurfaceDefault,
+		summary.IncludedCommandCount, summary.ExcludedCommandCount,
+		summary.IdentityWrapperCount, summary.TransformWrapperCount,
+		summary.OptionOverrideCount, summary.ArgvTransformationCount,
+		summary.BeforeActionCount, summary.AfterActionCount, summary.OutputTransformationCount,
 	)
 	if _, err := io.WriteString(terminal, prompt); err != nil {
 		return fmt.Errorf("write confirmation prompt: %w", err)

@@ -130,6 +130,20 @@ func TestRunRejectsPreflightWithoutAttempt(t *testing.T) {
 	}
 }
 
+func TestRunClassifiesCancellationAfterStartAsNonRetryable(t *testing.T) {
+	t.Setenv("ATSURA_SOURCEEXEC_HELPER", "1")
+	t.Setenv("ATSURA_SOURCEEXEC_MODE", "sleep")
+	ctx, cancel := context.WithCancel(context.Background())
+	runner := New()
+	runner.afterStart = func(string) { cancel() }
+	request := helperRequest(10 * time.Second)
+	result, err := runner.Run(ctx, request)
+	public, ok := fault.PublicCopy(err)
+	if !ok || public.Code != "source_execution_canceled" || public.Retryable || result.Attempts != 1 {
+		t.Fatalf("result = %+v, error = %#v", result, err)
+	}
+}
+
 func TestIdentifyReturnsIdentityWithoutStartingProcess(t *testing.T) {
 	identity, err := New().Identify(context.Background(), os.Args[0])
 	if err != nil {

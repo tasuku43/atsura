@@ -1,48 +1,70 @@
-# Work Tasks: v1 compiled tailoring
+# Work Tasks: Surface-and-wrapper correction
 
 - Goal: [goal.md](goal.md)
 - Plan: [plan.md](plan.md)
 
-## Decide and document
+## Governance
 
-- [x] Review three interface concepts and select compiled tailoring bundle.
-- [x] Research current Claude Code hooks, RTK, GitHub CLI formatting, and dynamic CLI extension behavior from primary sources.
-- [x] Select GitHub CLI 2.x capability validation as the first real source adapter without embedding it in core schemas.
-- [x] Require vendor-neutral source and host ports plus alternate-adapter conformance fixtures.
-- [ ] Accept ADR 0004 and propagate v1 consequences through docs 00 through 04.
-- [ ] Define exact schemas, public commands, faults, budgets, and compatibility fixtures.
+- [x] Record the product owner's correction in thesis vocabulary.
+- [x] Accept ADR 0005 and mark ADR 0004's source-authorization semantics
+  superseded.
+- [x] Align product, architecture, security, harness, `AGENTS.md`, and the
+  capability Skill with purpose-specific surface and wrapper composition.
+- [x] Replace the open-ended v1 authorization goal with this finite,
+  mechanically evaluable correction goal.
 
-## Catalog and bundle
+## Specification and surface
 
-- [x] Implement vendor-neutral canonical catalog values and alternate-adapter application conformance.
-- [x] Implement bounded GitHub CLI 2.x reference inspection and public `source inspect` output.
-- [x] Add failing domain and adapter tests for vendor-neutral identity, provenance, catalog, canonical encoding, adapter conformance, and probe budgets.
-- [ ] Implement `source refresh` comparison and persistence after the completed GitHub CLI inspection task.
-- [ ] Register the remaining source refresh command and capability contract.
-- [x] Implement pure schema-2 policy invariants and deterministic vendor-neutral bundle compilation.
-- [x] Implement strict schema-2 policy validation and normalized policy output.
-- [x] Implement `policy init` as an explicit-effect hidden deny draft without auto-trust.
-- [x] Implement canonical bundle build and digest output without auto-trust.
-- [x] Implement bundle trust receipt and status/drift.
+- [x] Replace schema-2 policy types with schema-3 tailoring specification
+  types and current vocabulary.
+- [x] Enforce explicit surface default and independent command membership,
+  option membership, and wrapper behavior.
+- [x] Implement complete identity/transform wrapper validation with explicit
+  empty before/after lists.
+- [x] Implement deterministic normalization, canonical encoding, digest, and
+  pure surface resolution.
+- [x] Add full truth-table, catalog-binding, option-override, and
+  `command_not_in_surface` tests.
+- [x] Replace policy YAML with bounded strict schema-3 specification YAML and
+  canonical round-trip fixtures.
 
-## Execution and policy
+## Bundle and adoption
 
-- [ ] Make preview, explain, run, and raw consume the same bundle.
-- [ ] Implement visibility, allow/confirm/deny, target/impact, and mutation uncertainty contracts.
-- [ ] Implement richer typed transforms without arbitrary external execution.
-- [ ] Prove raw is explicit, identity-bound, absent from hook surface, and never recovery.
+- [x] Replace bundle schema 1 with schema 2 binding the normalized
+  specification and derived surface/wrappers.
+- [x] Recompute catalog, specification, surface, and bundle bindings on load.
+- [x] Rename bundle build/status outputs and ports from policy to specification.
+- [x] Replace permission/effect trust-summary counts with surface, option,
+  wrapper, argv, stage, and output-transform facts.
+- [x] Preserve exact-digest interactive user-local adoption and central
+  mutation invocation for receipt changes.
 
-## Claude Code integration
+## Effect and migration
 
-- [ ] Implement exact-owner project-local install/status/remove.
-- [ ] Implement strict simple-command parsing and managed compound fail-closed behavior.
-- [ ] Implement SessionStart surface projection and PreToolUse allow/ask/deny/defer/rewrite.
-- [ ] Implement one-shot bundle/plan/argv-bound confirmation.
+- [x] Add stable `operation.EffectExecute` validation and encoding.
+- [x] Declare source inspection as Execute and audit every mutation-only effect
+  switch for explicit Execute handling.
+- [x] Retire specification schemas 1 and 2 and bundle schema 1 without implicit
+  conversion or trust migration.
+- [x] Convert deprecated authorization command paths to catalog-declared
+  migration diagnostics with exact recovery, zero persistence, and zero source
+  attempts.
+- [x] Remove authorization-centered source plan/runtime types, fields, tests,
+  and capability claims.
+- [x] Add no bundle runtime, raw, source refresh, or host integration in this
+  milestone.
 
-## Verify and finish
+## Verification and handoff
 
-- [ ] Pass focused tests and complete fixture E2E journeys.
-- [ ] Replay agent readiness and record the setup/authentication scorecard.
-- [ ] Update README, SECURITY, SUPPORT, compatibility, migration, and release docs.
-- [ ] Pass `task check`, `task security`, `task public:check`, and `task release:check` on one final commit.
-- [ ] Promote evidence, remove this packet, confirm clean Git state, and report no publication.
+- [x] Run focused domain, codec, application, CLI, catalog, and migration tests.
+- [x] Run formatting, architecture, catalog/ledger, vet, and race checks through
+  the repository interface.
+- [x] Run `task check` and record the result.
+- [x] Run `task security` and record the result.
+- [x] Audit remaining policy/decision/effect/target/impact vocabulary and
+  classify every intentional occurrence.
+- [x] Review the complete diff against every goal acceptance item and preserve
+  unrelated changes.
+- [ ] Create the correction milestone commit without push, PR, tag, or release.
+- [ ] Report exact verification evidence, remaining unknowns, and the next
+  recommended minimal user outcome.

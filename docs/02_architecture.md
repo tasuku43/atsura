@@ -1,25 +1,16 @@
 # Architecture
 
-Atsura uses the foundry's four-layer dependency direction to keep YAML
-configuration, deterministic planning, process execution, and output
-transformation from collapsing into an unrestricted wrapper.
+Atsura keeps source inspection, surface composition, wrapper planning, source
+execution, and presentation in separate layers. ADR 0005 supersedes the
+authorization-centered source-wrapper model from ADR 0004: the core compiles a
+purpose-specific command and option surface plus deterministic wrapper
+pipelines. It does not decide whether a source operation is permitted.
 
-This document assigns intended responsibilities. The current binary implements
-both the no-execution YAML-to-plan preview and the bounded read-only local run
-selected by ADR 0002. ADR 0004 adds the v1 compiled-bundle target without
-changing the four-layer direction. The first ADR 0004 slice also implements a
-vendor-neutral catalog value, source-inspection application port, and bounded
-GitHub CLI reference adapter. The next pure-domain slice implements normalized
-schema-2 policy, mutation target/impact invariants, canonical bundle assembly,
-and recomputed drift validation. Infrastructure now adds shared bounded
-regular-file reads, strict duplicate/unknown-field JSON decoding, strict
-schema-2 YAML decoding, and exact source-inspection envelope loading.
-Build application orchestration validates without file writes or trust I/O;
-CLI presentation emits the reviewed artifacts to stdout.
-The bundle-authority slice now adds a strict bundle wrapper loader, a
-read-only source identity port, exact-digest status, controlling-terminal
-confirmation, and a user-local trust-store adapter. Trust writes pass through
-`app/execution.Invoker`; status and trust start no source process.
+The current correction milestone stops at strict schema-3 specification
+loading, schema-2 bundle compilation and adoption, pure surface resolution, and
+explicit diagnostics for retired authorization schemas. Bundle-backed source
+execution, raw execution, and host adapters remain paused until this corrected
+model has passed the repository gates.
 
 ## Dependency direction
 
@@ -34,269 +25,246 @@ internal/app does not depend on infra or cli.
 internal/infra does not depend on app or cli.
 ```
 
-`tools/archlint` enforces this direction.
+`tools/archlint` enforces this direction. Source-specific and host-specific
+adapters remain outside the shared domain vocabulary.
 
-The first slice is concrete: `internal/infra/tailoringyaml` performs bounded
-strict YAML decoding, `internal/app/planpreview` orchestrates it, pure
-`internal/domain/tailoring` validates and compiles the plan, and
-`internal/cli` publishes `atr plan preview` and schema-1 JSON.
-
-## Runtime flow
+## Artifact flow
 
 ```text
-coding-agent hook adapter
-  -> attempted command
-  -> application planning use case
-       -> validated source/catalog evidence
-       -> strictly decoded trusted YAML
-       -> pure rule matching
-       -> typed execution plan
-  -> preview renderer
-     or
-  -> application execution use case
-       -> immediate plan-input revalidation
-       -> infrastructure wrapper
-            -> built-in before actions
-            -> exact source process
-            -> bounded output capture
-            -> built-in output pipeline
-            -> built-in after actions
-       -> CLI result or typed failure
+bounded source-inspector adapter
+  -> provenance-bearing command catalog
+
+catalog + strict tailoring specification schema 3
+  -> normalized specification
+  -> pure command/option surface composition
+  -> complete identity or transforming wrapper for each included command
+  -> canonical bundle schema 2
+  -> exact-digest user adoption
+
+adopted bundle + attempted invocation
+  -> pure surface resolution
+       -> absent command: command_not_in_surface, no wrapper plan
+       -> included command: one complete wrapper plan
 ```
 
-Preview and execution share plan construction. Execution adds revalidation and
-side effects; it does not reimplement policy logic.
+Surface membership and wrapper behavior are independent inputs to compilation.
+An excluded command has no wrapper. An included command has an explicit option
+surface and exactly one complete wrapper. A wrapper change cannot add a
+command, and a membership change cannot invent a transformation.
 
-The v1 composition adds two independent adapter axes:
+Future preview and execution will share one pure plan constructor:
 
 ```text
-source adapter -> vendor-neutral catalog
-                          + typed policy
-                               |
-                               v
-                    canonical trusted bundle
-                               |
-                   +-----------+-----------+
-                   |                       |
-             manual gateway          host adapter
-                   |                       |
-                   +------> same plan <----+
-                               |
-                     controlled executor
+typed before stages
+  -> deterministic argv transformation
+  -> exact identity-bound source invocation
+  -> typed output transformation
+  -> typed after stages
 ```
 
-Shared domain and application packages never import or switch on GitHub CLI,
-Claude Code, or another vendor package. Adapter selection is a registry at the
-CLI composition boundary keyed by a namespaced kind and contract version.
-Adding an adapter extends that registry and its compatibility fixtures; it does
-not add policy semantics.
+The plan describes these stages and their evidence. It contains no universal
+allow/confirm/deny decision, inferred source read/create/write effect, or
+source-operation target and impact.
 
 ## Architectural principles
 
-- Source observations, catalog facts, trusted YAML, runtime facts, and agent
-  proposals remain distinct values.
-- Executable and argv are separate typed values; no plan contains a shell
-  program.
-- The plan is immutable input to the wrapper. The wrapper cannot broaden it.
-- Invocation transformation and output transformation are independent stages.
-- Initial pre/post and output actions come from a finite built-in registry.
-- Coding-agent adapters request Atsura tasks but cannot trust policy or bypass a
-  rejection.
-- Source and host adapters are orthogonal and conform to vendor-neutral ports.
-- One canonical bundle is the only runtime policy compilation product.
-- All process and filesystem I/O crosses bounded infrastructure ports.
+- Source observations, catalog facts, tailoring specifications, compiled
+  bundles, adoption receipts, runtime observations, and agent proposals are
+  distinct values.
+- The catalog is evidence about a source CLI, not a permission list.
+- The specification independently defines surface membership, option
+  membership, and wrapper behavior.
+- Executable and argv are separate typed values; no specification or plan
+  contains a shell program.
+- Invocation and output transformations are independent typed stages.
+- The finite built-in stage registry is the only initial transformation
+  vocabulary. Unknown actions fail during validation.
+- One canonical bundle is the compilation product consumed by every future
+  gateway or host adapter.
+- Adoption binds the exact bundle digest. It does not grant source-operation
+  permission.
+- Source execution and Atsura-owned mutation cross different controlled
+  boundaries.
+- Source and host adapters are orthogonal vendor-neutral ports. They cannot
+  broaden a surface or define core wrapper semantics.
 
 ## Layer responsibilities
 
 ### Domain
 
-`internal/domain/` owns pure vocabulary and invariants:
+`internal/domain/` owns pure values and invariants for:
 
-- source executable identity and version evidence;
-- source commands, options, and output capabilities;
-- catalog provenance;
-- per-command policy rules and trust provenance;
-- rule-match results and reasons;
-- allow, confirm, and reject decisions;
-- original and transformed invocations;
-- typed built-in action specifications;
-- ordered execution plans;
-- declared source-output input formats;
-- output selection, mapping, aggregation, ordering, and result shapes; and
-- stage-specific failures.
+- exact source executable identity, version, adapter contract, and catalog
+  provenance;
+- source commands, options, argument evidence, and structured-output
+  capabilities;
+- schema-3 tailoring specifications;
+- explicit `inherit` or `exclude` surface defaults;
+- command `include` or `exclude` membership;
+- included-command option surfaces;
+- identity and transforming wrappers;
+- deterministic invocation and typed output transformations;
+- canonical schema-2 bundles, digests, and drift validation;
+- pure surface resolution and `command_not_in_surface`;
+- future ordered wrapper execution plans; and
+- operation effects, including `EffectExecute` for starting a source-owned
+  process and create/write contracts for Atsura-owned state only.
 
-For v1, domain additionally owns vendor-neutral adapter identifiers, catalog
-provenance, canonical bundle semantics, digest bindings, trust state, tailored
-surface projection, and host-independent allow/confirm/deny decisions. It does
-not own help grammars, hook JSON, or settings-file syntax.
+Domain validation enforces this truth table:
 
-For v0.1, domain also owns a finite typed JSON value tree, source-process
-request/result invariants, explicit read effect, and pure record
-select/rename. It never decodes YAML or JSON bytes and never launches a process.
+| Surface membership | Wrapper | Valid result |
+|---|---|---|
+| Excluded | None | Command is absent; no plan can exist |
+| Excluded | Present | Invalid specification or bundle |
+| Included | Complete identity wrapper | Valid unchanged wrapper pipeline |
+| Included | Complete transforming wrapper | Valid typed wrapper pipeline |
+| Included | Missing or incomplete | Invalid specification or bundle |
 
-Domain validation rejects incomplete identity, ambiguous matches, unknown
-actions, invalid action ordering, a shell fragment in place of argv, and a plan
-whose decision conflicts with its stages.
-
-Domain performs no YAML decoding, source probing, process launch, byte parsing,
-terminal rendering, or hook communication.
+The domain never decodes YAML or JSON bytes, probes a source executable,
+launches a process, mutates trust state, renders terminal output, or speaks a
+host protocol.
 
 ### Application
 
-`internal/app/` owns deterministic user-task orchestration:
+`internal/app/` owns task orchestration through narrow ports:
 
-- obtain bounded source and catalog evidence through ports;
-- request YAML decoding and validate trust provenance;
-- match rules and construct one complete plan;
-- return that plan for preview without side effects;
-- revalidate configuration, catalog, executable, and relevant environment
-  immediately before execution;
-- apply confirmation policy;
-- authorize exactly one source attempt when the plan permits it;
-- coordinate stage-specific failure handling; and
-- return task-owned semantic results rather than process DTOs.
+- request bounded source inspection and validate the returned catalog;
+- request strict specification and bundle decoding;
+- validate catalog/specification bindings before compilation;
+- compile and resolve the purpose-specific surface;
+- build canonical bundles without ambient values;
+- assess exact-digest adoption and source drift;
+- return a pure resolved wrapper description without starting the source in
+  this milestone;
+- coordinate Atsura-owned trust-store changes through the central mutation
+  invoker; and
+- later construct and apply one complete wrapper plan through an
+  identity-bound source-process port.
 
-For v1, application use cases select a source-inspection port, validate its
-catalog, compile one bundle, verify a trust receipt, produce a host-independent
-decision, and coordinate exact-owner integration changes through narrow ports.
-The application receives typed observations; it does not parse vendor help or
-host payloads.
+Application code receives typed observations. It does not parse vendor help,
+YAML, arbitrary source bytes, shell syntax, or host payloads. It does not infer
+source-operation meaning or authorization.
 
-Application owns whether output transformation applies to a source result and
-how a transform failure is classified. It never launches a process, invokes jq
-or RTK, parses arbitrary source bytes directly, or renders user output.
-
-The local-run use case orders exactly one configuration load, pure compile,
-allow/read admission, at most one process-port call, successful-result
-validation, one JSON-parser call, and pure transformation. It never invokes the
-parser after a failed process and never repeats the process after parser or
-transform failure.
+When runtime resumes, a source launch declares `EffectExecute`. The application
+will bind exact source identity and argv, require finite attempts/time/bytes,
+and treat an unknown post-start outcome as non-retryable. It will not attach an
+Atsura mutation target or impact to the downstream source operation.
 
 ### Infrastructure
 
 `internal/infra/` owns concrete I/O behind narrow ports:
 
 - resolve and identify source executables;
-- perform bounded source help or metadata probes selected by an inspection
-  task;
-- decode strict YAML into syntax DTOs while preserving file provenance;
-- persist catalogs or trusted configuration only if later approved;
-- adapt Claude Code or another host hook protocol;
-- execute the exact plan executable with its argv vector and bounded working
-  directory, environment, time, stdout, and stderr;
-- parse declared source formats such as JSON through bounded decoders;
-- apply byte-level mechanisms required by typed built-in transformations; and
-- later adapt a specifically approved external transformer behind its own
-  contract.
+- perform finite adapter-selected help or metadata probes;
+- strictly decode bounded schema-3 YAML and schema-2 JSON;
+- reject duplicate or unknown fields and retired schema versions;
+- read and persist exact-digest adoption receipts safely;
+- execute a future exact executable plus argv vector without a shell under
+  declared time and byte bounds;
+- parse declared source formats through bounded decoders; and
+- translate a future host protocol without changing core surface or wrapper
+  meaning.
 
-Each source adapter owns its finite probe grammar, version compatibility,
-attempt/byte/time budget, and conversion to the shared catalog. Each host
-adapter owns protocol decoding/encoding and exact settings persistence. Adapter
-packages cannot import another adapter and cannot receive an unrestricted
-executor.
+Each source adapter owns its probe grammar, compatible versions, attempt and
+byte budgets, and conversion into the shared catalog. Each host adapter owns
+only protocol decoding, protocol response mapping, and exact-owner settings
+persistence. A host `allow`, `ask`, or `deny` response is transport vocabulary,
+not a core permission state.
 
 Infrastructure reports observations and typed failures. It does not decide
-which source capability is visible, allowed, or confirmed, and it does not
-interpret a generic shell string from YAML.
-
-The v0.1 process adapter resolves a PATH name or explicit path to one non-empty
-regular executable of at most 512 MiB, records an absolute resolved path and
-SHA-256 digest, revalidates that evidence immediately before and after a direct
-`os/exec` attempt, and captures stdout/stderr in memory under fixed byte and
-time bounds. The JSON adapter converts bounded source bytes into domain JSON
-values while rejecting duplicate keys and excessive nesting, nodes, fields, or
-records.
+which command is included, which wrapper applies, or whether the source CLI
+will authorize its downstream operation.
 
 ### CLI
 
-`internal/cli/` is the composition and presentation boundary for `atr`. It
-owns:
+`internal/cli/` is the composition and presentation boundary. It owns:
 
-- public command registration and typed arguments;
-- plan preview presentation;
-- tailored result and stage-specific failure rendering;
-- human and agent help derived from product contracts;
-- composition of application use cases and infrastructure adapters; and
-- any CLI-facing installation or status workflow for host integrations.
+- catalog-derived public command registration and typed argv parsing;
+- specification validation and bundle-build presentation;
+- adoption and drift status presentation;
+- stable migration diagnostics for retired policy and bundle schemas;
+- future wrapper-plan and tailored-result rendering; and
+- composition of application tasks with infrastructure adapters.
 
-The inherited `doctor` and `sample` commands remain scaffold evidence.
-`plan preview` is the no-side-effect inspection path and `run` is the selected
-v0.1 local execution path. No hook-installation command is selected.
+The correction milestone does not add bundle execution, raw execution, or host
+installation commands. Retired authorization command paths may remain only as
+catalog-declared migration diagnostics and must start zero source processes.
 
-## Responsibility map
+## Controlled side-effect boundaries
 
-| Concern | Semantic owner | I/O or presentation owner | Current decision |
-|---|---|---|---|
-| Source CLI investigation | Application task and vendor-neutral domain evidence | Capability-specific infrastructure adapter | First reference adapter is GitHub CLI 2.x; compatibility is adapter-scoped |
-| Command catalog | Domain values; application assembly | Infrastructure persistence; CLI view | Vendor-neutral, provenance-bearing evidence, never permission |
-| YAML decoding | Domain policy semantics; application trust validation | Infrastructure strict syntax decoder | Experimental schema 1; explicit file path only |
-| Rule matching | Domain pure evaluation | Application supplies validated inputs | Deterministic |
-| Plan construction | Domain invariants; application compiler | CLI preview | One plan logic for preview and execution |
-| Bundle compilation and trust | Domain canonical values; application authority checks | Infrastructure strict codecs and user-local receipt store | One digest-addressed bundle for every consumer |
-| Hook interception | Host-independent application decision | Infrastructure host adapter | Claude Code is the first reference adapter, not a core dependency |
-| Command discovery hiding | Domain tailored surface | CLI/host integration | Distinct from execution rejection |
-| Process execution | Application authorizes zero or one attempt | Infrastructure process adapter | v0.1 read-only, no shell, 30 seconds, fixed byte bounds |
-| Output transformation | Domain typed actions; application result policy | Infrastructure JSON parse mechanics; CLI render | v0.1 object/array select and rename |
-| External transformer | Future reviewed port | Future infrastructure adapter | jq, RTK, plugins, and scripts excluded initially |
+### Source-owned process execution
 
-## Preview boundary
+Starting a source executable is `operation.EffectExecute`. The process port is
+identity-bound, argv-vector-only, no-shell, and bounded by explicit attempts,
+time, stdout, and stderr limits. The source CLI remains responsible for its
+prompts, credentials, authorization, remote destinations, and downstream
+effects. A post-start unknown outcome cannot be reported as safe to retry.
 
-The first slice stops before source execution:
+Source inspection also starts a source-owned process and therefore uses
+`EffectExecute`, even when its fixed adapter probes are observational in
+purpose.
+
+### Atsura-owned mutation
+
+Trust receipt and future integration-setting changes are Atsura state. Their
+create/write tasks retain explicit intent, exact target binding, impact,
+central mutation invocation, and structured uncertain-outcome handling. Those
+contracts must not be projected onto source CLI commands.
+
+## Bundle adoption and drift
+
+The canonical bundle binds source identity, adapter evidence, catalog,
+schema-3 specification, and the derived surface with wrapper definitions. A
+receipt adopts exactly one digest. Status recomputes every embedded digest and
+checks current source identity without starting a routine source task.
+
+A repository path, familiar command name, or previous bundle receipt is not
+authority for changed content. Any catalog, specification, surface, wrapper,
+source, or bundle change requires a new digest and explicit adoption.
+
+## Future raw and host boundaries
+
+Raw execution, when implemented, will be an explicit tailoring bypass using
+the same bundle-bound source identity. It will not apply surface selection or
+wrapper transforms and will never be automatic fallback or a recovery hint.
+
+A host adapter, when implemented, will map core outcomes such as `rewrite`,
+`not_managed`, `command_not_in_surface`, `invalid_invocation`, and
+`interaction_required` into its transport. It cannot turn host `deny` into a
+core authorization judgment or claim that a hidden command is sandboxed.
+
+## Current milestone boundary
+
+The finite correction milestone is:
 
 ```text
-synthetic source evidence
-  + small per-command YAML fixture
-  + attempted invocation
-  -> strict decode
-  -> rule match
-  -> typed plan with invocation and output stages
-  -> preview
+strict schema-3 specification
+  + validated catalog
+  -> pure surface and wrapper compilation
+  -> canonical schema-2 bundle
+  -> exact-digest adoption/status
+  -> pure included/absent surface resolution
+
+retired authorization schema or command
+  -> explicit migration diagnostic
+  -> zero source-process attempts
 ```
 
-The fixture should describe a substantial built-in output reshape so the plan
-model is not accidentally limited to argv rewriting or line shortening.
-
-The slice makes zero source-process attempts and only describes its output
-transformation. The local-run boundary below supplies execution and
-transformation evidence; neither slice proves hook behavior.
-
-## v0.1 release-quality boundary
-
-```text
-explicit schema-1 YAML with effect: read
-  + attempted invocation
-  -> strict load and pure compile
-  -> deny or non-read: zero attempts
-  -> allow/read: resolve and fingerprint executable
-  -> one bounded direct process attempt
-  -> successful bounded JSON parse
-  -> pure select/rename
-  -> fixed execution envelope
-```
-
-The plan used for admission is the same domain plan exposed by preview.
-Preview retains declared executable evidence and does not require the source
-binary to exist. Run attaches resolved runtime identity inside the controlled
-process adapter and suppresses success if that identity changes. A preview is
-therefore explanatory, not reusable execution authority.
-
-### YAML decoder dependency
-
-The infrastructure adapter uses `go.yaml.in/yaml/v3` v3.0.4 for YAML 1.2
-decoding and strict known-field checks. It is confined to infrastructure and
-is available under MIT and Apache-2.0 terms. Domain policy validation remains
-independent of that decoder.
+Runtime plan application, raw execution, source refresh, and host integration
+are deliberately outside this milestone. They resume only after the corrected
+surface and wrapper model is mechanically enforced.
 
 ## Unresolved architecture decisions
 
-- Multiple named bundles, YAML inheritance, and precedence beyond the single
-  selected v1 bundle workflow.
-- Executable identity evidence beyond exact path, bytes, version, and declared
-  adapter observations.
+- Which argv replacement/default operations and typed before/after actions join
+  exact append arguments and structured output transformation.
+- Whether named profiles or multiple adopted bundles are needed and how they
+  are selected.
+- Executable identity evidence beyond exact path, bytes, observed version, and
+  adapter contract.
+- Streaming and output budgets beyond the current bounded buffered process
+  boundary.
 - Further source and host adapters and their individual compatibility ranges.
-- Built-in action vocabulary after the finite v1 set and extension
-  compatibility.
-- Streaming or output budgets beyond the fixed v0.1 buffered boundary.
-- Source nonzero exit, stderr, partial output, and transform-failure behavior
-  beyond v0.1's fail-closed contract.
 - Whether a future jq, RTK, plugin, or external-transformer port is justified.
+- The exact raw and host-adapter public contracts after wrapper runtime is
+  validated.

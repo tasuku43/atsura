@@ -17,7 +17,7 @@ func sourceRecord(number string, active bool, note JSONValue) JSONValue {
 }
 
 func TestTransformJSONPreservesShapeOrderAndTypedStates(t *testing.T) {
-	plan := validPolicy().Output
+	plan := validOutputPlan()
 	plan.Select = []string{"number", "active", "note"}
 	plan.Rename = []Rename{{From: "number", To: "id"}}
 	source := NewJSONArray([]JSONValue{
@@ -41,7 +41,7 @@ func TestTransformJSONPreservesShapeOrderAndTypedStates(t *testing.T) {
 }
 
 func TestTransformJSONSupportsObjectAndEmptyArray(t *testing.T) {
-	plan := validPolicy().Output
+	plan := validOutputPlan()
 	object, err := TransformJSON(plan, sourceRecord("1", false, NewJSONNull()))
 	if err != nil || object.Shape != ResultShapeObject || len(object.Records) != 1 {
 		t.Fatalf("object = %+v, error = %v", object, err)
@@ -53,7 +53,7 @@ func TestTransformJSONSupportsObjectAndEmptyArray(t *testing.T) {
 }
 
 func TestTransformJSONRejectsMissingFieldsAndWrongShapes(t *testing.T) {
-	plan := validPolicy().Output
+	plan := validOutputPlan()
 	tests := []JSONValue{
 		NewJSONObject([]JSONField{{Name: "number", Value: NewJSONNumber("1")}}),
 		NewJSONArray([]JSONValue{NewJSONString("not an object")}),
@@ -81,7 +81,7 @@ func TestJSONValueValidationRejectsDuplicatesMalformedNumbersAndComplexity(t *te
 }
 
 func TestTransformJSONReturnsDetachedRecords(t *testing.T) {
-	plan := validPolicy().Output
+	plan := validOutputPlan()
 	source := sourceRecord("1", false, NewJSONNull())
 	result, err := TransformJSON(plan, source)
 	if err != nil {

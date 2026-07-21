@@ -40,9 +40,9 @@ func (s *Store) Inspect(ctx context.Context, digest string) bundletrust.State {
 		return bundletrust.StateInvalid
 	}
 	if !present || !store.Contains(digest) {
-		return bundletrust.StateUntrusted
+		return bundletrust.StateNotAdopted
 	}
-	return bundletrust.StateTrusted
+	return bundletrust.StateAdopted
 }
 
 // Add writes one exact digest through a same-directory create-exclusive
@@ -246,5 +246,5 @@ func ensurePrivateDirectory(path string) error {
 
 func storeFault(err error) error {
 	return fault.Wrap(fault.KindUnavailable, "bundle_trust_store_failed", "The user-local bundle trust store could not be read or updated safely.", false, err,
-		fault.NextAction{Command: "bundle status", Reason: "Reconcile the exact bundle trust state without repeating the mutation."})
+		fault.NextAction{Command: "bundle status", Reason: "Reconcile the exact bundle adoption state without repeating the mutation."})
 }

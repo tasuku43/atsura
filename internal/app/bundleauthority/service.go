@@ -1,5 +1,6 @@
-// Package bundleauthority validates one built bundle against user-local trust
-// and current source identity, and owns the exact-digest trust mutation.
+// Package bundleauthority validates one built bundle against user-local
+// adoption and current source identity, and owns the exact-digest receipt
+// mutation behind the public bundle trust command.
 package bundleauthority
 
 import (
@@ -18,7 +19,7 @@ import (
 const (
 	TrustCommand    = "bundle trust"
 	StatusCommand   = "bundle status"
-	TrustTargetKind = "bundle-trust-store"
+	TrustTargetKind = "bundle-adoption-store"
 	TrustTargetID   = "selected"
 )
 
@@ -54,10 +55,10 @@ type Service struct {
 type StatusResult struct {
 	BundleDigest          string
 	CatalogDigest         string
-	PolicyDigest          string
-	Trust                 bundletrust.State
+	SpecificationDigest   string
+	Adoption              bundletrust.State
 	Source                bundletrust.SourceState
-	Executable            bool
+	Adopted               bool
 	SourcePath            string
 	SourceSHA256          string
 	SourceVersion         string
@@ -66,8 +67,8 @@ type StatusResult struct {
 
 type TrustResult struct {
 	BundleDigest          string
-	Trusted               bool
-	AlreadyTrusted        bool
+	Adopted               bool
+	AlreadyAdopted        bool
 	Source                bundletrust.SourceState
 	SourceProcessAttempts int
 }
@@ -84,13 +85,13 @@ func (s *Service) Status(ctx context.Context, intent operation.Intent, path stri
 	if err != nil {
 		return StatusResult{}, preserve(err)
 	}
-	result := StatusResult{BundleDigest: digest, CatalogDigest: bundle.CatalogDigest, PolicyDigest: bundle.PolicyDigest,
-		Trust: s.trust.Inspect(ctx, digest), SourcePath: bundle.Catalog.Source.ResolvedPath,
+	result := StatusResult{BundleDigest: digest, CatalogDigest: bundle.CatalogDigest, SpecificationDigest: bundle.SpecificationDigest,
+		Adoption: s.trust.Inspect(ctx, digest), SourcePath: bundle.Catalog.Source.ResolvedPath,
 		SourceSHA256: bundle.Catalog.Source.SHA256, SourceVersion: bundle.Catalog.Source.Version,
 		SourceProcessAttempts: 0,
 	}
 	result.Source = s.sourceState(ctx, bundle)
-	result.Executable = result.Trust == bundletrust.StateTrusted && result.Source == bundletrust.SourceCurrent
+	result.Adopted = result.Adoption == bundletrust.StateAdopted
 	return result, nil
 }
 
@@ -108,10 +109,10 @@ func (s *Service) Trust(ctx context.Context, intent operation.Intent, path strin
 	}
 	sourceState := s.sourceState(ctx, bundle)
 	if sourceState != bundletrust.SourceCurrent {
-		return TrustResult{}, fault.New(fault.KindRejected, "bundle_source_drift", "The bundle source identity is not current, so trust was not granted.", false, statusAction())
+		return TrustResult{}, fault.New(fault.KindRejected, "bundle_source_drift", "The bundle source identity is not current, so adoption was not recorded.", false, statusAction())
 	}
-	if state == bundletrust.StateTrusted {
-		return TrustResult{BundleDigest: digest, Trusted: true, AlreadyTrusted: true, Source: sourceState}, nil
+	if state == bundletrust.StateAdopted {
+		return TrustResult{BundleDigest: digest, Adopted: true, AlreadyAdopted: true, Source: sourceState}, nil
 	}
 	summary := summarize(bundle, digest)
 	policy := confirmationPolicy{confirmation: s.confirmation, summary: summary, expected: intent}
@@ -124,7 +125,7 @@ func (s *Service) Trust(ctx context.Context, intent operation.Intent, path strin
 	if err != nil {
 		return TrustResult{}, err
 	}
-	return TrustResult{BundleDigest: digest, Trusted: true, Source: sourceState}, nil
+	return TrustResult{BundleDigest: digest, Adopted: true, Source: sourceState}, nil
 }
 
 func (s *Service) preflight(ctx context.Context, intent operation.Intent, command string, effect operation.Effect) error {
@@ -140,8 +141,8 @@ func (s *Service) preflight(ctx context.Context, intent operation.Intent, comman
 	if s == nil || portcheck.IsNil(s.bundles) || portcheck.IsNil(s.identity) || portcheck.IsNil(s.trust) {
 		return fmt.Errorf("bundle authority adapters are not configured")
 	}
-	if effect != operation.EffectRead && portcheck.IsNil(s.confirmation) {
-		return fmt.Errorf("bundle trust confirmation is not configured")
+	if effect == operation.EffectWrite && portcheck.IsNil(s.confirmation) {
+		return fmt.Errorf("bundle adoption confirmation is not configured")
 	}
 	return nil
 }
@@ -158,25 +159,30 @@ func (s *Service) sourceState(ctx context.Context, bundle tailoringbundle.Bundle
 }
 
 func summarize(bundle tailoringbundle.Bundle, digest string) bundletrust.Summary {
-	result := bundletrust.Summary{BundleDigest: digest, CatalogDigest: bundle.CatalogDigest, PolicyDigest: bundle.PolicyDigest,
+	result := bundletrust.Summary{BundleDigest: digest, CatalogDigest: bundle.CatalogDigest, SpecificationDigest: bundle.SpecificationDigest,
 		SourcePath: bundle.Catalog.Source.ResolvedPath, SourceSHA256: bundle.Catalog.Source.SHA256,
-		SourceVersion: bundle.Catalog.Source.Version, VisibleCount: len(bundle.Surface)}
-	for _, rule := range bundle.Policy.Rules {
-		switch rule.Effect {
-		case operation.EffectRead:
-			result.ReadCount++
-		case operation.EffectCreate:
-			result.CreateCount++
-		case operation.EffectWrite:
-			result.WriteCount++
+		SourceVersion: bundle.Catalog.Source.Version, SurfaceDefault: string(bundle.Specification.Surface.Default),
+		IncludedCommandCount: len(bundle.Surface)}
+	for _, entry := range bundle.Specification.Commands {
+		if entry.Presence == tailoringbundle.PresenceExclude {
+			result.ExcludedCommandCount++
 		}
-		switch rule.Decision {
-		case tailoringbundle.DecisionAllow:
-			result.AllowCount++
-		case tailoringbundle.DecisionConfirm:
-			result.ConfirmCount++
-		case tailoringbundle.DecisionDeny:
-			result.DenyCount++
+	}
+	for _, entry := range bundle.Surface {
+		result.OptionOverrideCount += len(entry.Options.Include) + len(entry.Options.Exclude)
+		result.BeforeActionCount += len(entry.Wrapper.Before)
+		result.AfterActionCount += len(entry.Wrapper.After)
+		switch entry.Wrapper.Kind {
+		case tailoringbundle.WrapperIdentity:
+			result.IdentityWrapperCount++
+		case tailoringbundle.WrapperTransform:
+			result.TransformWrapperCount++
+		}
+		if len(entry.Wrapper.Invoke.AppendArgs) > 0 {
+			result.ArgvTransformationCount++
+		}
+		if entry.Wrapper.Output != nil {
+			result.OutputTransformationCount++
 		}
 	}
 	return result
@@ -202,5 +208,5 @@ func preserve(err error) error {
 	return fault.Wrap(fault.KindInternal, "internal_error", "The bundle authority could not load its inputs.", false, err, statusAction())
 }
 func statusAction() fault.NextAction {
-	return fault.NextAction{Command: StatusCommand, Reason: "Reconcile bundle trust and source drift without executing it."}
+	return fault.NextAction{Command: StatusCommand, Reason: "Reconcile bundle adoption and source drift without executing it."}
 }

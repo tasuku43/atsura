@@ -14,14 +14,14 @@ func TestStoreAddsExactReceiptAndDoesNotOverwriteInvalidState(t *testing.T) {
 	path := filepath.Join(root, "atsura", "bundle-trust.json")
 	store := New(path)
 	digest := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	if state := store.Inspect(context.Background(), digest); state != bundletrust.StateUntrusted {
+	if state := store.Inspect(context.Background(), digest); state != bundletrust.StateNotAdopted {
 		t.Fatalf("initial state = %q", state)
 	}
 	changed, err := store.Add(context.Background(), digest)
 	if err != nil || !changed {
 		t.Fatalf("Add() = %v, %v", changed, err)
 	}
-	if state := store.Inspect(context.Background(), digest); state != bundletrust.StateTrusted {
+	if state := store.Inspect(context.Background(), digest); state != bundletrust.StateAdopted {
 		t.Fatalf("trusted state = %q", state)
 	}
 	changed, err = store.Add(context.Background(), digest)

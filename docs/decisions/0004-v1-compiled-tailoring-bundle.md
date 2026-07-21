@@ -1,11 +1,15 @@
 # ADR 0004: Compile one trusted tailoring bundle for every adapter
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-07-21
 - Deciders: Repository maintainer and product owner
 - Scope: Product, CLI, catalog inspection, policy trust, execution, host integration, security, compatibility, and release quality
 - Supersedes: None
-- Superseded by: None
+- Superseded by: docs/decisions/0005-purpose-specific-surface-and-wrapper.md
+
+ADR 0005 retains the canonical vendor-neutral bundle decision but replaces
+this ADR's source-operation authorization model with independent surface
+composition and wrapper-pipeline semantics.
 
 ## Context
 

@@ -47,8 +47,8 @@ func (s *Service) Inspect(ctx context.Context, intent operation.Intent, adapter,
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
-	if err := intent.Validate(); err != nil || intent.Command != "source inspect" || intent.Effect != operation.EffectRead {
-		return Result{}, fmt.Errorf("source inspection requires the source inspect read intent")
+	if err := intent.Validate(); err != nil || intent.Command != "source inspect" || intent.Effect != operation.EffectExecute {
+		return Result{}, fmt.Errorf("source inspection requires the source inspect execute intent")
 	}
 	if s == nil {
 		return Result{}, fmt.Errorf("source inspection service is not configured")
@@ -58,11 +58,11 @@ func (s *Service) Inspect(ctx context.Context, intent operation.Intent, adapter,
 		return Result{}, fault.Wrap(fault.KindInvalidInput, "unsupported_source_adapter", "The selected source adapter is not supported.", false, sourcecatalog.ErrUnsupportedAdapter, helpAction())
 	}
 	catalog, err := inspector.Inspect(ctx, executable)
-	if contextErr := ctx.Err(); contextErr != nil {
-		return Result{}, contextErr
-	}
 	if err != nil {
 		return Result{}, classify(err)
+	}
+	if contextErr := ctx.Err(); contextErr != nil {
+		return Result{}, fault.Wrap(fault.KindCanceled, "source_execution_canceled", "The caller canceled after source inspection started; its downstream outcome is not classified as replay-safe.", false, contextErr, helpAction())
 	}
 	if err := catalog.Validate(); err != nil {
 		return Result{}, fault.Wrap(fault.KindContract, "invalid_source_catalog", "The source adapter returned an invalid catalog.", false, err, helpAction())

@@ -2,29 +2,37 @@
 
 A deterministic framework for tailoring existing CLIs to coding agents.
 
-Atsura's working hypothesis is that a maintainer can manage per-command YAML
-for an existing CLI and give a coding agent a narrower, purpose-specific
-surface without reimplementing that CLI. A coding-agent hook intercepts an
-attempted command, Atsura compiles it into one inspectable execution plan, and
-the same plan logic drives preview or controlled wrapper execution. Routine
-planning and enforcement are deterministic and do not require a language model.
+Atsura compiles bounded source-CLI evidence and a reviewed tailoring
+specification into a purpose-specific command and option surface. Each included
+command has either an identity wrapper or a finite deterministic transforming
+wrapper. The source CLI remains authoritative for its own authentication,
+authorization, operation semantics, and remote effects.
 
 ## Project status
 
-Atsura has one release-quality local tailoring outcome. `atr run` strictly
-loads one explicitly selected schema-1 policy, admits only an `allow` decision
-with `effect: read`, starts one bounded source process without a shell, and
-returns selected and renamed records from successful JSON output. `atr plan
-preview` compiles the same policy and invocation with zero source-process
-attempts.
+The current schema-correction milestone implements the artifact workflow, not
+bundle-backed source execution:
 
-This v0.1 boundary does not inspect source help, install hooks, hide commands,
-activate repository policy implicitly, execute mutations, or provide raw
-fallback. The command and schema remain pre-release interfaces.
+```text
+source inspect -> spec init/validate -> bundle build -> bundle status/trust
+```
 
-The current `atr` binary still contains the foundry's `doctor` and synthetic
-`sample` commands as executable architecture and harness examples. They are
-not source-CLI tailoring features.
+- Tailoring specification schema 3 independently declares command membership,
+  option membership, and wrapper behavior.
+- Bundle schema 2 binds exact source identity, catalog evidence, the normalized
+  specification, and the compiled purpose-specific surface.
+- `bundle trust` interactively records adoption of one exact bundle digest. It
+  does not grant permission to run source operations.
+- The retired authorization-oriented policy schemas, `plan preview`, and `run`
+  have migration diagnostics only. They are not current tailoring capabilities.
+
+Source refresh, bundle runtime execution, raw bypass, and host adapters remain
+paused until pure surface resolution and identity-wrapper planning are
+implemented and validated.
+
+The `atr` binary also contains the foundry's `doctor` and synthetic `sample`
+commands as executable architecture and harness examples. They are not
+source-CLI tailoring features.
 
 Project identity:
 
@@ -34,66 +42,94 @@ Project identity:
 - License: MIT
 - Documentation locale: English
 
-## Product direction
-
-A future tailored surface may narrow visible commands and options, classify
-operations, deterministically change arguments or defaults, use a source CLI's
-structured output, apply built-in processing around execution, substantially
-reshape output, and explain every change. An explicit raw route may preserve
-access to the original CLI, but must never be an automatic fallback from policy
-or transformation failure.
-
-Conceptually:
+## Product model
 
 ```text
-per-command YAML + attempted command + source evidence
-  -> deterministic plan
-  -> preview
-     or
-  -> wrapper: built-in before -> source CLI -> built-in output/after
+installed source CLI
+  -> bounded adapter inspection
+  -> provenance-bearing command catalog
+
+catalog + reviewed schema-3 specification
+  -> deterministic compilation
+  -> canonical schema-2 bundle
+     + compiled command/option surface
+     + identity or transforming wrapper per included command
+
+exact bundle digest
+  -> explicit user adoption
 ```
 
-## Try the local slice
+An excluded command is absent from the tailored surface; it is not denied or
+classified as unsafe. Surface membership and wrapper transformation are
+independent. A future wrapper plan will describe ordered stages and exact argv,
+not an authorization decision. Hiding is a discoverability and composition
+feature, not an OS sandbox.
 
-The repository includes an example policy. Previewing it does not require
-`gh` to be installed because Atsura makes zero source-process attempts:
+## Try the artifact workflow
+
+The first source adapter inspects an installed GitHub CLI using two bounded
+offline probes. From the repository root, with `gh` installed:
 
 ```sh
-go run ./cmd/atr plan preview \
-  --config examples/plan-preview.yaml \
-  -- gh pr list --state open
+go run ./cmd/atr source inspect \
+  --adapter github-cli \
+  --executable gh > /tmp/atsura-catalog.json
+
+go run ./cmd/atr spec init \
+  --catalog /tmp/atsura-catalog.json \
+  -- pr list > /tmp/atsura-spec.yaml
+
+go run ./cmd/atr spec validate \
+  --catalog /tmp/atsura-catalog.json \
+  --spec /tmp/atsura-spec.yaml
+
+go run ./cmd/atr bundle build \
+  --catalog /tmp/atsura-catalog.json \
+  --spec /tmp/atsura-spec.yaml > /tmp/atsura-bundle.json
+
+go run ./cmd/atr bundle status \
+  --bundle /tmp/atsura-bundle.json
 ```
 
-The JSON result shows the allow/deny decision, original and transformed argv,
-the matched command and reason, a typed output reshape, and
-`source_process_attempts: 0`. Use `atr help plan preview` for the complete
-machine-readable command contract.
+`spec init` creates an exclude-by-default specification containing one exact
+verified command with inherited options and an identity wrapper. Review and
+edit that file before validation and compilation. The static
+[schema-3 example](examples/tailoring-spec.schema3.yaml) illustrates the strict
+shape, but its placeholder catalog digest must be replaced by the digest from
+the exact inspected catalog; `spec init` is the reliable way to produce a bound
+draft.
 
-Run the same kind of plan against the repository's synthetic JSON source:
+To adopt the compiled surface, run this in an interactive terminal and confirm
+the exact digest after reviewing the source, surface, and wrapper summary:
 
 ```sh
-go run ./cmd/atr run \
-  --config examples/run-local.yaml \
-  -- go run ./tools/sourcefixture --limit=2
+go run ./cmd/atr bundle trust --bundle /tmp/atsura-bundle.json
+go run ./cmd/atr bundle status --bundle /tmp/atsura-bundle.json
 ```
 
-The result contains only `id`, `title`, and `state`, reports
-`source_process_attempts: 1`, and needs no provider account. Run this from the
-repository root with the exact Go version declared in `go.mod`.
+Use `atr help <exact-command> --format agent` for the complete machine-readable
+contract. Agent help currently uses schema version 7.
 
-The following decisions remain open and require later research or a vertical
-slice:
+## Current decisions and open work
 
-- first source CLI;
-- future YAML schema evolution, locations, inheritance, and trust workflow;
-- command-discovery depth;
-- Claude Code hook responsibilities;
-- wrapper or hook integration mechanism;
-- exact allow, confirm, and deny semantics;
-- output-transform vocabulary beyond schema-1 select and rename;
-- usage-history collection;
-- jq, RTK, plugin, or external-transformer boundaries; and
-- behavior beyond v0.1's fail-closed source and transform boundary.
+The current schema supports exact command include/exclude composition,
+inherited or narrowed options, identity wrappers, appended argv, and typed JSON
+select/rename/compact-output transformations. Before and after stage lists are
+explicit but must remain empty; arbitrary shell, script, jq, plugin, RTK, and
+runtime-LLM actions are invalid.
+
+The following remain later research or vertical-slice decisions:
+
+- additional source CLIs and adapter compatibility;
+- source refresh and command-discovery depth;
+- pure surface resolution and identity-wrapper plan output;
+- bundle runtime and exact post-start failure behavior;
+- Claude Code and other host-adapter responsibilities;
+- wrapper installation or hook integration mechanisms;
+- raw tailoring bypass;
+- output transformations beyond the schema-3 built-ins;
+- usage-history collection; and
+- jq, RTK, plugin, or external-transformer boundaries.
 
 See [Project Theses](docs/00_theses.md), [Product Contract](docs/01_product_contract.md),
 [Architecture](docs/02_architecture.md), and [Security Model](docs/03_security_model.md).
@@ -140,15 +176,16 @@ belong to the exact required installation.
 
 ## Safety and maturity
 
-Commands, arguments, help output, source output, generated catalogs, YAML, and
-hook payloads are treated as untrusted. Repository-provided configuration is
-not implicitly user-trusted. Initial YAML processing is limited to typed
-Atsura built-ins rather than arbitrary shell. Atsura does not acquire or store
-provider credentials or persist source output. The source process inherits the
-caller's environment, so its own credential handling remains authoritative.
+Commands, arguments, help output, source output, generated catalogs,
+specifications, bundles, and hook payloads are untrusted. Repository-provided
+configuration is not implicitly user-adopted. Specification processing is
+limited to typed Atsura built-ins rather than arbitrary executable code. Atsura
+does not acquire or store provider credentials or persist source output. Source
+inspection starts the selected executable without a shell using adapter-owned,
+bounded offline probes; the source process inherits the caller's environment.
 
 No Atsura release has been published. See [Release Model](docs/06_release.md)
-for the reviewed v0.1 packaging boundary and the remaining first-tag controls.
+for the reviewed packaging boundary and remaining first-tag controls.
 
 For contributions and help, see [CONTRIBUTING.md](CONTRIBUTING.md),
 [SUPPORT.md](SUPPORT.md), and [SECURITY.md](SECURITY.md).
