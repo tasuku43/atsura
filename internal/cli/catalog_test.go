@@ -575,6 +575,59 @@ func TestBundlePreviewCatalogDeclaresPurePlanOutcome(t *testing.T) {
 	}
 }
 
+func TestBundleExecuteCatalogDeclaresTransformOnlySourceExecution(t *testing.T) {
+	spec, found := DefaultCatalog().Lookup("bundle execute")
+	if !found {
+		t.Fatal("bundle execute is missing from the catalog")
+	}
+	if spec.Effect != operation.EffectExecute || spec.Role != RoleUtility || spec.Agent.CapabilityID != "tailoring.execute" || spec.Agent.Mutation != nil || spec.Agent.FixedTarget != nil || spec.Agent.Authentication != nil {
+		t.Fatalf("bundle execute contract=%+v", spec)
+	}
+	if spec.Args != "--bundle <path> -- <source-executable> <argv>" || len(spec.Agent.Inputs) != 3 || spec.Agent.Output.JSONEnvelope != "execution" || spec.Agent.Output.JSONSchemaVersion != 2 || spec.Agent.Output.Delivery != OutputDeliveryComplete || spec.Agent.Output.CollectionCoverage != CollectionCoverageNotApplicable {
+		t.Fatalf("grammar/output=%q %+v", spec.Args, spec.Agent.Output)
+	}
+	wantFields := []string{"bundle_digest", "plan_digest", "matched_command", "wrapper_kind", "output", "source", "source_process_attempts"}
+	for index, want := range wantFields {
+		if spec.Agent.Output.Fields[index].Name != want {
+			t.Fatalf("output field %d=%q want=%q", index, spec.Agent.Output.Fields[index].Name, want)
+		}
+	}
+	if schema := spec.Agent.Output.Fields[4].Schema; schema == nil || schema.ID != "tailored-json-result" || schema.Version != 2 || len(schema.Fields) != 4 {
+		t.Fatalf("tailored output schema=%+v", schema)
+	}
+	codes := make(map[string]CommandError, len(spec.Agent.Errors))
+	for _, declared := range spec.Agent.Errors {
+		codes[declared.Code] = declared
+	}
+	for code, want := range map[string]struct {
+		kind      fault.Kind
+		retryable bool
+	}{
+		"wrapper_runtime_not_supported":         {kind: fault.KindUnsupported},
+		"source_process_start_failed":           {kind: fault.KindUnavailable, retryable: true},
+		"source_execution_canceled":             {kind: fault.KindCanceled},
+		"source_output_processing_canceled":     {kind: fault.KindCanceled},
+		"source_json_invalid":                   {kind: fault.KindContract},
+		"output_transform_failed":               {kind: fault.KindContract},
+		"unclassified_source_execution_outcome": {kind: fault.KindContract},
+		"execute_output_write_failed":           {kind: fault.KindInternal},
+	} {
+		got, exists := codes[code]
+		if !exists || got.Kind != want.kind || got.Retryable != want.retryable {
+			t.Errorf("fault %q=%+v", code, got)
+		}
+	}
+	encoded, _ := json.Marshal(spec.Agent)
+	for _, forbidden := range []string{`"decision"`, `"confirmation_required"`, `"source_effect"`, `"target"`, `"impact"`} {
+		if strings.Contains(strings.ToLower(string(encoded)), forbidden) {
+			t.Fatalf("execute contract contains forbidden field %s: %s", forbidden, encoded)
+		}
+	}
+	if err := DefaultCatalog().Validate(); err != nil {
+		t.Fatalf("default catalog validation: %v", err)
+	}
+}
+
 func TestCatalogRejectsMalformedNestedOutputSchema(t *testing.T) {
 	base := utilitySpec("inspect")
 	base.Agent.Output.Fields[0] = OutputField{

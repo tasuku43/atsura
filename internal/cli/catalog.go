@@ -511,6 +511,60 @@ func bundlePreviewErrors() []CommandError {
 	)
 }
 
+func bundleExecuteErrors() []CommandError {
+	errors := bundleFileErrors("bundle execute")
+	errors[0] = declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help bundle execute", "Pass one bundle path, the exact source executable, and at least one source argv element after --.")
+	return append(errors,
+		declaredCommandError(fault.KindRejected, "invalid_bundle_trust_store", false, "bundle status", "Repair or reconcile invalid user-local adoption state."),
+		declaredCommandError(fault.KindRejected, "bundle_not_adopted", false, "bundle trust", "Review and adopt the exact bundle digest before execution."),
+		declaredCommandError(fault.KindRejected, "bundle_source_drift", false, "bundle status", "Rebuild and adopt current source evidence before execution."),
+		declaredCommandError(fault.KindNotFound, "source_executable_not_found", false, "bundle status", "Reconcile the missing bundle-bound source executable."),
+		declaredCommandError(fault.KindUnavailable, "source_identity_unavailable", true, "bundle status", "Retry after the bundle-bound source identity can be read."),
+		declaredCommandError(fault.KindInvalidInput, "unsafe_source_executable", false, "bundle status", "Select and inspect a supported regular source executable."),
+		declaredCommandError(fault.KindRejected, "source_identity_changed", false, "bundle status", "Rebuild from stable current source identity evidence; do not replay a started operation."),
+		declaredCommandError(fault.KindContract, "invalid_source_identity", false, "bundle status", "Repair invalid source identity evidence."),
+		declaredCommandError(fault.KindInvalidInput, "source_executable_mismatch", false, "help bundle execute", "Use the exact requested executable or resolved path recorded in the bundle."),
+		declaredCommandError(fault.KindInvalidInput, "invalid_invocation", false, "help bundle execute", "Use a cataloged command path and deterministic observed long-option grammar."),
+		declaredCommandError(fault.KindNotFound, "command_not_in_surface", false, "help bundle execute", "Select a command present in the compiled tailored surface."),
+		declaredCommandError(fault.KindNotFound, "option_not_in_surface", false, "help bundle execute", "Use only options present in the matched command's tailored option surface."),
+		declaredCommandError(fault.KindContract, "invalid_wrapper_plan", false, "bundle preview", "Inspect the fresh plan and repair incomplete wrapper construction."),
+		declaredCommandError(fault.KindUnsupported, "wrapper_runtime_not_supported", false, "help bundle execute", "Use a transform wrapper and source adapter contract with proven JSON selector behavior."),
+		declaredCommandError(fault.KindContract, "invalid_source_process_request", false, "bundle preview", "Inspect the exact plan-derived source request before execution."),
+		declaredCommandError(fault.KindUnavailable, "source_process_start_failed", true, "bundle execute", "Retry the same invocation only when the result proves no source process started."),
+		declaredCommandError(fault.KindContract, "source_stdout_too_large", false, "help bundle execute", "Reduce source output within the declared bound; the source was not retried."),
+		declaredCommandError(fault.KindContract, "source_stderr_too_large", false, "help bundle execute", "Reduce source stderr within the declared bound; the source was not retried."),
+		declaredCommandError(fault.KindCanceled, "source_execution_canceled", false, "bundle status", "Reconcile source-owned effects before considering another invocation."),
+		declaredCommandError(fault.KindUnavailable, "source_command_timeout", false, "bundle status", "Reconcile source-owned effects after the timed-out attempt."),
+		declaredCommandError(fault.KindRejected, "source_command_failed", false, "help bundle execute", "Inspect the source command independently; Atsura does not expose raw failure output or retry it."),
+		declaredCommandError(fault.KindUnavailable, "source_process_wait_failed", false, "bundle status", "Reconcile source-owned effects after the unclassified wait outcome."),
+		declaredCommandError(fault.KindContract, "source_stderr_not_supported", false, "help bundle execute", "Use a successful source invocation with empty stderr for this initial transform runtime."),
+		declaredCommandError(fault.KindCanceled, "source_output_processing_canceled", false, "bundle status", "The source already ran; reconcile before considering another invocation."),
+		declaredCommandError(fault.KindContract, "source_json_invalid", false, "bundle preview", "Repair the source output selector or adapter contract; raw output is not a fallback."),
+		declaredCommandError(fault.KindContract, "output_transform_failed", false, "bundle preview", "Repair selected fields and typed transform expectations; raw output is not a fallback."),
+		declaredCommandError(fault.KindContract, "unclassified_source_execution_outcome", false, "bundle status", "Reconcile source-owned effects before considering another invocation."),
+		declaredCommandError(fault.KindContract, "output_contract_exceeded", false, "bundle preview", "Reduce the bounded transformed result; the source was not retried."),
+		declaredCommandError(fault.KindContract, "output_encoding_failed", false, "bundle preview", "Repair deterministic schema-2 execution JSON; the source was not retried."),
+		declaredCommandError(fault.KindInternal, "internal_error", false, "bundle status", "Inspect bundle execution wiring without replaying the source."),
+		declaredCommandError(fault.KindInternal, "execute_output_write_failed", false, "bundle status", "The source completed; reconcile before considering another invocation."),
+		declaredCommandError(fault.KindCanceled, "operation_canceled", true, "bundle execute", "Retry only because cancellation occurred before a source attempt."),
+	)
+}
+
+func tailoredJSONOutputSchema() *OutputSchema {
+	return &OutputSchema{ID: "tailored-json-result", Version: 2, Fields: []OutputSchemaField{
+		{Path: "/fields", Type: OutputFieldTypeArray, ElementType: OutputFieldTypeString, Required: true},
+		{Path: "/records", Type: OutputFieldTypeArray, ElementType: OutputFieldTypeObject, Required: true},
+		{Path: "/render", Type: OutputFieldTypeString, Required: true},
+		{Path: "/shape", Type: OutputFieldTypeString, Required: true},
+	}}
+}
+
+func sourceExecutionOutputSchema() *OutputSchema {
+	return &OutputSchema{ID: "source-execution-result", Version: 1, Fields: []OutputSchemaField{
+		{Path: "/exit_code", Type: OutputFieldTypeInteger, Required: true},
+	}}
+}
+
 func wrapperPlanOutputSchema() *OutputSchema {
 	field := func(path string, fieldType OutputFieldType) OutputSchemaField {
 		return OutputSchemaField{Path: path, Type: fieldType, Required: true}
@@ -904,7 +958,7 @@ func DefaultCatalog() Catalog {
 					Formats: []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
 					Fields: []OutputField{
 						{Name: "plan_digest", Type: OutputFieldTypeString, Description: "SHA-256 identity of the complete canonical wrapper plan."},
-						{Name: "plan", Type: OutputFieldTypeObject, Description: "Complete schema-2 tailored plan binding source, artifacts, surface, specification entry, argv, stages, and runtime process bounds.", Schema: wrapperPlanOutputSchema()},
+						{Name: "plan", Type: OutputFieldTypeObject, Description: "Complete schema-3 tailored plan binding source, artifacts, surface, specification entry, argv, stages, process framing, and runtime bounds.", Schema: wrapperPlanOutputSchema()},
 						{Name: "source_process_attempts", Type: OutputFieldTypeInteger, Description: "Always zero; preview reads identity evidence but never starts the source process."},
 					},
 					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable,
@@ -914,6 +968,43 @@ func DefaultCatalog() Catalog {
 				Errors:        bundlePreviewErrors(),
 			},
 			handler: runBundlePreview,
+		},
+		CommandSpec{
+			Path:    "bundle execute",
+			Summary: "Execute one adopted adapter-proven JSON transform wrapper",
+			Args:    "--bundle <path> -- <source-executable> <argv>",
+			Effect:  operation.EffectExecute,
+			Role:    RoleUtility,
+			Agent: AgentContract{
+				CapabilityID: "tailoring.execute",
+				Outcome:      "Rebuild one adopted current wrapper plan, start its exact identity-bound source at most once, and return the complete declared typed JSON transformation without raw fallback",
+				Inputs: []CommandInput{
+					{Name: "--bundle", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read the exact bounded JSON document emitted by bundle build.", AllowedValues: []string{}},
+					{Name: "source-executable", Source: InputSourceArgument, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Use the exact requested executable spelling or resolved path recorded in the bundle after the positional-only marker.", AllowedValues: []string{}},
+					{Name: "argv", Source: InputSourceArgument, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalityRepeatable, Description: "Pass the source command path, options, and positional values as separate argv elements; dash-prefixed values require the published positional-only or equals grammar.", AllowedValues: []string{}},
+				},
+				Output: CommandOutput{
+					Formats: []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
+					Fields: []OutputField{
+						{Name: "bundle_digest", Type: OutputFieldTypeString, Description: "Exact canonical bundle identity used to rebuild runtime authority."},
+						{Name: "plan_digest", Type: OutputFieldTypeString, Description: "SHA-256 identity of the freshly rebuilt schema-3 wrapper plan; it equals preview for identical current inputs."},
+						{Name: "matched_command", Type: OutputFieldTypeArray, Description: "Exact tailored command path selected from the complete embedded catalog."},
+						{Name: "wrapper_kind", Type: OutputFieldTypeString, Description: "Always transform in this initial runtime slice."},
+						{Name: "output", Type: OutputFieldTypeObject, Description: "Complete compact typed JSON selection; each record has exactly the declared fields in order and external structural text is visibly escaped.", Schema: tailoredJSONOutputSchema()},
+						{Name: "source", Type: OutputFieldTypeObject, Description: "Bounded facts from the one successful source attempt; raw stdout and stderr are never included.", Schema: sourceExecutionOutputSchema()},
+						{Name: "source_process_attempts", Type: OutputFieldTypeInteger, Description: "Exactly one on success; pre-start failures start zero and post-start failures never retry."},
+					},
+					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable,
+					JSONEnvelope: "execution", JSONSchemaVersion: 2,
+				},
+				Prerequisites: []string{
+					"One current schema-2 bundle whose exact digest is user-adopted; execution rebuilds rather than consumes a preview document.",
+					"The matched command must use a transforming wrapper with a typed JSON output stage proven by the exact source adapter kind, contract version, source version, command, and selector value.",
+					"The source owns its authentication, authorization, prompts, destinations, and downstream effects; Atsura starts it with closed stdin, inherited working directory and environment, and no shell.",
+				},
+				Errors: bundleExecuteErrors(),
+			},
+			handler: runBundleExecute,
 		},
 		CommandSpec{
 			Path:    "bundle trust",

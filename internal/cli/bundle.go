@@ -7,6 +7,7 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/bundletrust"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
+	"github.com/tasuku43/atsura/internal/domain/tailoring"
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
 	"github.com/tasuku43/atsura/internal/domain/tailoringplan"
 	"github.com/tasuku43/atsura/internal/infra/specyaml"
@@ -81,6 +82,32 @@ type bundlePreviewPayload struct {
 	PlanDigest            string             `json:"plan_digest"`
 	Plan                  tailoringplan.Plan `json:"plan"`
 	SourceProcessAttempts int                `json:"source_process_attempts"`
+}
+
+type bundleExecutionDocument struct {
+	SchemaVersion int                    `json:"schema_version"`
+	Execution     bundleExecutionPayload `json:"execution"`
+}
+
+type bundleExecutionPayload struct {
+	BundleDigest          string                      `json:"bundle_digest"`
+	PlanDigest            string                      `json:"plan_digest"`
+	MatchedCommand        []string                    `json:"matched_command"`
+	WrapperKind           tailoringbundle.WrapperKind `json:"wrapper_kind"`
+	Output                bundleExecutionOutput       `json:"output"`
+	Source                bundleExecutionSource       `json:"source"`
+	SourceProcessAttempts int                         `json:"source_process_attempts"`
+}
+
+type bundleExecutionOutput struct {
+	Render  tailoring.RenderFormat `json:"render"`
+	Shape   tailoring.ResultShape  `json:"shape"`
+	Fields  []string               `json:"fields"`
+	Records []tailoring.JSONValue  `json:"records"`
+}
+
+type bundleExecutionSource struct {
+	ExitCode int `json:"exit_code"`
 }
 
 func runSpecValidate(ctx context.Context, c *CLI, _ CommandSpec, intent operation.Intent, inputs ParsedInputs) int {
@@ -161,6 +188,54 @@ func runBundlePreview(ctx context.Context, c *CLI, _ CommandSpec, intent operati
 	}
 	document := bundlePreviewDocument{SchemaVersion: 2, Preview: bundlePreviewPayload{PlanDigest: result.PlanDigest, Plan: result.Plan, SourceProcessAttempts: result.SourceProcessAttempts}}
 	return c.emitJSONDocument(ctx, document, "bundle preview")
+}
+
+func runBundleExecute(ctx context.Context, c *CLI, _ CommandSpec, intent operation.Intent, inputs ParsedInputs) int {
+	result, err := c.executions.Execute(ctx, intent, inputs.One("--bundle"), tailoringplan.Attempt{
+		Executable: inputs.One("source-executable"),
+		Args:       inputs.Values("argv"),
+	})
+	if err != nil {
+		return c.fail(ctx, err)
+	}
+	records := make([]tailoring.JSONValue, len(result.Output.Records))
+	for index := range result.Output.Records {
+		records[index] = projectExternalJSON(result.Output.Records[index])
+	}
+	document := bundleExecutionDocument{SchemaVersion: 2, Execution: bundleExecutionPayload{
+		BundleDigest: result.BundleDigest, PlanDigest: result.PlanDigest,
+		MatchedCommand: append([]string{}, result.MatchedCommand...), WrapperKind: result.WrapperKind,
+		Output: bundleExecutionOutput{Render: result.Render, Shape: result.Output.Shape, Fields: append([]string{}, result.Output.Fields...), Records: records},
+		Source: bundleExecutionSource{ExitCode: result.SourceExitCode}, SourceProcessAttempts: result.SourceProcessAttempts,
+	}}
+	return c.emitJSONDocument(ctx, document, "bundle execute")
+}
+
+func projectExternalJSON(value tailoring.JSONValue) tailoring.JSONValue {
+	switch value.Kind {
+	case tailoring.JSONNull:
+		return tailoring.NewJSONNull()
+	case tailoring.JSONBool:
+		return tailoring.NewJSONBool(value.BoolValue)
+	case tailoring.JSONNumber:
+		return tailoring.NewJSONNumber(value.NumberValue)
+	case tailoring.JSONString:
+		return tailoring.NewJSONString(safeExternalText(value.StringValue))
+	case tailoring.JSONArray:
+		items := make([]tailoring.JSONValue, len(value.ArrayValue))
+		for index := range value.ArrayValue {
+			items[index] = projectExternalJSON(value.ArrayValue[index])
+		}
+		return tailoring.NewJSONArray(items)
+	case tailoring.JSONObject:
+		fields := make([]tailoring.JSONField, len(value.ObjectValue))
+		for index := range value.ObjectValue {
+			fields[index] = tailoring.JSONField{Name: safeExternalText(value.ObjectValue[index].Name), Value: projectExternalJSON(value.ObjectValue[index].Value)}
+		}
+		return tailoring.NewJSONObject(fields)
+	default:
+		return value
+	}
 }
 
 func (c *CLI) emitJSONDocument(ctx context.Context, document any, command string) int {

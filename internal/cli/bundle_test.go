@@ -11,11 +11,15 @@ import (
 	"testing"
 
 	"github.com/tasuku43/atsura/internal/app/bundleauthority"
+	"github.com/tasuku43/atsura/internal/app/bundleexecute"
 	"github.com/tasuku43/atsura/internal/app/planpreview"
 	"github.com/tasuku43/atsura/internal/domain/bundletrust"
 	"github.com/tasuku43/atsura/internal/domain/sourcecatalog"
+	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
+	"github.com/tasuku43/atsura/internal/domain/tailoringplan"
 	"github.com/tasuku43/atsura/internal/infra/bundlejson"
 	"github.com/tasuku43/atsura/internal/infra/sourceexec"
+	"github.com/tasuku43/atsura/internal/infra/sourcejson"
 )
 
 type cliTrustStore struct{ state bundletrust.State }
@@ -30,12 +34,42 @@ type cliConfirmation struct{}
 
 func (cliConfirmation) Confirm(context.Context, bundletrust.Summary) error { return nil }
 
+type cliRuntimeProof struct{ err error }
+
+func (p *cliRuntimeProof) VerifyRuntime(tailoringplan.Plan) error { return p.err }
+
+type cliBoundProcess struct {
+	stdout  []byte
+	stderr  []byte
+	err     error
+	calls   int
+	request sourceprocess.BoundRequest
+}
+
+func (p *cliBoundProcess) RunBound(_ context.Context, request sourceprocess.BoundRequest) (sourceprocess.Result, error) {
+	p.calls++
+	p.request = request
+	if p.err != nil {
+		return sourceprocess.Result{Attempts: 1, ExitCode: -1, Identity: request.ExpectedIdentity}, p.err
+	}
+	return sourceprocess.Result{Attempts: 1, ExitCode: 0, Stdout: append([]byte{}, p.stdout...), Stderr: append([]byte{}, p.stderr...), Identity: request.ExpectedIdentity}, nil
+}
+
 func installTrustedBundleAuthority(command *CLI) {
 	loader := bundlejson.New()
 	runner := sourceexec.New()
 	store := &cliTrustStore{state: bundletrust.StateAdopted}
 	command.authority = bundleauthority.New(loader, runner, store, cliConfirmation{})
 	command.previews = planpreview.New(loader, store, runner)
+}
+
+func installTrustedBundleExecution(command *CLI, process *cliBoundProcess) {
+	loader := bundlejson.New()
+	runner := sourceexec.New()
+	store := &cliTrustStore{state: bundletrust.StateAdopted}
+	command.authority = bundleauthority.New(loader, runner, store, cliConfirmation{})
+	command.previews = planpreview.New(loader, store, runner)
+	command.executions = bundleexecute.New(loader, store, runner, &cliRuntimeProof{}, process, sourcejson.New())
 }
 
 func bundleArtifactPaths(t *testing.T) (string, string) {
@@ -242,6 +276,84 @@ func TestBundlePreviewReturnsCompleteSchemaTwoPlanWithoutSourceAttempt(t *testin
 	wantOriginal := []string{os.Args[0], "item", "list", "active"}
 	if strings.Join(preview.Plan.OriginalArgv, "\x00") != strings.Join(wantOriginal, "\x00") || preview.Plan.TransformedArgv[len(preview.Plan.TransformedArgv)-1] != "--json=id,name" {
 		t.Fatalf("argv original=%v transformed=%v", preview.Plan.OriginalArgv, preview.Plan.TransformedArgv)
+	}
+}
+
+func TestBundleExecuteReturnsSchemaTwoTypedTransformWithPreviewDigest(t *testing.T) {
+	catalogPath, specificationPath := bundleArtifactPaths(t)
+	bundlePath := bundleArtifactPath(t, catalogPath, specificationPath)
+
+	var previewOut, previewErr bytes.Buffer
+	previewCommand := New(strings.NewReader(""), &previewOut, &previewErr)
+	installTrustedBundleAuthority(previewCommand)
+	args := []string{"bundle", "preview", "--bundle", bundlePath, "--", os.Args[0], "item", "list"}
+	if code := previewCommand.RunContext(context.Background(), args); code != ExitOK {
+		t.Fatalf("preview code=%d stderr=%q", code, previewErr.String())
+	}
+	var preview bundlePreviewDocument
+	if err := json.Unmarshal(previewOut.Bytes(), &preview); err != nil {
+		t.Fatal(err)
+	}
+
+	process := &cliBoundProcess{stdout: []byte("[{\"name\":\"line\\n bidi:\\u202e slash:\\\\\",\"id\":0,\"ignored\":\"secret-canary\"}]")}
+	var executeOut, executeErr bytes.Buffer
+	executeCommand := New(strings.NewReader(""), &executeOut, &executeErr)
+	installTrustedBundleExecution(executeCommand, process)
+	executeArgs := []string{"bundle", "execute", "--bundle", bundlePath, "--", os.Args[0], "item", "list"}
+	if code := executeCommand.RunContext(context.Background(), executeArgs); code != ExitOK {
+		t.Fatalf("execute code=%d stderr=%q", code, executeErr.String())
+	}
+	if process.calls != 1 || strings.Contains(executeOut.String(), "secret-canary") {
+		t.Fatalf("process calls=%d output=%s", process.calls, executeOut.String())
+	}
+	var document struct {
+		SchemaVersion int `json:"schema_version"`
+		Execution     struct {
+			BundleDigest   string   `json:"bundle_digest"`
+			PlanDigest     string   `json:"plan_digest"`
+			MatchedCommand []string `json:"matched_command"`
+			WrapperKind    string   `json:"wrapper_kind"`
+			Output         struct {
+				Render  string           `json:"render"`
+				Shape   string           `json:"shape"`
+				Fields  []string         `json:"fields"`
+				Records []map[string]any `json:"records"`
+			} `json:"output"`
+			Source struct {
+				ExitCode int `json:"exit_code"`
+			} `json:"source"`
+			SourceProcessAttempts int `json:"source_process_attempts"`
+		} `json:"execution"`
+	}
+	if err := json.Unmarshal(executeOut.Bytes(), &document); err != nil {
+		t.Fatal(err)
+	}
+	execution := document.Execution
+	if document.SchemaVersion != 2 || execution.PlanDigest != preview.Preview.PlanDigest || execution.SourceProcessAttempts != 1 || execution.Source.ExitCode != 0 || execution.Output.Shape != "array" || execution.Output.Render != "compact_json" {
+		t.Fatalf("execution=%+v preview=%+v", execution, preview.Preview)
+	}
+	if strings.Join(execution.Output.Fields, ",") != "id,name" || len(execution.Output.Records) != 1 {
+		t.Fatalf("output=%+v", execution.Output)
+	}
+	record := execution.Output.Records[0]
+	if record["id"] != float64(0) || record["name"] != `line\n bidi:\u202E slash:\\` || !strings.Contains(executeOut.String(), `"records":[{"id":0,"name":`) {
+		t.Fatalf("record=%+v", record)
+	}
+	if process.request.Process.Executable != preview.Preview.Plan.Source.ResolvedPath || strings.Join(process.request.Process.Args, "\x00") != "item\x00list\x00--json=id,name" {
+		t.Fatalf("request=%+v", process.request)
+	}
+}
+
+func TestBundleExecuteFinalWriteFailureIsNonRetryableAfterOneAttempt(t *testing.T) {
+	catalogPath, specificationPath := bundleArtifactPaths(t)
+	bundlePath := bundleArtifactPath(t, catalogPath, specificationPath)
+	process := &cliBoundProcess{stdout: []byte(`[]`)}
+	var errOut bytes.Buffer
+	command := New(strings.NewReader(""), shortWriter{}, &errOut)
+	installTrustedBundleExecution(command, process)
+	code := command.RunContext(context.Background(), []string{"bundle", "execute", "--bundle", bundlePath, "--", os.Args[0], "item", "list"})
+	if code != ExitInternal || process.calls != 1 || !strings.Contains(errOut.String(), "execute_output_write_failed") || !strings.Contains(errOut.String(), "retryable: false") {
+		t.Fatalf("code=%d calls=%d stderr=%q", code, process.calls, errOut.String())
 	}
 }
 

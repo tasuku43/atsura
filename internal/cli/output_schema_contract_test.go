@@ -34,6 +34,11 @@ func TestJSONOutputMatchesCatalogContract(t *testing.T) {
 		installTrustedBundleAuthority(command)
 		return command, stdout, stderr
 	}
+	newBundleExecution := func() (*CLI, *bytes.Buffer, *bytes.Buffer) {
+		command, stdout, stderr := newDefault()
+		installTrustedBundleExecution(command, &cliBoundProcess{stdout: []byte(`[{"id":1,"name":"example"}]`)})
+		return command, stdout, stderr
+	}
 	probes := []probe{
 		{
 			path: "doctor", args: []string{"doctor", "--format=json"},
@@ -46,6 +51,7 @@ func TestJSONOutputMatchesCatalogContract(t *testing.T) {
 		{path: "bundle build", args: bundleCommandArgs("bundle build", catalogPath, specificationPath), build: newDefault},
 		{path: "bundle status", args: []string{"bundle", "status", "--bundle", bundlePath}, build: newBundleAuthority},
 		{path: "bundle preview", args: []string{"bundle", "preview", "--bundle", bundlePath, "--", os.Args[0], "item", "list"}, build: newBundleAuthority},
+		{path: "bundle execute", args: []string{"bundle", "execute", "--bundle", bundlePath, "--", os.Args[0], "item", "list"}, build: newBundleExecution},
 		{path: "bundle trust", args: []string{"bundle", "trust", "--bundle", bundlePath}, build: newBundleAuthority},
 		{path: "sample list", args: []string{"sample", "list", "--format=json"}, build: newDefault},
 		{path: "sample read", args: []string{"sample", "read", "--id", "smp_2f4a6c8e0b1d", "--format=json"}, build: newDefault},

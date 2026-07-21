@@ -681,6 +681,10 @@ func TestEveryCatalogCommandDispatchesThroughItsSpec(t *testing.T) {
 			installTrustedBundleAuthority(command)
 			args = []string{"bundle", "preview", "--bundle", bundlePath, "--", os.Args[0], "item", "list"}
 		}
+		if spec.Path == "bundle execute" {
+			installTrustedBundleExecution(command, &cliBoundProcess{stdout: []byte(`[{"id":1,"name":"example"}]`)})
+			args = []string{"bundle", "execute", "--bundle", bundlePath, "--", os.Args[0], "item", "list"}
+		}
 		if code := runCLI(command, args); code != wantCode {
 			t.Errorf("Run(%q) code = %d, want %d, stderr = %q", spec.Path, code, wantCode, stderr.String())
 		}

@@ -26,8 +26,8 @@
   },
   {
     "id": "tailoring.execute",
-    "status": "deferred",
-    "reason": "Bundle-backed source execution remains paused until the purpose-specific surface and wrapper plan contract is validated."
+    "status": "public",
+    "reason": ""
   },
   {
     "id": "tailoring.catalog.inspect",
