@@ -48,5 +48,15 @@
     "id": "tailoring.bundle.build",
     "status": "public",
     "reason": ""
+  },
+  {
+    "id": "tailoring.bundle.status",
+    "status": "public",
+    "reason": ""
+  },
+  {
+    "id": "tailoring.bundle.trust",
+    "status": "public",
+    "reason": ""
   }
 ]

@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/tasuku43/atsura/internal/app/bundleauthority"
 	"github.com/tasuku43/atsura/internal/app/bundlebuild"
 	"github.com/tasuku43/atsura/internal/app/doctorcmd"
 	"github.com/tasuku43/atsura/internal/app/planpreview"
@@ -16,6 +17,7 @@ import (
 	"github.com/tasuku43/atsura/internal/app/tailorrun"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
+	"github.com/tasuku43/atsura/internal/infra/bundlejson"
 	"github.com/tasuku43/atsura/internal/infra/catalogjson"
 	"github.com/tasuku43/atsura/internal/infra/githubcli"
 	"github.com/tasuku43/atsura/internal/infra/policyyaml"
@@ -24,6 +26,8 @@ import (
 	"github.com/tasuku43/atsura/internal/infra/sourcejson"
 	"github.com/tasuku43/atsura/internal/infra/systemdoctor"
 	"github.com/tasuku43/atsura/internal/infra/tailoringyaml"
+	"github.com/tasuku43/atsura/internal/infra/terminalconfirm"
+	"github.com/tasuku43/atsura/internal/infra/trustfile"
 )
 
 // CLI contains injected streams and application services.
@@ -34,14 +38,15 @@ type CLI struct {
 	Version string
 	Commit  string
 
-	catalog Catalog
-	doctor  *doctorcmd.Service
-	plans   *planpreview.Service
-	runs    *tailorrun.Service
-	samples *samplecmd.Service
-	sources *sourceinspect.Service
-	bundles *bundlebuild.Service
-	drafts  *policyinit.Service
+	catalog   Catalog
+	doctor    *doctorcmd.Service
+	plans     *planpreview.Service
+	runs      *tailorrun.Service
+	samples   *samplecmd.Service
+	sources   *sourceinspect.Service
+	bundles   *bundlebuild.Service
+	drafts    *policyinit.Service
+	authority *bundleauthority.Service
 }
 
 // New builds the production CLI with offline template adapters.
@@ -69,19 +74,22 @@ func newCLIWithSamples(
 	if errOut == nil {
 		errOut = io.Discard
 	}
+	trustPath, _ := trustfile.DefaultPath()
+	processes := sourceexec.New()
 	return &CLI{
 		In: in, Out: out, Err: errOut,
 		Version: "dev",
 		catalog: catalog,
 		doctor:  doctorcmd.New(inspector),
 		plans:   planpreview.New(tailoringyaml.New()),
-		runs:    tailorrun.New(tailoringyaml.New(), sourceexec.New(), sourcejson.New()),
+		runs:    tailorrun.New(tailoringyaml.New(), processes, sourcejson.New()),
 		samples: samplecmd.New(repository),
 		sources: sourceinspect.New(map[string]sourceinspect.InspectorPort{
 			"github-cli": githubcli.New(sourceexec.New()),
 		}),
-		bundles: bundlebuild.New(catalogjson.New(), policyyaml.New()),
-		drafts:  policyinit.New(catalogjson.New()),
+		bundles:   bundlebuild.New(catalogjson.New(), policyyaml.New()),
+		drafts:    policyinit.New(catalogjson.New()),
+		authority: bundleauthority.New(bundlejson.New(), processes, trustfile.New(trustPath), terminalconfirm.New()),
 	}
 }
 

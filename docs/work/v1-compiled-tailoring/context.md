@@ -106,3 +106,23 @@
   verified command, requires an explicit effect, and always produces a hidden
   deny rule. Its output round-trips through `policy validate`; missing and
   unverified commands fail without generating a draft.
+- `bundle status` now strictly reloads the exact build wrapper, recomputes all
+  embedded digests, checks an exact-digest user-local receipt, and compares the
+  current source path, SHA-256, and byte size without a source-process attempt.
+- `bundle trust` shows a material authority summary on the controlling terminal
+  and requires the full digest. Its fixed tool-local trust-store write passes
+  through `app/execution.Invoker`; redirected CLI stdin is not consulted.
+- The trust store contains only sorted exact digests, rejects malformed or
+  unsafe state, uses a create-exclusive writer lock, and preserves unrelated
+  receipts across replacement. Unix owner modes and directory sync are
+  enforced; portable Windows ACL and directory durability remain explicit
+  platform limitations.
+- A local end-to-end smoke against GitHub CLI 2.72.0 completed inspect, hidden
+  deny draft initialization, validation, bundle build, and status. Status
+  reported the exact bundle/catalog/policy digests, `trust: untrusted`,
+  `source: current`, `executable: false`, and `source_process_attempts: 0`.
+- `task check` passed with formatting, architecture, catalog/ledger contracts,
+  vet, race, and tidy checks after the bundle authority slice.
+- `task security` passed after trust-store file operations were confined to one
+  verified `os.Root`; module verification, repository security guard, static
+  analysis, and vulnerability scanning reported no remaining issue.

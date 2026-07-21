@@ -642,6 +642,7 @@ func TestE2EDoctorUsesProductionOfflineAdapter(t *testing.T) {
 func TestEveryCatalogCommandDispatchesThroughItsSpec(t *testing.T) {
 	planPath := planPolicyFile(t, planPreviewYAML)
 	catalogPath, schema2PolicyPath := bundleArtifactPaths(t)
+	bundlePath := bundleArtifactPath(t, catalogPath, schema2PolicyPath)
 	for _, spec := range DefaultCatalog().Commands() {
 		inspector := passingInspector("test/test")
 		command, _, stderr := newTestCLI(inspector)
@@ -665,6 +666,10 @@ func TestEveryCatalogCommandDispatchesThroughItsSpec(t *testing.T) {
 		}
 		if spec.Path == "policy init" {
 			args = []string{"policy", "init", "--catalog", catalogPath, "--effect", "read", "--", "item", "list"}
+		}
+		if spec.Path == "bundle status" || spec.Path == "bundle trust" {
+			installTrustedBundleAuthority(command)
+			args = append(args, "--bundle", bundlePath)
 		}
 		if code := runCLI(command, args); code != ExitOK {
 			t.Errorf("Run(%q) code = %d, stderr = %q", spec.Path, code, stderr.String())

@@ -296,8 +296,28 @@ the exact catalog digest, and emits its canonical digest and rule counts.
 `bundle build` repeats those checks and emits a wrapper containing the canonical
 bundle and its digest. Both operations are read-only: redirecting their output
 is caller-selected filesystem behavior, and neither command creates trust or
-execution authority. Policy initialization, bundle trust receipts, status, and
-runtime bundle loading remain subsequent slices.
+execution authority. `bundle status` and `bundle trust` now load that exact
+wrapper through the same strict bundle codec. Runtime bundle loading for
+preview, explain, and execution remains a subsequent slice.
+
+```text
+atr bundle status --bundle bundle.json
+atr bundle trust --bundle bundle.json
+```
+
+Status starts no source process. It recomputes the bundle, catalog, and policy
+digests, checks one user-local exact-digest trust store, and compares the
+current resolved source path, SHA-256, and byte size with the embedded source
+identity. `executable` is true only when both trust and source state are
+current. Missing source is reported separately from byte drift.
+
+Trust is a write to Atsura's one user-local `bundle-trust-store` target. It
+shows the digest, source identity, visible-command count, effect counts, and
+decision counts on a controlling terminal and requires the full bundle digest.
+Redirected stdin is not a confirmation channel. The store contains sorted
+exact digests only, uses owner-private files on Unix, serializes writers, and
+never copies policy, credentials, source output, user, machine, or time data.
+An already-present exact receipt is an idempotent success.
 
 Preview, explain, manual run, raw, and host adapters load the same bundle.
 Raw is explicit, manual, source-identity-bound, absent from the tailored

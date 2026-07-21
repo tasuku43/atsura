@@ -34,6 +34,12 @@ func TestJSONOutputMatchesCatalogContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	catalogPath, schema2PolicyPath := bundleArtifactPaths(t)
+	bundlePath := bundleArtifactPath(t, catalogPath, schema2PolicyPath)
+	newBundleAuthority := func() (*CLI, *bytes.Buffer, *bytes.Buffer) {
+		command, stdout, stderr := newDefault()
+		installTrustedBundleAuthority(command)
+		return command, stdout, stderr
+	}
 	probes := []probe{
 		{
 			path: "doctor", args: []string{"doctor", "--format=json"},
@@ -44,6 +50,8 @@ func TestJSONOutputMatchesCatalogContract(t *testing.T) {
 		{path: "help", args: []string{"help", "--format=agent"}, build: newDefault, view: "index"},
 		{path: "policy validate", args: bundleCommandArgs("policy validate", catalogPath, schema2PolicyPath), build: newDefault},
 		{path: "bundle build", args: bundleCommandArgs("bundle build", catalogPath, schema2PolicyPath), build: newDefault},
+		{path: "bundle status", args: []string{"bundle", "status", "--bundle", bundlePath}, build: newBundleAuthority},
+		{path: "bundle trust", args: []string{"bundle", "trust", "--bundle", bundlePath}, build: newBundleAuthority},
 		{path: "plan preview", args: []string{"plan", "preview", "--config", planPath, "--", "gh", "pr", "list"}, build: newDefault},
 		{path: "run", args: runSourceArgs(runPolicyFile(t, "allow")), build: newDefault},
 		{path: "sample list", args: []string{"sample", "list", "--format=json"}, build: newDefault},

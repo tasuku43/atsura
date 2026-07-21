@@ -28,6 +28,29 @@ type Runner struct {
 // New creates a bounded process runner.
 func New() *Runner { return &Runner{} }
 
+// Identify resolves and fingerprints one executable without starting it.
+// Status and trust use this read-only boundary to detect source drift.
+func (r *Runner) Identify(ctx context.Context, executable string) (sourceprocess.Identity, error) {
+	if ctx == nil {
+		return sourceprocess.Identity{}, fmt.Errorf("source identity context is nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return sourceprocess.Identity{}, err
+	}
+	resolved, err := resolveExecutable(executable)
+	if err != nil {
+		return sourceprocess.Identity{}, err
+	}
+	identity, err := identifyExecutable(resolved)
+	if err != nil {
+		return sourceprocess.Identity{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return sourceprocess.Identity{}, err
+	}
+	return identity, nil
+}
+
 // Run resolves, fingerprints, revalidates, and starts at most one process.
 func (r *Runner) Run(ctx context.Context, request sourceprocess.Request) (sourceprocess.Result, error) {
 	zero := sourceprocess.Result{ExitCode: -1}

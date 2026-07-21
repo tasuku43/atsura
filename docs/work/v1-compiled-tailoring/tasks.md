@@ -23,7 +23,7 @@
 - [x] Implement strict schema-2 policy validation and normalized policy output.
 - [x] Implement `policy init` as an explicit-effect hidden deny draft without auto-trust.
 - [x] Implement canonical bundle build and digest output without auto-trust.
-- [ ] Implement bundle trust receipt and status/drift.
+- [x] Implement bundle trust receipt and status/drift.
 
 ## Execution and policy
 

@@ -447,6 +447,19 @@ func artifactInputErrors(command string, includeBundle bool) []CommandError {
 	)
 }
 
+func bundleFileErrors(command string) []CommandError {
+	return []CommandError{
+		declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help "+command, "Pass one exact bundle build JSON path."),
+		declaredCommandError(fault.KindNotFound, "bundle_file_not_found", false, "bundle build", "Build and select a canonical bundle document."),
+		declaredCommandError(fault.KindPermission, "bundle_file_permission_denied", false, "bundle status", "Correct bundle file permissions."),
+		declaredCommandError(fault.KindInvalidInput, "unsafe_bundle_file", false, "bundle build", "Use a stable regular bundle file."),
+		declaredCommandError(fault.KindInvalidInput, "bundle_file_too_large", false, "bundle build", "Build a bundle within the 2 MiB limit."),
+		declaredCommandError(fault.KindUnavailable, "bundle_file_read_failed", true, "bundle status", "Retry after the bundle file is readable."),
+		declaredCommandError(fault.KindInvalidInput, "invalid_bundle_file", false, "bundle build", "Rebuild and review strict canonical bundle JSON."),
+		declaredCommandError(fault.KindRejected, "bundle_digest_mismatch", false, "bundle build", "Rebuild and review the changed bundle content."),
+	}
+}
+
 // DefaultCatalog returns the public CLI contract.
 func DefaultCatalog() Catalog {
 	return NewCatalog(
@@ -646,6 +659,89 @@ func DefaultCatalog() Catalog {
 				Errors:        artifactInputErrors("bundle build", true),
 			},
 			handler: runBundleBuild,
+		},
+		CommandSpec{
+			Path:    "bundle status",
+			Summary: "Inspect exact bundle trust and source drift without execution",
+			Args:    "--bundle <path>",
+			Effect:  operation.EffectRead,
+			Role:    RoleUtility,
+			Agent: AgentContract{
+				CapabilityID: "tailoring.bundle.status",
+				Outcome:      "Determine whether one exact canonical bundle is user-trusted and still bound to the current source executable without starting it",
+				Inputs: []CommandInput{
+					{Name: "--bundle", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read the exact bounded JSON document emitted by bundle build.", AllowedValues: []string{}},
+				},
+				Output: CommandOutput{
+					Formats: []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
+					Fields: []OutputField{
+						{Name: "bundle_digest", Type: OutputFieldTypeString, Description: "Exact canonical bundle identity."},
+						{Name: "catalog_digest", Type: OutputFieldTypeString, Description: "Recomputed catalog identity embedded in the bundle."},
+						{Name: "policy_digest", Type: OutputFieldTypeString, Description: "Recomputed normalized policy identity embedded in the bundle."},
+						{Name: "trust", Type: OutputFieldTypeString, Description: "User-local trust state: trusted, untrusted, or invalid."},
+						{Name: "source", Type: OutputFieldTypeString, Description: "Current executable state: current, drifted, or unavailable."},
+						{Name: "executable", Type: OutputFieldTypeBoolean, Description: "True only when exact trust and source identity are both current."},
+						{Name: "source_path", Type: OutputFieldTypeString, Description: "Exact resolved source path embedded in the bundle."},
+						{Name: "source_sha256", Type: OutputFieldTypeString, Description: "Exact source byte identity embedded in the bundle."},
+						{Name: "source_version", Type: OutputFieldTypeString, Description: "Adapter-observed source version embedded in the bundle."},
+						{Name: "source_process_attempts", Type: OutputFieldTypeInteger, Description: "Always zero; status starts no source process."},
+					},
+					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable,
+					JSONEnvelope: "status", JSONSchemaVersion: 1,
+				},
+				Prerequisites: []string{"One bundle build JSON document; repository presence does not imply trust."},
+				Errors: append(bundleFileErrors("bundle status"),
+					declaredCommandError(fault.KindContract, "output_contract_exceeded", false, "help bundle status", "Repair the bounded status projection."),
+					declaredCommandError(fault.KindContract, "output_encoding_failed", false, "help bundle status", "Repair deterministic status JSON."),
+					declaredCommandError(fault.KindInternal, "internal_error", false, "bundle status", "Inspect bundle authority wiring."),
+					declaredCommandError(fault.KindInternal, "output_write_failed", true, "bundle status", "Retry with a writable output stream."),
+					declaredCommandError(fault.KindCanceled, "operation_canceled", true, "bundle status", "Retry when the caller is ready."),
+				),
+			},
+			handler: runBundleStatus,
+		},
+		CommandSpec{
+			Path:    "bundle trust",
+			Summary: "Interactively trust one exact canonical bundle digest",
+			Args:    "--bundle <path>",
+			Effect:  operation.EffectWrite,
+			Role:    RoleAct,
+			Agent: AgentContract{
+				CapabilityID: "tailoring.bundle.trust",
+				Outcome:      "Display the material authority of one current bundle on a controlling terminal and add its exact digest to the user-local trust store after exact confirmation",
+				Inputs:       []CommandInput{{Name: "--bundle", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read the exact bounded JSON document emitted by bundle build.", AllowedValues: []string{}}},
+				Output: CommandOutput{
+					Formats: []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
+					Fields: []OutputField{
+						{Name: "bundle_digest", Type: OutputFieldTypeString, Description: "Exact digest whose user-local trust was confirmed."},
+						{Name: "trusted", Type: OutputFieldTypeBoolean, Description: "True after the exact receipt is present."},
+						{Name: "already_trusted", Type: OutputFieldTypeBoolean, Description: "True when no store mutation was needed."},
+						{Name: "source", Type: OutputFieldTypeString, Description: "Source identity state; trust succeeds only when current."},
+						{Name: "source_process_attempts", Type: OutputFieldTypeInteger, Description: "Always zero; trust starts no source process."},
+					},
+					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable,
+					JSONEnvelope: "trust", JSONSchemaVersion: 1,
+				},
+				Prerequisites: []string{"A current canonical bundle and an interactive controlling terminal; redirected stdin cannot grant trust."},
+				FixedTarget:   &FixedTarget{Kind: "bundle-trust-store", ID: "selected", Description: "This Atsura installation's user-local exact-digest bundle trust store.", Scope: FixedTargetScopeToolLocal},
+				Mutation:      &MutationContract{TargetKind: "bundle-trust-store", TargetInputs: []string{}, Impact: operation.Impact{Cardinality: operation.CardinalityOne, Notification: operation.DeclarationNo, AccessChange: operation.DeclarationYes, Destructive: operation.DeclarationNo}},
+				Errors: append(bundleFileErrors("bundle trust"),
+					declaredCommandError(fault.KindRejected, "invalid_bundle_trust_store", false, "bundle status", "Repair or reconcile invalid user-local trust state."),
+					declaredCommandError(fault.KindRejected, "bundle_source_drift", false, "bundle status", "Inspect source drift before building and trusting new evidence."),
+					declaredCommandError(fault.KindUnavailable, "bundle_trust_store_failed", false, "bundle status", "Reconcile trust state after a safe store failure."),
+					declaredCommandError(fault.KindContract, "invalid_mutation_contract", false, "help bundle trust", "Repair the trust mutation declaration."),
+					declaredCommandError(fault.KindContract, "missing_mutation_action", false, "help bundle trust", "Configure the trust store mutation action."),
+					declaredCommandError(fault.KindRejected, "missing_mutation_policy", false, "help bundle trust", "Configure interactive exact-digest confirmation."),
+					declaredCommandError(fault.KindRejected, "mutation_rejected", false, "bundle status", "Review the authority summary and confirm only the exact digest."),
+					declaredCommandError(fault.KindContract, "unclassified_mutation_outcome", false, "bundle status", "Reconcile trust state before another mutation."),
+					declaredCommandError(fault.KindContract, "output_contract_exceeded", false, "help bundle trust", "Repair the bounded trust result projection."),
+					declaredCommandError(fault.KindContract, "output_encoding_failed", false, "help bundle trust", "Repair deterministic trust JSON."),
+					declaredCommandError(fault.KindInternal, "internal_error", false, "bundle status", "Inspect bundle authority wiring."),
+					declaredCommandError(fault.KindInternal, "mutation_output_write_failed", false, "bundle status", "Reconcile confirmed trust without repeating it."),
+					declaredCommandError(fault.KindCanceled, "operation_canceled", true, "bundle trust", "Retry when the caller is ready."),
+				),
+			},
+			handler: runBundleTrust,
 		},
 		CommandSpec{
 			Path:    "plan preview",

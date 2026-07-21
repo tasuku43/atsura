@@ -44,7 +44,7 @@ unconnected utilities.
 - [ ] Core catalog, policy, bundle, plan, and decision schemas contain no GitHub- or Claude-specific fields; conformance fixtures exercise an alternate synthetic source and host adapter.
 - [ ] `source inspect` and `source refresh` deterministically produce provenance-bearing catalogs for validated GitHub CLI 2.x reference fixtures under declared probe limits and classify extensions/dynamic evidence without granting permission.
 - [ ] `policy init` and `policy validate` create and validate strict schema-2 deny-by-default policy with visibility, effect, decision, target/impact, argv, and typed transform contracts.
-- [ ] `bundle build`, `bundle trust`, and `bundle status` produce canonical content-addressed bundles, require interactive user-local trust, detect every source/catalog/policy/bundle drift, and never overwrite unrelated state.
+- [x] `bundle build`, `bundle trust`, and `bundle status` produce canonical content-addressed bundles, require interactive user-local trust, detect every source/catalog/policy/bundle drift, and never overwrite unrelated state.
 - [ ] `plan preview`, `plan explain`, and `run` consume the same trusted bundle; deny, untrusted, unconfirmed, mismatch, and drift paths make zero source task attempts.
 - [ ] Read execution and confirmed mutation execution use exact argv, one controlled attempt, bounded process/output behavior, typed transformations, and non-retryable uncertain mutation outcomes.
 - [ ] `raw` is an explicit manual source-identity-bound bypass, is never fallback or recovery, and is absent from the tailored agent surface.

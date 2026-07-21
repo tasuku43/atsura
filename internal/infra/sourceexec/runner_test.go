@@ -130,6 +130,16 @@ func TestRunRejectsPreflightWithoutAttempt(t *testing.T) {
 	}
 }
 
+func TestIdentifyReturnsIdentityWithoutStartingProcess(t *testing.T) {
+	identity, err := New().Identify(context.Background(), os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if identity.ResolvedPath == "" || len(identity.SHA256) != 64 || identity.Size <= 0 {
+		t.Fatalf("identity = %+v", identity)
+	}
+}
+
 func TestRunDetectsExecutableDriftBeforeAndAfterStart(t *testing.T) {
 	copyExecutable := func(t *testing.T) string {
 		t.Helper()

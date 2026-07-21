@@ -14,8 +14,12 @@ schema-2 policy, mutation target/impact invariants, canonical bundle assembly,
 and recomputed drift validation. Infrastructure now adds shared bounded
 regular-file reads, strict duplicate/unknown-field JSON decoding, strict
 schema-2 YAML decoding, and exact source-inspection envelope loading.
-Application orchestration validates or builds without file writes or trust I/O;
+Build application orchestration validates without file writes or trust I/O;
 CLI presentation emits the reviewed artifacts to stdout.
+The bundle-authority slice now adds a strict bundle wrapper loader, a
+read-only source identity port, exact-digest status, controlling-terminal
+confirmation, and a user-local trust-store adapter. Trust writes pass through
+`app/execution.Invoker`; status and trust start no source process.
 
 ## Dependency direction
 

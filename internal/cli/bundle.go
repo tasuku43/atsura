@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/tasuku43/atsura/internal/domain/bundletrust"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
@@ -34,6 +35,37 @@ type bundleBuildDocument struct {
 type bundleBuildPayload struct {
 	BundleDigest string                 `json:"bundle_digest"`
 	Bundle       tailoringbundle.Bundle `json:"bundle"`
+}
+
+type bundleStatusDocument struct {
+	SchemaVersion int                 `json:"schema_version"`
+	Status        bundleStatusPayload `json:"status"`
+}
+
+type bundleStatusPayload struct {
+	BundleDigest          string                  `json:"bundle_digest"`
+	CatalogDigest         string                  `json:"catalog_digest"`
+	PolicyDigest          string                  `json:"policy_digest"`
+	Trust                 bundletrust.State       `json:"trust"`
+	Source                bundletrust.SourceState `json:"source"`
+	Executable            bool                    `json:"executable"`
+	SourcePath            string                  `json:"source_path"`
+	SourceSHA256          string                  `json:"source_sha256"`
+	SourceVersion         string                  `json:"source_version"`
+	SourceProcessAttempts int                     `json:"source_process_attempts"`
+}
+
+type bundleTrustDocument struct {
+	SchemaVersion int                `json:"schema_version"`
+	Trust         bundleTrustPayload `json:"trust"`
+}
+
+type bundleTrustPayload struct {
+	BundleDigest          string                  `json:"bundle_digest"`
+	Trusted               bool                    `json:"trusted"`
+	AlreadyTrusted        bool                    `json:"already_trusted"`
+	Source                bundletrust.SourceState `json:"source"`
+	SourceProcessAttempts int                     `json:"source_process_attempts"`
 }
 
 func runPolicyValidate(ctx context.Context, c *CLI, _ CommandSpec, intent operation.Intent, inputs ParsedInputs) int {
@@ -74,6 +106,36 @@ func runBundleBuild(ctx context.Context, c *CLI, _ CommandSpec, intent operation
 	}
 	document := bundleBuildDocument{SchemaVersion: 1, Build: bundleBuildPayload{BundleDigest: result.BundleDigest, Bundle: result.Bundle}}
 	return c.emitJSONDocument(ctx, document, "bundle build")
+}
+
+func runBundleStatus(ctx context.Context, c *CLI, _ CommandSpec, intent operation.Intent, inputs ParsedInputs) int {
+	result, err := c.authority.Status(ctx, intent, inputs.One("--bundle"))
+	if err != nil {
+		return c.fail(ctx, err)
+	}
+	document := bundleStatusDocument{SchemaVersion: 1, Status: bundleStatusPayload{
+		BundleDigest: result.BundleDigest, CatalogDigest: result.CatalogDigest, PolicyDigest: result.PolicyDigest,
+		Trust: result.Trust, Source: result.Source, Executable: result.Executable, SourcePath: result.SourcePath,
+		SourceSHA256: result.SourceSHA256, SourceVersion: result.SourceVersion, SourceProcessAttempts: result.SourceProcessAttempts,
+	}}
+	return c.emitJSONDocument(ctx, document, "bundle status")
+}
+
+func runBundleTrust(ctx context.Context, c *CLI, spec CommandSpec, intent operation.Intent, inputs ParsedInputs) int {
+	if spec.Agent.FixedTarget == nil || spec.Agent.Mutation == nil {
+		return c.fail(ctx, fault.New(fault.KindContract, "invalid_mutation_contract", "The bundle trust mutation contract is incomplete.", false))
+	}
+	intent.Target = operation.TargetRef{Kind: spec.Agent.FixedTarget.Kind, ID: spec.Agent.FixedTarget.ID}
+	intent.Impact = spec.Agent.Mutation.Impact
+	result, err := c.authority.Trust(ctx, intent, inputs.One("--bundle"))
+	if err != nil {
+		return c.fail(ctx, err)
+	}
+	document := bundleTrustDocument{SchemaVersion: 1, Trust: bundleTrustPayload{
+		BundleDigest: result.BundleDigest, Trusted: result.Trusted, AlreadyTrusted: result.AlreadyTrusted,
+		Source: result.Source, SourceProcessAttempts: result.SourceProcessAttempts,
+	}}
+	return c.emitJSONDocument(ctx, document, "bundle trust")
 }
 
 func (c *CLI) emitJSONDocument(ctx context.Context, document any, command string) int {

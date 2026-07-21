@@ -133,6 +133,24 @@ declare read, create, or write, and the generated draft remains hidden and
 denied. A denied mutation draft deliberately has no target or impact binding;
 those facts become mandatory only when the user changes it to confirmation.
 
+The current trust implementation stores one bounded strict JSON document in
+the user's operating-system configuration area. Its only records are sorted
+exact bundle digests. On Unix the directory is owner-only and the file and
+cross-process lock are owner-readable/writable; replacement is staged, synced,
+renamed, and followed by a directory sync. A concurrent writer fails without
+overwriting another receipt. Windows enforces regular-file shape and
+create-exclusive locking, but portable Go mode bits do not prove ACL ownership
+or directory-sync durability. Any malformed, unsafe, or present invalid trust
+state fails closed and is not repaired automatically.
+
+`bundle status` and `bundle trust` recompute the canonical bundle digest and
+all embedded catalog/policy invariants. They identify the embedded resolved
+source path without starting it and compare its path, SHA-256, and byte size.
+Trust confirmation opens the controlling terminal directly and requires the
+full digest; CLI stdin, a hook payload, or repository content cannot satisfy
+it. The trust mutation uses the shared application invoker with an explicit
+single-target, non-notifying, non-destructive access-change impact.
+
 ## YAML policy boundary
 
 - Per-command YAML is the selected configuration direction.

@@ -10,15 +10,39 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tasuku43/atsura/internal/app/bundleauthority"
+	"github.com/tasuku43/atsura/internal/domain/bundletrust"
 	"github.com/tasuku43/atsura/internal/domain/sourcecatalog"
+	"github.com/tasuku43/atsura/internal/infra/bundlejson"
+	"github.com/tasuku43/atsura/internal/infra/sourceexec"
 )
+
+type cliTrustStore struct{ state bundletrust.State }
+
+func (s *cliTrustStore) Inspect(context.Context, string) bundletrust.State { return s.state }
+func (s *cliTrustStore) Add(context.Context, string) (bool, error) {
+	s.state = bundletrust.StateTrusted
+	return true, nil
+}
+
+type cliConfirmation struct{}
+
+func (cliConfirmation) Confirm(context.Context, bundletrust.Summary) error { return nil }
+
+func installTrustedBundleAuthority(command *CLI) {
+	command.authority = bundleauthority.New(bundlejson.New(), sourceexec.New(), &cliTrustStore{state: bundletrust.StateTrusted}, cliConfirmation{})
+}
 
 func bundleArtifactPaths(t *testing.T) (string, string) {
 	t.Helper()
+	identity, err := sourceexec.New().Identify(context.Background(), os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
 	catalog := sourcecatalog.Catalog{
 		SchemaVersion: 1,
 		Adapter:       sourcecatalog.Adapter{Kind: "atsura.source.synthetic", ContractVersion: 1},
-		Source:        sourcecatalog.Source{RequestedExecutable: "fixture", ResolvedPath: "/opt/bin/fixture", SHA256: strings.Repeat("a", 64), Size: 42, Version: "1.0.0"},
+		Source:        sourcecatalog.Source{RequestedExecutable: os.Args[0], ResolvedPath: identity.ResolvedPath, SHA256: identity.SHA256, Size: identity.Size, Version: "1.0.0"},
 		Probe:         sourcecatalog.Probe{IDs: []string{"help", "version"}, Attempts: 2},
 		Commands: []sourcecatalog.Command{{
 			Path: []string{"item", "list"}, Summary: "List items", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin,
@@ -62,6 +86,20 @@ rules:
 	return catalogPath, policyPath
 }
 
+func bundleArtifactPath(t *testing.T, catalogPath, policyPath string) string {
+	t.Helper()
+	var out, errOut bytes.Buffer
+	command := New(strings.NewReader(""), &out, &errOut)
+	if code := command.RunContext(context.Background(), bundleCommandArgs("bundle build", catalogPath, policyPath)); code != ExitOK {
+		t.Fatalf("bundle build code = %d, stderr = %q", code, errOut.String())
+	}
+	path := filepath.Join(t.TempDir(), "bundle.json")
+	if err := os.WriteFile(path, out.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 func bundleCommandArgs(path, catalog, policy string) []string {
 	return []string{strings.Split(path, " ")[0], strings.Split(path, " ")[1], "--catalog", catalog, "--policy", policy}
 }
@@ -93,6 +131,42 @@ func TestPolicyValidateAndBundleBuildCloseCanonicalFileWorkflow(t *testing.T) {
 	digest, err := build.Build.Bundle.Digest()
 	if err != nil || digest != build.Build.BundleDigest || build.Build.Bundle.PolicyDigest != validation.Validation.PolicyDigest {
 		t.Fatalf("build = %+v, digest = %q, error = %v", build, digest, err)
+	}
+}
+
+func TestBundleStatusAndTrustUseExactBundleWithoutSourceProcess(t *testing.T) {
+	catalogPath, policyPath := bundleArtifactPaths(t)
+	bundlePath := bundleArtifactPath(t, catalogPath, policyPath)
+	trust := &cliTrustStore{state: bundletrust.StateUntrusted}
+	newCommand := func() (*CLI, *bytes.Buffer, *bytes.Buffer) {
+		var out, errOut bytes.Buffer
+		command := New(strings.NewReader("redirected input must not confirm"), &out, &errOut)
+		command.authority = bundleauthority.New(bundlejson.New(), sourceexec.New(), trust, cliConfirmation{})
+		return command, &out, &errOut
+	}
+
+	status, out, errOut := newCommand()
+	if code := status.RunContext(context.Background(), []string{"bundle", "status", "--bundle", bundlePath}); code != ExitOK {
+		t.Fatalf("bundle status code = %d, stderr = %q", code, errOut.String())
+	}
+	var statusDocument bundleStatusDocument
+	if err := json.Unmarshal(out.Bytes(), &statusDocument); err != nil {
+		t.Fatal(err)
+	}
+	if statusDocument.Status.Trust != bundletrust.StateUntrusted || statusDocument.Status.Source != bundletrust.SourceCurrent || statusDocument.Status.Executable || statusDocument.Status.SourceProcessAttempts != 0 {
+		t.Fatalf("status = %+v", statusDocument.Status)
+	}
+
+	trustCommand, out, errOut := newCommand()
+	if code := trustCommand.RunContext(context.Background(), []string{"bundle", "trust", "--bundle", bundlePath}); code != ExitOK {
+		t.Fatalf("bundle trust code = %d, stderr = %q", code, errOut.String())
+	}
+	var trustDocument bundleTrustDocument
+	if err := json.Unmarshal(out.Bytes(), &trustDocument); err != nil {
+		t.Fatal(err)
+	}
+	if !trustDocument.Trust.Trusted || trustDocument.Trust.AlreadyTrusted || trustDocument.Trust.SourceProcessAttempts != 0 || trust.state != bundletrust.StateTrusted {
+		t.Fatalf("trust = %+v, store = %q", trustDocument.Trust, trust.state)
 	}
 }
 
