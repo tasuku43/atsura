@@ -1,22 +1,43 @@
 # Release Model
 
-## Atsura bootstrap decision
+## Atsura v0.1 release-quality decision
 
-Atsura is not published or released by this bootstrap. The repository identity
-is `tasuku43/atsura`, the binary is `atr`, and MIT is the deliberate project
-license. The existing archive and workflow machinery remains inherited,
-executable scaffolding; it is not approval to tag, publish, update a Formula, or
-promise the current platform matrix to users.
+Atsura is not yet published or released. The repository identity is
+`tasuku43/atsura`, the binary is `atr`, and MIT is the deliberate project
+license. ADR 0002 defines release-quality for the first product slice without
+authorizing publication.
 
-Before the first Atsura release, a separate reviewed change must decide the
-supported platforms, compatibility starting point, prerelease ownership,
-package managers, signing or provenance, withdrawal procedure, protected
-workflow environments, and human publication reviewer. That change must also
-review whether the inherited release mechanism fits the actual Atsura product.
-No commit, push, pull request, tag, artifact publication, or release is part of
-the identity bootstrap.
+The v0.1 decisions are:
+
+- retain the inherited Linux amd64/arm64, macOS amd64/arm64, and Windows amd64
+  pure-Go artifact matrix;
+- treat command and schema compatibility as patch-stable within one v0.x minor
+  series; a later v0 minor may break only with explicit migration notes;
+- permit prerelease tags, created only by the repository owner after the full
+  manual public/release review;
+- publish, when separately authorized, through GitHub Releases; stable versions
+  may update the repository Homebrew Formula, while prereleases do not;
+- maintain no additional package manager for v0.1;
+- claim checksums and reproducible archives, but no code signing, notarization,
+  SBOM, or externally verifiable provenance;
+- use a GitHub `release` environment for the publish job and require the
+  repository owner to configure its human reviewer protection before the first
+  tag;
+- withdraw a vulnerable or broken release visibly, remove or supersede package
+  metadata as appropriate, and publish a new version rather than replacing
+  immutable artifacts; and
+- require the repository owner to perform and record the final public-boundary
+  review.
+
+These decisions fit a local pure-Go wrapper with no bundled provider SDK or
+credential store. A later native hook, signing system, extra package manager,
+or non-Go runtime dependency must revise the matrix and release contract.
 
 The base template defines byte-for-byte reproducible archives within a pinned pure-Go build contract and a public, reproducible-enough overall release path without private package infrastructure. A derived project must review supported platforms, artifact signing, provenance, package managers, and compatibility promises before its first release.
+
+Passing `task release:check` proves artifact mechanics for a commit. It does not
+prove that GitHub environment protection is configured and does not create a
+release. That external setting and the human review remain first-tag blockers.
 
 ## Version contract
 
@@ -171,6 +192,11 @@ task public:check
 
 Then review the exact commit that will receive the tag. A clean local run does not authorize tagging a different revision.
 
+For the v0.1 series, release preparation also replays both documented local
+tailoring examples: preview must make zero direct source attempts and run must
+make exactly one, return the declared transformed records, and require no live
+provider account.
+
 ## Failure and recovery
 
 - If preflight or any matrix build fails, publish nothing.
@@ -194,17 +220,17 @@ A derived project that needs stronger guarantees must document and test:
 
 Absence of these controls must remain visible in the security model and release notes rather than being implied away.
 
-## Derived-project release decisions
+## Future release decisions
 
-Before the first project-specific tag, decide:
+Revisit the accepted v0.1 choices when evidence requires changing:
 
-1. Which platforms are supported and tested?
-2. When does compatibility become stable?
-3. Are prereleases allowed, and who may create them?
-4. Which package managers are maintained?
-5. Are signing, notarization, SBOMs, or attestations required?
-6. How are vulnerable or broken releases withdrawn?
-7. Which workflow permissions and environments protect publication?
-8. Who performs the manual public-boundary review?
+1. supported and tested platforms;
+2. the compatibility-stability threshold;
+3. prerelease authorization;
+4. maintained package managers;
+5. signing, notarization, SBOM, or attestation requirements;
+6. withdrawal procedure;
+7. workflow permissions or protected environments; or
+8. the manual public-boundary reviewer.
 
 Record durable trade-offs in an ADR and update `task release:check` so the chosen contract is executable.

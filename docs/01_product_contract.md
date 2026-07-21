@@ -1,8 +1,9 @@
 # Product Contract
 
 This contract defines Atsura's current product vocabulary and intended user
-experience. `atr plan preview` and its schema-1 YAML are the first executable,
-experimental contract; neither is stable yet.
+experience. `atr plan preview` is executable today. ADR 0002 selects
+`atr run` as the finite v0.1 release-quality boundary; it is supported only
+after its implementation and all required gates land together.
 
 ## Product statement
 
@@ -55,7 +56,16 @@ The execution and hook protocols remain undecided. The current preview path is:
 atr plan preview --config <path> -- <source-command> [args...]
 ```
 
-It returns schema-1 JSON under `plan` and starts no source process.
+It returns schema-1 JSON under `plan` and starts no source process. The selected
+execution path is:
+
+```text
+atr run --config <path> -- <source-command> [args...]
+```
+
+Both paths load and compile the same explicitly selected file. Passing
+`--config` trusts that exact file for the current invocation only; Atsura does
+not discover, persist, inherit, or automatically activate policy.
 
 ## Working vocabulary
 
@@ -80,10 +90,11 @@ The user-facing configuration direction for tailoring one source command or
 command family. YAML declares policy differences and processing actions rather
 than executable shell text.
 
-Schema 1 is a deliberately narrow experiment: one exact executable and argv
-prefix, an `allow` or `deny` decision with a reason, appended argv, and a typed
-JSON `select`/`rename`/`compact_json` output description. Matching inheritance,
-file locations, activation, and trust workflow are not stable.
+Schema 1 is deliberately narrow: one exact executable and argv prefix, required
+`effect: read`, an `allow` or `deny` decision with a reason, appended argv, and
+a typed JSON `select`/`rename`/`compact_json` output description. Create/write,
+confirmation, matching inheritance, file locations, activation, and persistent
+trust are unsupported.
 Repository-provided YAML is not automatically user-trusted.
 
 ### Tailored CLI surface
@@ -122,6 +133,13 @@ The controlled runtime that applies a valid plan. The wrapper does not decide
 policy independently. It executes the ordered stages and reports stage-specific
 results or failures.
 
+The v0.1 wrapper accepts only an allowed read plan. It resolves and fingerprints
+one regular executable, revalidates it immediately before and after execution,
+passes executable and argv directly without a shell, supplies EOF stdin,
+inherits the caller's current directory and environment, and starts at most one
+direct source process. Children created by the source CLI are source-owned
+behavior and are not additional Atsura attempts.
+
 ### Invocation transformation
 
 The exact change from the attempted executable and argv to the source
@@ -154,6 +172,27 @@ The initial direction prefers source-native structured output and typed built-in
 transformations. jq expressions, RTK, plugins, and generic external
 transformers remain future decisions.
 
+For v0.1, source stdout must be one JSON object or an array of JSON objects.
+Every record must contain each selected field. Missing fields, duplicate object
+keys at any depth, invalid JSON, non-object records, and excessive bytes or
+complexity fail the transform. Null, empty string/array/object, zero, and false
+remain distinct values. Output record fields follow YAML `select` order with
+the declared renames.
+
+Successful execution returns schema-1 JSON under `execution` with exactly:
+
+- `decision`;
+- `matched_command`;
+- `reason`;
+- `result_shape` (`object` or `array`);
+- ordered `fields`;
+- transformed `records`; and
+- `source_process_attempts`, equal to one.
+
+The execution envelope is complete and exhaustive for the exact bounded source
+result captured by that invocation. It makes no claim that the source CLI
+queried all provider history.
+
 ### Policy rejection
 
 A pre-execution result stating that trusted YAML rejects the attempted command
@@ -178,8 +217,19 @@ fails after the source command ran, Atsura must not:
 - expose raw output unless the reviewed contract explicitly permits it; or
 - choose raw execution as recovery.
 
-The exact handling of source nonzero exit, stderr, partial stdout, and
-transformer failure must be declared before execution is supported.
+The v0.1 execution contract is:
+
+- fixed timeout: 30 seconds;
+- direct source-process attempts: at most one, with no Atsura retry;
+- stdout limit: 4 MiB;
+- stderr limit: 256 KiB;
+- nonzero exit, timeout, cancellation, overflow, executable drift, and transform
+  failure produce no success stdout and never expose raw source stdout;
+- failed source stderr and private causes are not copied into public faults;
+- bounded stderr from a successful source process is visibly escaped on Atsura
+  stderr before the checked success write; and
+- no failure selects raw execution, another transformer, changed argv, or a
+  repeated source command.
 
 ## Deterministic core versus coding agent
 
@@ -199,7 +249,7 @@ The stable project identity is `Atsura`, binary `atr`, and Go module
 The following are not yet stable:
 
 - command paths and hook protocol;
-- YAML schema and storage locations;
+- YAML schema beyond the v0.1 patch series and storage locations;
 - catalog and plan schemas;
 - built-in action vocabulary;
 - output transformation contract;
@@ -211,7 +261,9 @@ The following are not yet stable:
 - A real source-CLI inspector or generated catalog.
 - Policy activation, precedence, inheritance, or trusted repository loading.
 - Hook installation or command interception.
-- Wrapper execution and output transformation.
+- Create/write wrapper execution, confirmation, or mutation policy.
+- Non-JSON, streaming, aggregate, map, filter, sort, or multi-source output transforms.
+- Raw execution or automatic source-output fallback.
 - Arbitrary shell, jq, external-transformer, plugin, or RTK execution.
 - Usage-history collection and agent policy activation.
 - Direct external API integrations.

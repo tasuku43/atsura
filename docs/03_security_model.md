@@ -1,7 +1,8 @@
 # Security Model
 
-This seed model covers the intended YAML-to-plan-to-wrapper boundary. It does
-not claim that the current binary securely intercepts or executes a source CLI.
+This model covers the YAML-to-plan-to-wrapper boundary. The current binary
+previews plans; ADR 0002 defines the security conditions that the v0.1 local
+read-only runner must satisfy before execution is supported.
 
 ## Security objective
 
@@ -98,6 +99,9 @@ wrapper begins.
   the exact reviewed configuration or a defined semantic digest.
 - Runtime evaluation never falls back to another configuration source after a
   present source fails validation.
+- Passing `--config` explicitly selects and trusts only that exact file for the
+  current preview or run. It creates no persisted trust and does not authorize
+  other repository configuration.
 
 The initial YAML contains no arbitrary shell. Each before, after, invocation,
 and output action names a typed Atsura built-in with validated inputs and known
@@ -130,9 +134,12 @@ semantics, dependency integrity, and recovery.
 ## Source identity and drift
 
 Catalog and plan evidence must be bound to the source executable they describe.
-At minimum, the design detects changes to the resolved executable or reported
-version. PATH precedence, symlinks, replacement, plugins, aliases, and
-self-updating CLIs may require stronger evidence.
+For v0.1 run, the adapter resolves a PATH name or explicit path, follows it to
+one absolute regular executable, hashes its bytes with SHA-256, and compares
+the same resolved identity immediately before and after the direct attempt.
+Preview remains usable without an installed source and does not claim resolved
+identity. PATH precedence, plugins, aliases, interpreters, dynamic libraries,
+source-created children, and a compromised OS remain outside this evidence.
 
 A mismatch invalidates controlled execution. Atsura does not silently
 regenerate a catalog and apply old permissions to new capabilities.
@@ -141,20 +148,29 @@ The executor resolves and revalidates the executable immediately before launch.
 
 ## Process execution boundary
 
-A future executor must:
+The v0.1 executor must:
 
 - accept an exact executable and argv vector, never an interpolated shell
   program;
 - perform zero source attempts for invalid, rejected, unconfirmed, stale, or
   untrusted plans;
-- use one caller context and bound working directory, inherited environment,
-  time, stdout, and stderr;
+- accept only a plan whose reviewed schema effect is `read`; Atsura does not
+  infer safety from command text;
+- use one caller context, inherit the current working directory and
+  environment, supply EOF stdin, enforce 30 seconds, capture at most 4 MiB
+  stdout and 256 KiB stderr, and start at most one direct source process;
 - keep credentials out of newly constructed argv, YAML, plans, catalogs, logs,
   diagnostics, and history;
 - distinguish a request not sent, confirmed result, source failure, transform
   failure, and unknown outcome; and
 - never infer that repeating a source operation is safe from cancellation or
   output failure.
+
+The read declaration makes a later caller retry eligible; Atsura itself never
+retries. A user who marks a mutating source command as read has violated the
+v0.1 trust contract. Create/write support requires target, impact,
+confirmation, and uncertain-outcome policy before it can enter schema or the
+catalog.
 
 Source CLI authentication and authorization remain authoritative. Atsura does
 not initially acquire or store OAuth tokens, PATs, or provider credentials.
@@ -177,6 +193,10 @@ The output pipeline must:
 - avoid inferring facts from labels, order, indentation, or nearby records; and
 - retain source exit and transform status as separate facts.
 
+The v0.1 JSON parser additionally rejects duplicate keys at every depth,
+non-object top-level array items, missing selected fields, and configured
+complexity limits. It preserves null, empty, zero, and false as typed values.
+
 If transformation fails after one source attempt, Atsura must not:
 
 - retry or change the source invocation;
@@ -185,9 +205,11 @@ If transformation fails after one source attempt, Atsura must not:
 - expose raw output unless an explicit reviewed contract permits it; or
 - switch to raw execution.
 
-The exact policy for source nonzero exit, stderr, partial stdout, transform
-failure, and optional intact-output fallback remains unresolved and must be
-decided before execution support.
+For v0.1, source nonzero exit, timeout, cancellation, identity drift, partial or
+oversized capture, malformed JSON, and transform failure emit no success
+stdout. Raw source stdout and failed stderr are not exposed. Successful bounded
+stderr is emitted only through visible structural escaping. No intact-output
+fallback exists.
 
 ## Raw execution
 
@@ -230,17 +252,34 @@ The no-execution YAML-to-plan slice must continue to prove:
 - hostile YAML values, source descriptions, and transform examples cannot break
   machine or terminal structure.
 
+## Required evidence for v0.1 local run
+
+- schema effect missing or not read, deny, mismatch, invalid policy, canceled
+  preflight, unresolved executable, and detected pre-start drift make zero
+  source attempts;
+- exact transformed argv reaches one direct no-shell process start;
+- timeout, cancellation, stdout/stderr overflow, nonzero exit, post-start drift,
+  parse failure, and transform failure never cause a second attempt;
+- failed raw stdout/stderr and private executable errors never cross public
+  output;
+- duplicate, deep, large, malformed, and hostile JSON cannot alter output
+  structure or invent selected facts;
+- successful hostile stderr is visibly escaped and remains distinct from the
+  fixed success JSON on stdout; and
+- release artifacts pass the same full, security, public, and release gates as
+  the committed source.
+
 ## Open security decisions
 
 - YAML trust establishment, locations, precedence, revocation, and digesting.
-- Exact allow, confirm, and deny authorization semantics.
+- Confirmation and mutation denial semantics beyond read-only allow/deny.
 - Executable identity across PATH, symlink, replacement, plugin, and version
   changes.
 - Hook installation and command-discovery trust.
-- Process environment, filesystem isolation, and output budgets.
+- Stronger process isolation or configurable budgets beyond v0.1.
 - Built-in action effects and extension review.
 - Source failure, stderr, partial output, transform failure, and raw-output
-  interaction.
+  behavior beyond the fail-closed v0.1 contract.
 - Privacy and retention for any future history.
 - Trust and dependency boundaries for jq, RTK, plugins, or external
   transformers.

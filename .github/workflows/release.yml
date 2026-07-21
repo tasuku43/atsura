@@ -94,6 +94,7 @@ jobs:
     name: Publish GitHub Release
     needs: [preflight, build]
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       contents: write
     steps:

@@ -141,6 +141,9 @@ Before each public release, verify:
 - installation instructions work in a clean environment;
 - release notes disclose compatibility, security, and migration impact;
 - no artifact, Formula, URL, log, or metadata contains a forbidden identifier.
+- the GitHub `release` environment exists with the required human reviewer
+  protection; the workflow declaration alone does not configure that external
+  repository setting.
 
 See [Release](06_release.md) for the artifact workflow.
 

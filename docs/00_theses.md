@@ -1,8 +1,8 @@
 # Atsura Product Theses
 
-These seed theses describe the intended Atsura experience and govern its first
-vertical slice. They remain hypotheses; the current binary only previews a
-plan and does not yet provide runtime source-CLI tailoring.
+These theses describe the intended Atsura experience and govern its first
+release-quality vertical slice. They remain hypotheses tested through narrow
+supported outcomes rather than claims that the complete vision already exists.
 
 ## North star
 
@@ -164,7 +164,36 @@ invocation rewriting, and output transformation are deterministic.
 - Source binary or catalog drift invalidates a controlled plan instead of
   silently inheriting prior permission.
 
-## First hypothesis under test
+## Thesis 6: Release quality closes one supported outcome
+
+Release quality is not the number of planned mechanisms. A supported outcome
+is release-quality when a user can discover it, execute it within finite
+bounds, interpret its complete machine result without an undeclared parser,
+recover from every declared failure, and install the same reviewed artifacts
+the project tested.
+
+Every supported outcome therefore declares its inputs, effects, trust
+selection, destinations, attempts, timeout, byte and complexity limits,
+success shape, failures, compatibility, and explicit exclusions. Tests prove
+zero side effects before authorization and the exact attempt count after the
+controlled boundary. Full, security, public, and release gates must pass on one
+committed tree before that tree is called release-quality.
+
+### Current v0.1 boundary
+
+The first release-quality outcome is deliberately read-only:
+
+**A maintainer explicitly selects one reviewed schema-1 YAML file, runs one
+JSON-producing source command through `atr run`, and receives the plan-declared
+selected and renamed records after at most one direct no-shell source-process
+attempt.**
+
+Schema 1 requires `effect: read`. Atsura does not infer that effect from a
+command name; the maintainer reviews and asserts it. Create/write, confirmation,
+hooks, implicit policy activation, and raw execution require later outcomes
+with their own enforceable contracts.
+
+## First hypothesis and evidence sequence
 
 The first vertical slice should provide this result:
 
@@ -175,8 +204,8 @@ starting the source process.**
 
 `atr plan preview` is the first executable test of this hypothesis. Its
 schema-1 vocabulary deliberately supports only one exact executable and argv
-prefix, allow or deny, appended argv, and a typed JSON select/rename/compact
-render description. It does not execute those output actions.
+prefix, an explicit read effect, allow or deny, appended argv, and a typed JSON
+select/rename/compact render description.
 
 Success evidence includes:
 
@@ -186,11 +215,19 @@ Success evidence includes:
 - a nontrivial output reshape is fully described by typed built-in actions; and
 - a maintainer can identify every change without reading implementation source.
 
+`atr run` is the next evidence step. It must compile the same policy and
+invocation, reject any non-read or deny plan before execution, resolve and
+revalidate one source executable, perform at most one direct attempt, and apply
+the declared transform only to bounded successful JSON. Nonzero exit, timeout,
+cancellation, drift, overflow, or transform failure produces no raw success and
+no automatic retry.
+
 ## Current non-goals
 
 - Reimplementing a source CLI or its remote APIs.
-- Hook installation, wrapper execution, source output parsing, and output
-  transformation.
+- Hook installation, command interception, and command-surface hiding.
+- Create/write source operations, confirmation, and mutation replay policy.
+- Raw execution or automatic intact-output fallback.
 - Requiring a language model for routine execution.
 - Allowing arbitrary shell as the initial pre/post or output mechanism.
 - Claiming RTK compatibility before primary-source research.
@@ -200,21 +237,24 @@ Success evidence includes:
 
 ## Open questions
 
-- Which source CLI should be supported first?
-- What is the smallest useful per-command YAML schema and where does it live?
+- Which vendor source CLI should be supported first beyond the generic local
+  JSON-producing read boundary?
+- How should schema 1 evolve beyond explicit per-invocation file selection?
 - How deeply should help or other command metadata be explored?
 - How should Claude Code SessionStart and PreToolUse responsibilities differ?
 - How should the tailored surface participate in agent command discovery?
 - Should host integration use a shell function, PATH wrapper, hook input
   rewrite, or another mechanism?
-- What are the exact semantics of allow, confirm, and deny?
-- Which built-in pre-processing, post-processing, and output actions belong in
-  the first release?
+- What are the exact semantics of confirm and mutation denial beyond v0.1's
+  read-only allow/deny boundary?
+- Which built-in pre-processing, post-processing, and output actions should
+  follow v0.1 select/rename?
 - When, if ever, should jq, RTK, external transformers, plugins, or scripts be
   admitted?
-- How should transform failure, raw output, stderr, and source failure interact?
+- When should behavior differ from v0.1's fail-closed transform, stderr, and
+  source-failure contract?
 - How, if at all, should usage history be collected?
-- What evidence establishes executable identity across path replacement,
-  symlinks, plugins, and version changes?
+- What stronger evidence should supplement v0.1 path resolution and SHA-256
+  revalidation for plugins, interpreters, children, and version claims?
 
 These questions require vertical-slice evidence or primary-source research.

@@ -235,6 +235,7 @@ Every strong statement should identify its enforcement path.
 | Local Go consistency | Gate preflight comparison of required/reported/compiler versions and GOROOT/GOTOOLDIR, with a mixed-installation shell fixture |
 | External text structure | Visible-projection unit/E2E tests plus scoped I/O trust metadata; printable meaning remains explicitly out of scope |
 | Per-command YAML safety | Regular-file and symlink checks, a 64 KiB read bound, strict known fields, alias/multi-document rejection, domain validation, zero-process plan tests, and structured failure contracts |
+| Release-quality local tailoring | Required read effect, shared plan-compiler tests, process fake counters, no-shell adapter tests, executable digest/revalidation tests, fixed timeout and byte bounds, strict JSON fixtures, exact execution-envelope tests, agent-readiness replay, and all four completion profiles on one committed tree |
 | Documentation locale | Versioned project policy, explicit schema-1 migration diagnostic, locale preservation test, and narrow English/Japanese trusted-Markdown fixtures; broader linguistic conformance remains manual |
 | Public capability coverage | Exact bidirectional match between capability ledger and catalog `CapabilityID` values |
 | External schema compatibility | Vendored fixture, generator, and drift test |
@@ -288,3 +289,10 @@ Record nondeterministic failures with inputs, platform, and logs in the active w
 - Public repository change: `task check` and `task public:check`
 - Release or packaging change: `task check` and `task release:check`
 - First public release: all profiles, plus the manual review in [Public Repository](05_public_repository.md)
+
+For Atsura v0.1, “release-quality” means the finite `plan preview` and
+read-only `run` outcomes satisfy their catalog, security, and compatibility
+contracts on one commit and all `full`, `security`, `public`, and `release`
+profiles pass for that commit. It does not mean every thesis mechanism exists,
+and it does not authorize a tag or publication without the separate manual
+release review.

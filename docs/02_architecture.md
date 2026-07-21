@@ -5,7 +5,8 @@ configuration, deterministic planning, process execution, and output
 transformation from collapsing into an unrestricted wrapper.
 
 This document assigns intended responsibilities. The current binary implements
-only the no-execution YAML-to-plan preview boundary.
+the no-execution YAML-to-plan preview boundary. ADR 0002 selects the bounded
+read-only local run below as the next release-quality boundary.
 
 ## Dependency direction
 
@@ -85,6 +86,10 @@ side effects; it does not reimplement policy logic.
 - output selection, mapping, aggregation, ordering, and result shapes; and
 - stage-specific failures.
 
+For v0.1, domain also owns a finite typed JSON value tree, source-process
+request/result invariants, explicit read effect, and pure record
+select/rename. It never decodes YAML or JSON bytes and never launches a process.
+
 Domain validation rejects incomplete identity, ambiguous matches, unknown
 actions, invalid action ordering, a shell fragment in place of argv, and a plan
 whose decision conflicts with its stages.
@@ -111,6 +116,12 @@ Application owns whether output transformation applies to a source result and
 how a transform failure is classified. It never launches a process, invokes jq
 or RTK, parses arbitrary source bytes directly, or renders user output.
 
+The local-run use case orders exactly one configuration load, pure compile,
+allow/read admission, at most one process-port call, successful-result
+validation, one JSON-parser call, and pure transformation. It never invokes the
+parser after a failed process and never repeats the process after parser or
+transform failure.
+
 ### Infrastructure
 
 `internal/infra/` owns concrete I/O behind narrow ports:
@@ -132,10 +143,17 @@ Infrastructure reports observations and typed failures. It does not decide
 which source capability is visible, allowed, or confirmed, and it does not
 interpret a generic shell string from YAML.
 
+The v0.1 process adapter resolves a PATH name or explicit path to one regular
+executable, records an absolute resolved path and SHA-256 digest, revalidates
+that evidence immediately before and after a direct `os/exec` attempt, and
+captures stdout/stderr in memory under fixed byte and time bounds. The JSON
+adapter converts bounded source bytes into domain JSON values while rejecting
+duplicate keys and excessive nesting, nodes, fields, or records.
+
 ### CLI
 
 `internal/cli/` is the composition and presentation boundary for `atr`. It
-will own:
+owns:
 
 - public command registration and typed arguments;
 - plan preview presentation;
@@ -144,9 +162,9 @@ will own:
 - composition of application use cases and infrastructure adapters; and
 - any CLI-facing installation or status workflow for host integrations.
 
-The inherited `doctor` and `sample` commands remain scaffold evidence. No
-public command name for planning, execution, or hook installation is selected
-by this document.
+The inherited `doctor` and `sample` commands remain scaffold evidence.
+`plan preview` is the no-side-effect inspection path and `run` is the selected
+v0.1 local execution path. No hook-installation command is selected.
 
 ## Responsibility map
 
@@ -159,8 +177,8 @@ by this document.
 | Plan construction | Domain invariants; application compiler | CLI preview | One plan logic for preview and execution |
 | Hook interception | Application task boundary | Infrastructure host adapter | Claude Code or similar; exact protocol unresolved |
 | Command discovery hiding | Domain tailored surface | CLI/host integration | Distinct from execution rejection |
-| Process execution | Application authorizes one attempt | Infrastructure process adapter | No shell interpolation |
-| Output transformation | Domain typed actions; application result policy | Infrastructure parse mechanics; CLI render | First-class built-in pipeline |
+| Process execution | Application authorizes zero or one attempt | Infrastructure process adapter | v0.1 read-only, no shell, 30 seconds, fixed byte bounds |
+| Output transformation | Domain typed actions; application result policy | Infrastructure JSON parse mechanics; CLI render | v0.1 object/array select and rename |
 | External transformer | Future reviewed port | Future infrastructure adapter | jq, RTK, plugins, and scripts excluded initially |
 
 ## First vertical boundary
@@ -183,6 +201,26 @@ model is not accidentally limited to argv rewriting or line shortening.
 The slice makes zero source-process attempts and only describes its output
 transformation. It does not prove execution, hook, or transformation behavior.
 
+## v0.1 release-quality boundary
+
+```text
+explicit schema-1 YAML with effect: read
+  + attempted invocation
+  -> strict load and pure compile
+  -> deny or non-read: zero attempts
+  -> allow/read: resolve and fingerprint executable
+  -> one bounded direct process attempt
+  -> successful bounded JSON parse
+  -> pure select/rename
+  -> fixed execution envelope
+```
+
+The plan used for admission is the same domain plan exposed by preview.
+Preview retains declared executable evidence and does not require the source
+binary to exist. Run attaches resolved runtime identity inside the controlled
+process adapter and suppresses success if that identity changes. A preview is
+therefore explanatory, not reusable execution authority.
+
 ### YAML decoder dependency
 
 The infrastructure adapter uses `go.yaml.in/yaml/v3` v3.0.4 for YAML 1.2
@@ -192,13 +230,14 @@ independent of that decoder.
 
 ## Unresolved architecture decisions
 
-- Exact YAML schema, matching, inheritance, locations, and trust workflow.
+- YAML inheritance, implicit locations, precedence, and persistent trust workflow.
 - Executable identity across PATH changes, symlinks, replacement, plugins, and
   version drift.
 - Portable catalog observations and source-specific inspectors.
 - Claude Code hook responsibilities and agent discovery integration.
 - Confirmation interaction and authorization reuse.
 - Built-in action vocabulary and extension compatibility.
-- Buffered versus streaming transforms and output budgets.
-- Source nonzero exit, stderr, partial output, and transform-failure ordering.
+- Streaming or output budgets beyond the fixed v0.1 buffered boundary.
+- Source nonzero exit, stderr, partial output, and transform-failure behavior
+  beyond v0.1's fail-closed contract.
 - Whether a future jq, RTK, plugin, or external-transformer port is justified.
