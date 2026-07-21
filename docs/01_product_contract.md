@@ -2,7 +2,8 @@
 
 This contract defines Atsura's current product vocabulary and intended user
 experience. `atr plan preview` and the finite v0.1 `atr run` outcome are
-executable today. ADR 0002 defines the supported local-run boundary.
+executable today. ADR 0002 defines that boundary; ADR 0004 selects the compiled
+bundle workflow as the finite v1 target.
 
 ## Product statement
 
@@ -34,11 +35,13 @@ examples. They are not evidence that this outcome is implemented.
 ## Conceptual flow
 
 ```text
-user-approved per-command YAML
+bounded source-inspector adapter -> generated catalog
+user-approved per-command YAML + generated catalog
+        |
+        v
+canonical bundle build + exact-digest user trust
         +
 attempted source command from an agent hook
-        +
-source executable and catalog evidence
         |
         v
 deterministic execution plan
@@ -49,7 +52,7 @@ deterministic execution plan
                        before -> invoke -> output -> after
 ```
 
-The host-hook protocol remains undecided. The preview path is:
+The commands below are the current v0.1 path:
 
 ```text
 atr plan preview --config <path> -- <source-command> [args...]
@@ -82,6 +85,12 @@ and executable evidence.
 
 The catalog is evidence, not permission. Regeneration cannot silently grant an
 operation or erase a reviewed YAML rule.
+
+The core catalog contract is vendor-neutral. A source adapter records a stable
+namespaced adapter kind and contract version and classifies every observation
+as verified built-in, observed extension, or unverified dynamic evidence. Only
+verified entries are eligible for controlled policy. Adapter-specific raw help
+or provider fields do not enter the shared catalog schema.
 
 ### Per-command YAML
 
@@ -205,6 +214,64 @@ chosen source CLI. It is never selected automatically after rejection, stale
 evidence, invalid YAML, or transform failure. Its exact user experience and
 generic process bounds remain undecided.
 
+### Compiled tailoring bundle
+
+The selected v1 runtime authority is one canonical JSON document that binds:
+
+- exact resolved source executable identity and observed version;
+- source-adapter kind and contract version;
+- the normalized provenance-bearing catalog and its digest;
+- normalized typed policy and its digest; and
+- the tailored agent-facing surface derived from those values.
+
+The document contains no time, machine, user, credential, or captured source
+output fields. Canonical bytes determine its SHA-256 identity. A repository
+bundle is untrusted until an interactive user action creates a user-local
+receipt for that exact digest. Source, catalog, policy, or bundle drift removes
+controlled execution authority; trust never migrates implicitly.
+
+### Vendor-neutral adapter contracts
+
+Source inspection and coding-agent integration are independent ports. A source
+adapter may observe one CLI's native command metadata. A host adapter may map
+one coding agent's discovery and pre-execution protocol. Both consume shared
+catalog, plan, decision, and bundle values and neither may invent policy,
+authorize an untrusted bundle, or bypass the controlled execution boundary.
+
+GitHub CLI 2.x and project-local Claude Code are the first v1 compatibility
+entries. Their names appear in adapter selection and compatibility evidence,
+not as fields or branches in the domain model. A new vendor is supported by a
+conforming adapter plus its own finite compatibility corpus.
+
+## Selected v1 state machine
+
+The public v1 workflow is organized around explicit states:
+
+```text
+unconfigured
+  -> inspected catalog
+  -> validated policy
+  -> built untrusted bundle
+  -> explicitly trusted bundle
+  -> optional installed host adapter
+
+any source/catalog/policy/bundle drift -> stale, zero controlled attempts
+explicit raw request -> identity-bound source execution outside policy
+remove host adapter -> exact owned settings removed, unrelated settings kept
+```
+
+The selected command outcomes are `source inspect`, `source refresh`, `policy
+init`, `policy validate`, `bundle build`, `bundle trust`, `bundle status`,
+`plan preview`, `plan explain`, `run`, `raw`, and host-adapter
+install/status/remove plus a private protocol-facing hook command. Exact flags
+and schema fields are catalog contracts introduced with their implementations;
+the outcome names and authority boundaries are fixed by ADR 0004.
+
+Preview, explain, manual run, raw, and host adapters load the same bundle.
+Raw is explicit, manual, source-identity-bound, absent from the tailored
+surface, and never a recovery suggestion. Mutation plans require complete
+target and impact and cannot be unconditionally allowed in v1.
+
 ## Output failure boundary
 
 A source attempt and an output transform are separate facts. If transformation
@@ -245,15 +312,19 @@ transformation, and built-in output processing.
 The stable project identity is `Atsura`, binary `atr`, and Go module
 `github.com/tasuku43/atsura`.
 
-The following are not yet stable:
+The v1 core compatibility claim is vendor-neutral at the contract level and
+finite at the adapter level. The core conformance suite includes alternate
+synthetic source and host adapters. Real compatibility is claimed only for the
+version ranges and protocol fixtures listed in the maintained compatibility
+matrix.
 
-- command paths and hook protocol;
-- YAML schema beyond the v0.1 patch series and storage locations;
-- catalog and plan schemas;
-- built-in action vocabulary;
+The following remain versioned rather than universal:
+
+- adapter kinds and their compatibility ranges;
+- YAML, catalog, bundle, plan, receipt, and host protocol schemas;
 - output transformation contract;
-- raw route; and
-- source-CLI compatibility.
+- built-in action vocabulary; and
+- source-CLI and coding-agent-host compatibility.
 
 ## Deliberately unsupported now
 
@@ -268,5 +339,5 @@ The following are not yet stable:
 - Direct external API integrations.
 - Release or package distribution.
 
-Current specifications of RTK, Claude Code hooks, and comparable wrapper or
-policy tools require later primary-source research.
+RTK is not invoked by the v1 policy engine. Claude Code is one host adapter,
+not the definition of the integration contract.

@@ -2,6 +2,8 @@
 
 This model covers the YAML-to-plan-to-wrapper boundary. The current binary
 previews plans and implements ADR 0002's bounded v0.1 local read-only runner.
+ADR 0004 extends the model to catalog adapters, compiled bundles, persisted
+trust, and coding-agent host adapters.
 
 ## Security objective
 
@@ -52,6 +54,10 @@ The following remain untrusted:
 - agent-generated proposals; and
 - hook payloads and host metadata.
 
+Adapter output is untrusted regardless of vendor. An adapter conformance test
+proves protocol shape and bounds, not that help prose, a repository bundle, or
+a host request is authorized.
+
 Strict parsing and visible escaping protect structure; they do not turn
 external prose into instructions.
 
@@ -85,6 +91,32 @@ Preview reads only the explicitly selected policy and starts no source process;
 it has no mutating side effect. Execution cannot treat an old preview as
 authority: it reloads and recompiles the selected policy and revalidates source
 executable identity at the process boundary.
+
+In v1, execution authority moves from an invocation-selected YAML path to an
+exact canonical bundle digest plus a user-local trust receipt. Building,
+committing, downloading, or installing a bundle does not trust it.
+
+## Bundle and adapter trust boundary
+
+- Shared catalog, policy, bundle, plan, and decision schemas contain no
+  source-vendor or host-vendor fields beyond opaque namespaced adapter kind and
+  contract version values.
+- A source adapter may perform only its documented finite offline probe set
+  under aggregate process, time, and byte limits. Probe output is evidence and
+  cannot grant permission.
+- A host adapter decodes untrusted host payloads into one host-independent
+  request and encodes one core decision. It cannot build, trust, or reinterpret
+  policy.
+- Unknown adapter kinds or major contract versions fail closed before source
+  execution.
+- Canonical bundle bytes exclude timestamps, hostnames, usernames, random
+  identifiers, credentials, and captured source output.
+- `bundle trust` displays the exact digest and material authority summary and
+  requires an interactive controlling terminal. Redirected stdin, repository
+  state, and host hooks cannot create a receipt.
+- Receipts are user-local, keyed to one digest, and contain no secret or source
+  output. Changed bundle bytes, source identity/version, catalog, or policy
+  invalidate authority rather than inherit it.
 
 ## YAML policy boundary
 
@@ -213,13 +245,33 @@ fallback exists.
 
 ## Raw execution
 
-Raw execution is a possible explicit route outside tailoring policy. It must be
-selected visibly by the caller, identify the exact executable, and state that
-Atsura tailoring is bypassed.
+Raw execution is an explicit manual route outside tailoring policy. It must be
+selected visibly by the caller, load a valid bundle, revalidate the bundle's
+exact executable identity, and state that Atsura tailoring is bypassed.
 
 It is never automatic recovery for invalid YAML, rejection, missing
 confirmation, source drift, built-in failure, or output-transform failure. It
-never uses shell interpretation merely for convenience.
+never uses shell interpretation merely for convenience, never appears in the
+tailored discovery surface, and is never selected by a host adapter.
+
+## Host integration and confirmation
+
+The first real host adapter owns only exact project-local Claude Code hook
+entries. Installation, status, update, and removal preserve unrelated settings,
+refuse malformed or ambiguously changed owned entries, and never replace a
+whole settings file as recovery. Generated hook commands contain no
+policy-authored shell.
+
+Session-start discovery is informational. Pre-execution admission is the
+authorization boundary. Managed compound shell syntax that the strict adapter
+cannot parse fails closed; post-use output handling cannot retroactively
+authorize or conceal an already performed effect.
+
+Create/write plans require complete target and impact. They may be denied or
+confirmed but are not unconditional `allow` in v1. Manual confirmation requires
+a terminal. Host confirmation uses a one-shot receipt bound to bundle digest,
+source identity, exact transformed invocation, effect, target, and impact. It
+does not imply retry permission after an uncertain result.
 
 ## Data, network, and credentials
 
@@ -271,11 +323,10 @@ The no-execution YAML-to-plan slice must continue to prove:
 
 ## Open security decisions
 
-- YAML trust establishment, locations, precedence, revocation, and digesting.
-- Confirmation and mutation denial semantics beyond read-only allow/deny.
-- Executable identity across PATH, symlink, replacement, plugin, and version
-  changes.
-- Hook installation and command-discovery trust.
+- Trust-receipt revocation UX and storage portability beyond the v1 user-local
+  exact-digest store.
+- Executable identity evidence beyond exact path, bytes, version, and
+  adapter-declared observations.
 - Stronger process isolation or configurable budgets beyond v0.1.
 - Built-in action effects and extension review.
 - Source failure, stderr, partial output, transform failure, and raw-output

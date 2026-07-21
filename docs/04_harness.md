@@ -236,6 +236,12 @@ Every strong statement should identify its enforcement path.
 | External text structure | Visible-projection unit/E2E tests plus scoped I/O trust metadata; printable meaning remains explicitly out of scope |
 | Per-command YAML safety | Regular-file and symlink checks, a 64 KiB read bound, strict known fields, alias/multi-document rejection, domain validation, zero-process plan tests, and structured failure contracts |
 | Release-quality local tailoring | Required read effect, shared plan-compiler tests, process fake counters, no-shell adapter tests, executable digest/revalidation tests, fixed timeout and byte bounds, strict JSON fixtures, exact execution-envelope tests, agent-readiness replay, and all four completion profiles on one committed tree |
+| Vendor-neutral adapter core | Import-boundary lint, schemas containing only namespaced adapter kind/version, and conformance fixtures for the real reference adapter plus an alternate synthetic source and host consumer |
+| Canonical tailoring bundle | Canonical-byte golden tests, semantic round trips, digest recomputation, forbidden ambient-field negative tests, and clean regeneration diffs |
+| Bundle trust and drift | Interactive-terminal trust tests, user-local exact-digest receipt fixtures, repository-untrusted tests, source/catalog/policy/bundle mismatch tests, and zero-attempt application counters |
+| Source inspection safety | Adapter-owned fixed probe argv, aggregate attempt/time/byte budgets, hostile/malformed/extension fixtures, provenance validation, and proof that inspection performs no provider task |
+| Host integration ownership | Malformed/concurrent settings fixtures, exact-owned-entry update/remove tests, unrelated-setting preservation, strict protocol decoding, and install/status/remove E2E |
+| Host-independent enforcement | Shared decision fixtures replayed through manual and synthetic host consumers, allow/confirm/deny equivalence, compound managed-command rejection, and zero-attempt bypass tests |
 | Documentation locale | Versioned project policy, explicit schema-1 migration diagnostic, locale preservation test, and narrow English/Japanese trusted-Markdown fixtures; broader linguistic conformance remains manual |
 | Public capability coverage | Exact bidirectional match between capability ledger and catalog `CapabilityID` values |
 | External schema compatibility | Vendored fixture, generator, and drift test |
@@ -296,3 +302,10 @@ contracts on one commit and all `full`, `security`, `public`, and `release`
 profiles pass for that commit. It does not mean every thesis mechanism exists,
 and it does not authorize a tag or publication without the separate manual
 release review.
+
+For Atsura v1, completion additionally requires the ADR 0004 bundle workflow,
+adapter conformance matrix, trust/drift state machine, gateway and host-adapter
+E2E journeys, migration documentation, and all four profiles to pass on one
+final committed clean tree. Passing the GitHub CLI or Claude Code fixtures does
+not permit vendor-specific fields in shared schemas or imply compatibility with
+untested vendors.

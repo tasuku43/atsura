@@ -1,8 +1,9 @@
 # Atsura Product Theses
 
-These theses describe the intended Atsura experience and govern its first
-release-quality vertical slice. They remain hypotheses tested through narrow
-supported outcomes rather than claims that the complete vision already exists.
+These theses describe the intended Atsura experience. The v0.1 slice is the
+current executable evidence; ADR 0004 selects the finite v1 target. They remain
+hypotheses tested through narrow supported outcomes rather than claims that the
+complete vision already exists.
 
 ## North star
 
@@ -19,9 +20,10 @@ commands behave, and how much output returns to the agent.
 ## Intended experience
 
 ```text
-per-command YAML
-  -> coding-agent hook intercepts an attempted command
-  -> Atsura compiles source evidence + YAML + invocation into one plan
+source-inspector adapter -> provenance-bearing command catalog
+per-command YAML + catalog -> deterministic, content-addressed bundle
+trusted bundle + attempted command
+  -> gateway or coding-agent adapter requests one plan
   -> preview renders the plan without side effects
      or
   -> execution revalidates and applies the plan through a wrapper
@@ -34,6 +36,11 @@ An execution hook can reject a command that was attempted. Preventing the agent
 from discovering a command in the first place also requires the eventual
 agent-facing help or command-discovery integration to use the tailored surface.
 Those are related outcomes, not the same mechanism.
+
+The catalog, policy, bundle, plan, and execution semantics are vendor-neutral.
+Source-CLI inspectors and coding-agent hosts are adapters to those contracts.
+An adapter can extend tested compatibility but cannot add policy meaning or
+create a parallel execution path.
 
 ## Thesis 1: The tailored surface is the product
 
@@ -193,6 +200,39 @@ command name; the maintainer reviews and asserts it. Create/write, confirmation,
 hooks, implicit policy activation, and raw execution require later outcomes
 with their own enforceable contracts.
 
+### Selected v1 outcome
+
+The v1 ideal is one compiled tailoring bundle. A maintainer inspects a
+supported installed source through a bounded adapter, reviews typed YAML,
+builds and explicitly trusts the exact bundle digest, and then uses that same
+bundle through the manual gateway or a coding-agent host adapter. Preview,
+explain, allow/confirm/deny, invocation rewriting, substantial typed output
+transformation, drift diagnosis, and explicit raw execution share the same
+source identity and plan semantics.
+
+GitHub CLI 2.x and project-local Claude Code are the first real compatibility
+adapters. They are deliberately not named in shared domain schemas. A second
+source CLI or coding agent should require a conforming adapter and compatibility
+evidence, not a redesign of policy or bundle semantics.
+
+## Thesis 7: One bundle is the adapter-independent authority
+
+Compiled content, rather than a mutable YAML path or host configuration, is
+the reviewed runtime authority. The bundle deterministically binds source
+identity, adapter contract, catalog evidence, normalized policy, and tailored
+surface. Its digest is its identity; trust is user-local and exact-digest.
+
+Gateways and host adapters consume and revalidate this bundle. They do not
+recompile policy, infer effects, or broaden permission. Unknown adapter kinds,
+changed source identity, changed content, and missing trust fail before source
+effects.
+
+### Mechanical enforcement target
+
+Canonical-byte and conformance tests must prove identical semantic inputs
+produce one digest, shared schemas contain no reference-adapter fields, and an
+alternate synthetic source and host consumer can use the same core contracts.
+
 ## First hypothesis and evidence sequence
 
 The first vertical slice should provide this result:
@@ -225,34 +265,25 @@ success and no automatic retry.
 ## Current non-goals
 
 - Reimplementing a source CLI or its remote APIs.
-- Hook installation, command interception, and command-surface hiding.
-- Create/write source operations, confirmation, and mutation replay policy.
-- Raw execution or automatic intact-output fallback.
+- Supporting every source CLI or coding-agent host without an adapter and a
+  reviewed compatibility claim.
+- Automatic intact-output or raw-execution fallback.
 - Requiring a language model for routine execution.
 - Allowing arbitrary shell as the initial pre/post or output mechanism.
-- Claiming RTK compatibility before primary-source research.
+- Claiming RTK compatibility or executing RTK from policy.
 - Treating an agent proposal as user authorization.
 - Treating the experimental preview command or schema as stable.
 - Publishing or releasing Atsura.
 
-## Open questions
+## Open questions after the v1 decision
 
-- Which vendor source CLI should be supported first beyond the generic local
-  JSON-producing read boundary?
-- How should schema 1 evolve beyond explicit per-invocation file selection?
-- How deeply should help or other command metadata be explored?
-- How should Claude Code SessionStart and PreToolUse responsibilities differ?
-- How should the tailored surface participate in agent command discovery?
-- Should host integration use a shell function, PATH wrapper, hook input
-  rewrite, or another mechanism?
-- What are the exact semantics of confirm and mutation denial beyond v0.1's
-  read-only allow/deny boundary?
+- Which source and host adapters should follow the first reference adapters?
+- Which catalog evidence can each future source adapter honestly verify?
+- Whether multiple named bundles per repository belong in v1.x or later.
 - Which built-in pre-processing, post-processing, and output actions should
-  follow v0.1 select/rename?
+  follow the finite v1 action set?
 - When, if ever, should jq, RTK, external transformers, plugins, or scripts be
   admitted?
-- When should behavior differ from v0.1's fail-closed transform, stderr, and
-  source-failure contract?
 - How, if at all, should usage history be collected?
 - What stronger evidence should supplement v0.1 path resolution and SHA-256
   revalidation for plugins, interpreters, children, and version claims?

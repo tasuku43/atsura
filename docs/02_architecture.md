@@ -6,7 +6,8 @@ transformation from collapsing into an unrestricted wrapper.
 
 This document assigns intended responsibilities. The current binary implements
 both the no-execution YAML-to-plan preview and the bounded read-only local run
-selected by ADR 0002.
+selected by ADR 0002. ADR 0004 adds the v1 compiled-bundle target without
+changing the four-layer direction.
 
 ## Dependency direction
 
@@ -54,6 +55,30 @@ coding-agent hook adapter
 Preview and execution share plan construction. Execution adds revalidation and
 side effects; it does not reimplement policy logic.
 
+The v1 composition adds two independent adapter axes:
+
+```text
+source adapter -> vendor-neutral catalog
+                          + typed policy
+                               |
+                               v
+                    canonical trusted bundle
+                               |
+                   +-----------+-----------+
+                   |                       |
+             manual gateway          host adapter
+                   |                       |
+                   +------> same plan <----+
+                               |
+                     controlled executor
+```
+
+Shared domain and application packages never import or switch on GitHub CLI,
+Claude Code, or another vendor package. Adapter selection is a registry at the
+CLI composition boundary keyed by a namespaced kind and contract version.
+Adding an adapter extends that registry and its compatibility fixtures; it does
+not add policy semantics.
+
 ## Architectural principles
 
 - Source observations, catalog facts, trusted YAML, runtime facts, and agent
@@ -65,6 +90,8 @@ side effects; it does not reimplement policy logic.
 - Initial pre/post and output actions come from a finite built-in registry.
 - Coding-agent adapters request Atsura tasks but cannot trust policy or bypass a
   rejection.
+- Source and host adapters are orthogonal and conform to vendor-neutral ports.
+- One canonical bundle is the only runtime policy compilation product.
 - All process and filesystem I/O crosses bounded infrastructure ports.
 
 ## Layer responsibilities
@@ -85,6 +112,11 @@ side effects; it does not reimplement policy logic.
 - declared source-output input formats;
 - output selection, mapping, aggregation, ordering, and result shapes; and
 - stage-specific failures.
+
+For v1, domain additionally owns vendor-neutral adapter identifiers, catalog
+provenance, canonical bundle semantics, digest bindings, trust state, tailored
+surface projection, and host-independent allow/confirm/deny decisions. It does
+not own help grammars, hook JSON, or settings-file syntax.
 
 For v0.1, domain also owns a finite typed JSON value tree, source-process
 request/result invariants, explicit read effect, and pure record
@@ -112,6 +144,12 @@ terminal rendering, or hook communication.
 - coordinate stage-specific failure handling; and
 - return task-owned semantic results rather than process DTOs.
 
+For v1, application use cases select a source-inspection port, validate its
+catalog, compile one bundle, verify a trust receipt, produce a host-independent
+decision, and coordinate exact-owner integration changes through narrow ports.
+The application receives typed observations; it does not parse vendor help or
+host payloads.
+
 Application owns whether output transformation applies to a source result and
 how a transform failure is classified. It never launches a process, invokes jq
 or RTK, parses arbitrary source bytes directly, or renders user output.
@@ -138,6 +176,12 @@ transform failure.
 - apply byte-level mechanisms required by typed built-in transformations; and
 - later adapt a specifically approved external transformer behind its own
   contract.
+
+Each source adapter owns its finite probe grammar, version compatibility,
+attempt/byte/time budget, and conversion to the shared catalog. Each host
+adapter owns protocol decoding/encoding and exact settings persistence. Adapter
+packages cannot import another adapter and cannot receive an unrestricted
+executor.
 
 Infrastructure reports observations and typed failures. It does not decide
 which source capability is visible, allowed, or confirmed, and it does not
@@ -171,12 +215,13 @@ v0.1 local execution path. No hook-installation command is selected.
 
 | Concern | Semantic owner | I/O or presentation owner | Current decision |
 |---|---|---|---|
-| Source CLI investigation | Application task and domain evidence | Infrastructure probe | Source and exploration depth unresolved |
-| Command catalog | Domain values; application assembly | Infrastructure persistence; CLI view | Generated evidence, never permission |
+| Source CLI investigation | Application task and vendor-neutral domain evidence | Capability-specific infrastructure adapter | First reference adapter is GitHub CLI 2.x; compatibility is adapter-scoped |
+| Command catalog | Domain values; application assembly | Infrastructure persistence; CLI view | Vendor-neutral, provenance-bearing evidence, never permission |
 | YAML decoding | Domain policy semantics; application trust validation | Infrastructure strict syntax decoder | Experimental schema 1; explicit file path only |
 | Rule matching | Domain pure evaluation | Application supplies validated inputs | Deterministic |
 | Plan construction | Domain invariants; application compiler | CLI preview | One plan logic for preview and execution |
-| Hook interception | Application task boundary | Infrastructure host adapter | Claude Code or similar; exact protocol unresolved |
+| Bundle compilation and trust | Domain canonical values; application authority checks | Infrastructure strict codecs and user-local receipt store | One digest-addressed bundle for every consumer |
+| Hook interception | Host-independent application decision | Infrastructure host adapter | Claude Code is the first reference adapter, not a core dependency |
 | Command discovery hiding | Domain tailored surface | CLI/host integration | Distinct from execution rejection |
 | Process execution | Application authorizes zero or one attempt | Infrastructure process adapter | v0.1 read-only, no shell, 30 seconds, fixed byte bounds |
 | Output transformation | Domain typed actions; application result policy | Infrastructure JSON parse mechanics; CLI render | v0.1 object/array select and rename |
@@ -232,13 +277,13 @@ independent of that decoder.
 
 ## Unresolved architecture decisions
 
-- YAML inheritance, implicit locations, precedence, and persistent trust workflow.
-- Executable identity across PATH changes, symlinks, replacement, plugins, and
-  version drift.
-- Portable catalog observations and source-specific inspectors.
-- Claude Code hook responsibilities and agent discovery integration.
-- Confirmation interaction and authorization reuse.
-- Built-in action vocabulary and extension compatibility.
+- Multiple named bundles, YAML inheritance, and precedence beyond the single
+  selected v1 bundle workflow.
+- Executable identity evidence beyond exact path, bytes, version, and declared
+  adapter observations.
+- Further source and host adapters and their individual compatibility ranges.
+- Built-in action vocabulary after the finite v1 set and extension
+  compatibility.
 - Streaming or output budgets beyond the fixed v0.1 buffered boundary.
 - Source nonzero exit, stderr, partial output, and transform-failure behavior
   beyond v0.1's fail-closed contract.
