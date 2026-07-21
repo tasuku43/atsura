@@ -112,9 +112,6 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 		return evidenceDocument{}, fmt.Errorf("temporary workspace creation failed")
 	}
 	defer os.RemoveAll(workRoot)
-	if err := os.Chmod(workRoot, 0o700); err != nil {
-		return evidenceDocument{}, fmt.Errorf("temporary workspace protection failed")
-	}
 	executablePath, err := extractReleaseArchive(archivePath, configuration.goos, filepath.Join(workRoot, "artifact"))
 	if err != nil {
 		return evidenceDocument{}, fmt.Errorf("release archive extraction failed")
@@ -478,6 +475,7 @@ func (r journeyRunner) failure(ctx context.Context, mode string, exit int, code 
 func (r journeyRunner) command(ctx context.Context, mode string, arguments ...string) (commandOutcome, error) {
 	runContext, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
+	// #nosec G204 -- the exact extracted atr path is a validated regular archive member; argv is the finite harness grammar and no shell is used.
 	command := exec.CommandContext(runContext, r.executable, arguments...)
 	command.Dir = r.directory
 	command.Env = replaceEnvironment(r.environment, map[string]string{fixtureModeEnv: mode})
@@ -571,7 +569,12 @@ func replaceEnvironment(base []string, replacements map[string]string) []string 
 }
 
 func writePrivate(path string, value []byte) error {
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	root, name, err := openParentRoot(path)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	file, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
 	}
@@ -584,7 +587,12 @@ func writePrivate(path string, value []byte) error {
 }
 
 func readBoundedFile(path string, limit int64) ([]byte, error) {
-	file, err := os.Open(path)
+	root, name, err := openParentRoot(path)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	file, err := root.Open(name)
 	if err != nil {
 		return nil, err
 	}
@@ -594,6 +602,21 @@ func readBoundedFile(path string, limit int64) ([]byte, error) {
 		return nil, fmt.Errorf("file exceeds bound")
 	}
 	return value, nil
+}
+
+func openParentRoot(path string) (*os.Root, string, error) {
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return nil, "", fmt.Errorf("path is not absolute and clean")
+	}
+	parent, name := filepath.Split(path)
+	if name == "" || filepath.Base(name) != name {
+		return nil, "", fmt.Errorf("path does not name a file")
+	}
+	root, err := os.OpenRoot(parent)
+	if err != nil {
+		return nil, "", err
+	}
+	return root, name, nil
 }
 
 func requireAttempts(path string, wanted int) error {

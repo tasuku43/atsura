@@ -38,13 +38,12 @@ func prepareInputFile(value string) (string, error) {
 }
 
 func archiveDigest(path string) (string, error) {
-	info, err := os.Stat(path)
+	file, info, err := openRegularInput(path)
 	if err != nil || info.Size() <= 0 || info.Size() > maxArchiveBytes {
+		if file != nil {
+			_ = file.Close()
+		}
 		return "", fmt.Errorf("archive size is invalid")
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return "", fmt.Errorf("archive open failed")
 	}
 	defer file.Close()
 	hash := sha256.New()
@@ -58,35 +57,43 @@ func extractReleaseArchive(path, goos, destination string) (string, error) {
 	if err := os.Mkdir(destination, 0o700); err != nil {
 		return "", fmt.Errorf("extraction directory creation failed")
 	}
+	root, err := os.OpenRoot(destination)
+	if err != nil {
+		return "", fmt.Errorf("extraction directory open failed")
+	}
+	defer root.Close()
 	executable := "atr"
 	if goos == "windows" {
 		executable = "atr.exe"
 	}
-	var err error
 	if goos == "windows" {
-		err = extractZIP(path, destination)
+		err = extractZIP(path, root)
 	} else {
-		err = extractTarGzip(path, destination)
+		err = extractTarGzip(path, root)
 	}
 	if err != nil {
 		return "", err
 	}
 	executablePath := filepath.Join(destination, executable)
-	if info, statErr := os.Stat(executablePath); statErr != nil || !info.Mode().IsRegular() || info.Size() <= 0 {
+	if info, statErr := root.Stat(executable); statErr != nil || !info.Mode().IsRegular() || info.Size() <= 0 {
 		return "", fmt.Errorf("archive executable is missing")
 	}
-	if err := os.Chmod(executablePath, 0o755); err != nil {
+	// #nosec G302 -- an extracted release binary must retain its reviewed executable mode.
+	if err := root.Chmod(executable, 0o755); err != nil {
 		return "", fmt.Errorf("archive executable mode failed")
 	}
 	return executablePath, nil
 }
 
-func extractTarGzip(path, destination string) error {
-	file, err := os.Open(path)
+func extractTarGzip(path string, destination *os.Root) error {
+	file, info, err := openRegularInput(path)
 	if err != nil {
 		return fmt.Errorf("archive open failed")
 	}
 	defer file.Close()
+	if info.Size() <= 0 || info.Size() > maxArchiveBytes {
+		return fmt.Errorf("archive size is invalid")
+	}
 	compressed, err := gzip.NewReader(file)
 	if err != nil {
 		return fmt.Errorf("archive gzip header is invalid")
@@ -105,19 +112,35 @@ func extractTarGzip(path, destination string) error {
 		if header.Typeflag != tar.TypeReg && header.Typeflag != tar.TypeRegA {
 			return fmt.Errorf("archive contains a non-regular member")
 		}
-		if err := extractMember(destination, header.Name, fs.FileMode(header.Mode), header.Size, reader, seen); err != nil {
+		var mode fs.FileMode
+		switch header.Mode {
+		case 0o644:
+			mode = 0o644
+		case 0o755:
+			mode = 0o755
+		default:
+			return fmt.Errorf("archive member mode is invalid")
+		}
+		if err := extractMember(destination, header.Name, mode, header.Size, reader, seen); err != nil {
 			return err
 		}
 	}
 	return validateMemberSet(seen)
 }
 
-func extractZIP(path, destination string) error {
-	reader, err := zip.OpenReader(path)
+func extractZIP(path string, destination *os.Root) error {
+	file, info, err := openRegularInput(path)
 	if err != nil {
 		return fmt.Errorf("archive zip stream is invalid")
 	}
-	defer reader.Close()
+	defer file.Close()
+	if info.Size() <= 0 || info.Size() > maxArchiveBytes {
+		return fmt.Errorf("archive size is invalid")
+	}
+	reader, err := zip.NewReader(file, info.Size())
+	if err != nil {
+		return fmt.Errorf("archive zip stream is invalid")
+	}
 	seen := map[string]struct{}{}
 	for _, member := range reader.File {
 		if member.FileInfo().Mode()&os.ModeType != 0 || member.UncompressedSize64 > uint64(maxMemberBytes) {
@@ -139,7 +162,7 @@ func extractZIP(path, destination string) error {
 	return validateMemberSet(seen)
 }
 
-func extractMember(destination, name string, mode fs.FileMode, size int64, source io.Reader, seen map[string]struct{}) error {
+func extractMember(destination *os.Root, name string, mode fs.FileMode, size int64, source io.Reader, seen map[string]struct{}) error {
 	wantedMode, allowed := allowedArchiveMembers[name]
 	if !allowed || filepath.Base(name) != name || filepath.Clean(name) != name || size < 0 || size > maxMemberBytes {
 		return fmt.Errorf("archive member contract is invalid")
@@ -151,7 +174,7 @@ func extractMember(destination, name string, mode fs.FileMode, size int64, sourc
 		return fmt.Errorf("archive member mode is invalid")
 	}
 	seen[name] = struct{}{}
-	target, err := os.OpenFile(filepath.Join(destination, name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, wantedMode)
+	target, err := destination.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, wantedMode)
 	if err != nil {
 		return fmt.Errorf("archive member creation failed")
 	}
@@ -168,6 +191,35 @@ func extractMember(destination, name string, mode fs.FileMode, size int64, sourc
 		return fmt.Errorf("archive member close failed")
 	}
 	return nil
+}
+
+func openRegularInput(path string) (*os.File, fs.FileInfo, error) {
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return nil, nil, fmt.Errorf("input path is not absolute and clean")
+	}
+	parent, name := filepath.Split(path)
+	if name == "" || filepath.Base(name) != name {
+		return nil, nil, fmt.Errorf("input path does not name a file")
+	}
+	root, err := os.OpenRoot(parent)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer root.Close()
+	before, err := root.Lstat(name)
+	if err != nil || before.Mode()&os.ModeSymlink != 0 || !before.Mode().IsRegular() {
+		return nil, nil, fmt.Errorf("input is not a regular file")
+	}
+	file, err := root.Open(name)
+	if err != nil {
+		return nil, nil, err
+	}
+	after, err := file.Stat()
+	if err != nil || !after.Mode().IsRegular() || !os.SameFile(before, after) {
+		_ = file.Close()
+		return nil, nil, fmt.Errorf("input changed while opening")
+	}
+	return file, after, nil
 }
 
 func validateMemberSet(seen map[string]struct{}) error {
