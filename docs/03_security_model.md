@@ -223,8 +223,9 @@ rejection, byte bounds, and safe extraction prevent the archive from choosing
 other filesystem targets; a digest and safe extraction do not make an
 arbitrary executable trustworthy. Replay is limited to the reviewed candidate
 from the same workflow, on an ephemeral matching native runner, using absolute
-no-shell execution, isolated working/home/configuration roots, a minimal
-credential-free environment, and finite time and output bounds.
+no-shell execution, an isolated working directory, isolated home and
+configuration roots, a minimal credential-free environment, and finite time
+and output bounds.
 
 The installed-artifact conformance journey runs a provider-transport-free
 source fixture with an allowlisted child environment, bounded attempt logs,
