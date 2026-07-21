@@ -308,17 +308,35 @@ snapshots, transcripts, and agent reasoning are absent.
   adoption and preview, plus one synthetic GitHub-compatible transform that
   runs through the production compatibility verifier, identity-bound process
   runner, parser, transformer, and result renderer without provider credentials
-  or network effects.
+  or network effects. The recovery fixture additionally proves an exact
+  bijection with all 27 preview help faults and all 41 execute help faults. It
+  exercises 27 preview zero-attempt cases plus 28 execute pre-start and 15
+  execute post-start cases, including both phases of identity change and
+  unclassified outcomes, exact recovery actions, drift through the production
+  identity reader, zero/one attempt accounting, and hostile-canary absence.
+  Narrow controlled ports provide deterministic external-boundary
+  observations; defensive request/encoding cases are invoked at their owning
+  boundary. The execute encoding case corrupts the application result only
+  after the production service and controlled process complete one attempt,
+  while application/domain tests prove the undecorated result boundary.
+  Infrastructure tests independently prove production file, trust, identity,
+  and process fault emission, including native start, wait, limit,
+  cancellation, timeout, and identity-race faults.
 - Artifact-journey fixtures own execution of the exact `atr` file extracted
   from a release archive. They use a native credential- and provider-network-
   free source fixture, an isolated user-config root, and an append-only attempt
   log. Before source inspection they verify schema-8 root help and five exact
   scoped authoring/runtime contracts, including complete nested field
-  inventories and declared recovery. The non-shipped harness may seed an exact
+  inventories and the complete ordered 27-fault preview and 41-fault execute
+  recovery signatures. The non-shipped harness may seed an exact
   receipt through the production trust-store adapter for each tested bundle;
   this proves receipt consumption, not human consent. Controlling-terminal
   full-digest confirmation remains separate required production-adapter
   evidence.
+- Each native CI artifact row runs the full production source-runner tests, the
+  exact bundle-file fault mapping, and the complete CLI recovery matrix before
+  packaging and replay. The release linter pins that exact step as well as the
+  five runner/target tuples.
 - Artifact-evidence aggregation owns the exact five-target set. Each native
   job uploads one bounded document containing target and observed host,
   revision, archive, command, bundle, and command-specific plan identities,
@@ -348,8 +366,10 @@ tree:
    covers exact selector encoding, preview/execute plan-digest equality,
    selected/renamed typed JSON, no raw-output leak, and exactly one source
    attempt per command;
-6. unsupported runtime combinations and every pre-start contract failure record
-   zero attempts, while post-start failures record one and are non-retryable;
+6. the production-composition recovery matrix covers all 27 preview faults,
+   all 28 execute pre-start phase cases at zero attempts, and all 15 execute
+   post-start phase cases at one non-retryable attempt, with exact scoped-help
+   parity and no raw or secret canary leak;
 7. retired authorization schemas fail with zero source attempts and legacy
    `plan preview` remains migration-only;
 8. exact scoped agent help publishes the finite source-catalog,

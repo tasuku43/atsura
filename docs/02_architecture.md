@@ -212,6 +212,21 @@ generic execution application service. A later source adapter supplies another
 implementation of the same compatibility port; it does not add provider fields
 to the plan or result.
 
+The credential-free recovery conformance fixture composes the production CLI,
+application services, bundle codec, trust store, source identity reader,
+GitHub runtime verifier, JSON parser, transformer, and renderer. Narrow owning
+ports provide deterministic boundary observations; infrastructure tests
+independently prove that the production file, trust, identity, and process
+adapters emit them. The fixture directly exercises the generic presentation
+encoder for the defensive preview failure. For the corresponding execute
+failure, the CLI-to-application seam supplies an invalid typed result that is
+corrupted only after the production service and controlled process complete
+exactly one attempt; application and domain tests separately prove that the
+undecorated service returns validated output. Real source-file drift uses the
+production identity reader, while the process runner's own tests induce native
+start, wait, limit, cancellation, timeout, and pre/post identity races. No
+fixture mode or test branch exists in the shipped composition.
+
 The transform-runtime milestone does not add identity/raw execution or host
 installation commands. Retired authorization command paths remain only as
 catalog-declared migration diagnostics and start zero source processes.
@@ -269,6 +284,17 @@ identity-draft edit, isolated process composition, and conformance evidence.
 It exercises the public `atr` binary from an exact native release archive, but
 it is not a production adapter and adds no fixture-only branch to the CLI,
 application, domain, or infrastructure layers.
+
+Before source inspection, the artifact journey also requires the complete
+ordered 27-fault preview and 41-fault execute signatures from packaged scoped
+help. It induces only the fixed portable subset needed for archive replay;
+complete zero/one-attempt phase coverage belongs to the production-composition
+fixture above.
+
+Each of the five native CI artifact rows also runs the production source
+runner tests, exact bundle-file mapping test, and complete CLI recovery matrix
+before packaging and replay. This distinguishes portable compilation from
+native classification evidence without putting test behavior into `atr`.
 
 The test composition root invokes public commands for the user-visible path.
 Its one deliberate internal composition is direct use of the production

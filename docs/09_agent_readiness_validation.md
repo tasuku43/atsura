@@ -493,6 +493,20 @@ credential- and network-free synthetic GitHub-compatible fixture is the fast
 production-composition gate. Scenario G separately proves the exact packaged
 executable on every claimed native platform.
 
+That production-composition gate executes the complete recovery contract: all
+27 preview faults at zero attempts, all 28 execute pre-start phase cases at
+zero attempts, and all 15 execute post-start phase cases at one attempt. It
+matches exact scoped-help kind, code, retryability, and next actions, uses the
+production identity reader for real file drift, and rejects any raw or secret
+canary in public output or saved state. Narrow controlled ports supply
+deterministic boundary observations; infrastructure tests independently prove
+production file, trust, identity, and process fault emission, including native
+start, wait, limit, cancellation, timeout, and identity races. The defensive
+execute encoding case corrupts the result only after the production service
+and controlled process complete one attempt; production application/domain
+tests prove the undecorated result boundary. Each five-target native CI row
+runs the runner and recovery contracts before exact-archive replay.
+
 ### Recovery probes
 
 - Unsupported adapter contract, source major version, command, identity
@@ -558,8 +572,9 @@ The replay starts from an isolated user-config root. Before starting the source
 fixture, packaged `atr` must return schema-8 root help plus exact `source
 inspect`, `spec init`, `spec validate`, `bundle preview`, and `bundle execute`
 scopes. It checks the complete catalog/specification output-schema field
-inventory and exact declared recovery facts rather than recognizing prose
-markers alone. It then obtains the catalog in four fixture attempts and, for
+inventory and the exact ordered 27-fault preview and 41-fault execute recovery
+signatures rather than recognizing prose markers alone. It then obtains the
+catalog in four fixture attempts and, for
 each admitted command, asks packaged `atr` for an identity draft, applies the
 same documented finite transform edit, validates and builds it, and observes
 `not_adopted/current`. Pre-adoption preview and execute fail without another

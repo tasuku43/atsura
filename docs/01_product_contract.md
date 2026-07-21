@@ -379,6 +379,17 @@ The no-shell process adapter compares the plan-bound path/hash/size before
 start, immediately before start, and after wait. A portable race remains
 between the final check and the operating system opening the executable.
 
+Exact scoped help publishes the complete recovery inventory: 27 zero-attempt
+faults for `bundle preview` and 41 fault codes for `bundle execute`. Execute
+has 28 pre-start and 15 post-start phase cases because
+`source_identity_changed` and `unclassified_source_execution_outcome` can
+arise on either side of process start. Their one public signature remains
+conservative enough for both phases. A declared recovery is part of the
+contract only when conformance proves its exact kind, retryability, next
+action, attempt phase, and secret-free output; a defensive invariant fault
+that valid typed input cannot naturally reach is exercised at its owning
+boundary rather than by corrupting production behavior.
+
 ## Compatibility boundary
 
 The stable project identity is `Atsura`, binary `atr`, and Go module

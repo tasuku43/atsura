@@ -235,8 +235,9 @@ fixture runs through the exact archived `atr`, production composition,
 verifier, runner, parser, transformer, and renderer and is the canonical
 automated artifact gate. It first verifies schema-8 root help and five exact
 scoped authoring/runtime contracts, including the complete nested catalog and
-specification field inventories and the exact recovery facts used by every
-induced fault. Its append-only log proves four inspection attempts, zero
+specification field inventories and the complete ordered 27-fault preview and
+41-fault execute recovery signatures. Every induced fault must then equal its
+packaged declaration. Its append-only log proves four inspection attempts, zero
 preview attempts, and exactly one success attempt for each of `issue list` and
 `pr list`; channel-specific canaries prove that raw failure data and
 unselected fields do not reach public output or isolated state. The
@@ -245,6 +246,21 @@ root through the production trust-store adapter. This is explicitly
 receipt-consumption evidence, not evidence that automation provided human
 consent. Full-digest controlling-terminal success and redirected-input
 rejection are proven separately by production-adapter and application tests.
+
+The credential-free in-process production-composition fixture supplies the
+complete phase evidence that a portable exact-archive journey cannot safely
+force: 27 preview zero-attempt cases, 28 execute pre-start cases, and 15
+execute post-start cases across the 41 execute codes. It uses the production
+identity reader for actual file drift and narrow controlled ports for
+deterministic boundary observations. Infrastructure tests prove production
+file, trust, identity, and process fault emission, including native
+start/wait/identity races. Defensive request and encoding faults are exercised
+at their owning boundary without a shipped fixture mode. The execute encoding
+case corrupts the result only after the production service and controlled
+process complete one real attempt; production application/domain tests prove
+the undecorated result. Every native CI artifact row runs these contracts and
+the production source-runner tests before archive replay, and
+`lint-release.sh` pins the exact commands.
 
 The accepted major-2 range is a maintained compatibility decision, not a claim
 that one fixture proves every future 2.x release. A live GitHub CLI observation

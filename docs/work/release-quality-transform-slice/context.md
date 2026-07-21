@@ -5,11 +5,20 @@
 - `internal/cli/bundle_test.go` exercises production composition with the Go
   test executable as a synthetic GitHub CLI and proves a matching preview
   digest, one source attempt, and no unselected canary in output.
+- `internal/cli/bundle_recovery_test.go` composes the production services and
+  adapters into an exact-help recovery matrix covering 27 preview zero-attempt,
+  28 execute pre-start, and 15 execute post-start phase cases. It uses the
+  production identity reader for real file drift and narrow controlled ports
+  for deterministic boundary observations. The defensive execute encoder case
+  corrupts the result only after a production service/process attempt;
+  undecorated result and adapter emission are proven independently by
+  application/domain/infrastructure tests.
 - `scripts/lint-release.sh` builds the five supported archives twice, verifies
   their contents and build metadata, and compares byte-for-byte digests.
 - The working tree defines native replay for all five artifacts plus strict
-  evidence/archive aggregation, but those workflow changes do not yet have
-  GitHub-hosted run evidence.
+  evidence/archive aggregation. Each native row also runs the production
+  source-runner and complete recovery contracts, but those workflow changes do
+  not yet have GitHub-hosted run evidence.
 - `bundle trust` requires a controlling terminal through the production
   confirmation adapter. Existing application, CLI, and infrastructure tests
   cover that interaction; automation must not add a public confirmation bypass.
@@ -62,7 +71,9 @@
 ## Unknowns
 
 - [ ] Whether native package construction exposes an OS-specific archive issue not visible to cross-build metadata checks; answer through the five-runner matrix.
-- [ ] Whether the Windows trust-store and source-process path behavior agrees with the existing pure-Go contract; answer through exact-artifact replay.
+- [ ] Whether the Windows trust-store and source-process path behavior agrees
+  with the existing pure-Go contract; answer through native runner/recovery
+  tests and exact-artifact replay.
 
 ## Thesis evidence
 

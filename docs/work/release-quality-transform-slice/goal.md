@@ -44,8 +44,14 @@ still broader than the available external native evidence.
 
 - [x] The documented installed-`atr` journey is self-contained and agrees with
   schema-8 root plus five exact scoped help contracts, finite catalog/schema
-  field and input inventories, and every induced structured fault and next
-  action.
+  field and input inventories, the complete ordered 27-fault preview and
+  41-fault execute recovery signatures, and every induced structured fault.
+- [x] A credential- and network-free production-composition fixture proves all
+  27 preview zero-attempt cases, all 28 execute pre-start zero-attempt cases,
+  all 15 execute post-start phase cases with one-attempt accounting, real
+  source-file drift, exact help parity, and absence of hostile/raw canaries.
+  Defensive seams and infrastructure/application/domain tests independently
+  prove the otherwise unreachable and native adapter boundaries.
 - [x] A credential- and network-free native fixture proves
   `commands_verified=["issue list","pr list"]`, four inspection attempts,
   seven zero-attempt rejections, ten total fixture attempts, exactly one
@@ -58,7 +64,7 @@ still broader than the available external native evidence.
 - [x] Exact-artifact conformance seeds only an isolated non-shipped receipt through the production store; existing production tests separately prove controlling-terminal full-digest consent and no release command exposes a bypass.
 - [x] The release gate detects removal or weakening of native artifact replay
   and evidence aggregation.
-- [x] `task check`, `task security`, `task public:check`, and
+- [ ] `task check`, `task security`, `task public:check`, and
   `task release:check` pass on one clean committed tree.
 
 ## Governing documents

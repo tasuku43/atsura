@@ -73,10 +73,17 @@ only, not user consent or an agent's unaided authoring behavior.
 
 Every tool failure names the exact journey stage but never forwards captured
 source stdout, stderr, or an internal cause. A failed step stops immediately.
-The source fixture never retries and the orchestrator rejects any per-command
-success count other than 0 preview/1 execute; the complete two-command journey
-has four shared inspection attempts and ten fixture attempts including the
-four induced post-start failures.
+The in-process recovery matrix binds all 27 preview and 41 execute help faults
+to 27 preview zero-attempt, 28 execute pre-start, and 15 execute post-start
+phase cases. It uses real file drift and narrow controlled ports wherever a
+deterministic boundary observation is required; infrastructure tests own the
+production adapters and native OS races. A decorator corrupts the application
+result only after one production service/process attempt to own the otherwise
+unreachable execute-encoding presentation case. The source fixture never
+retries, and the artifact orchestrator rejects any per-command success count
+other than 0 preview/1 execute. The complete two-command artifact journey has
+four shared inspection attempts and ten fixture attempts including the four
+portable induced post-start failures.
 
 ### Security and public boundary
 
@@ -100,12 +107,15 @@ detectable. No public trust bypass exists in a release binary.
 - Negative side-effect tests: fixture log proves preview does not start source; canary proves projection.
 - Opaque-reference and pagination tests: not applicable; current workflow produces no references or paged output.
 - Structured output and recovery tests: journey validates both command results
-  and compares every induced fault's kind, code, retryability, and exact next
-  actions with the applicable packaged scoped-help declaration.
+  and the complete ordered preview/execute help fault inventories, then
+  compares every induced artifact fault's kind, code, retryability, and exact
+  next actions with the applicable packaged declaration. The production-
+  composition fixture exercises every phase case.
 - Agent-readiness scenario and discovery-round-trip count: exact help plus documented one-pass workflow; no exploratory provider call.
 - Manual observation: native host archive replay through `task release:check`.
 - Required profiles: `task check`, `task security`, `task public:check`, `task release:check`.
-- Generated-diff or artifact checks: two complete reproducible matrices plus exact native extracted-artifact replay.
+- Generated-diff or artifact checks: two complete reproducible matrices, exact
+  native runner/recovery tests, plus exact extracted-artifact replay.
 
 ## Rollout and rollback
 

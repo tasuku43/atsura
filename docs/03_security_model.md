@@ -179,6 +179,20 @@ unreviewed raw output. The source attempt's meaning is preserved and the
 transform failure is reported separately. Persistent state contains no raw
 stdout, stderr, credentials, tokens, or transcripts.
 
+Recovery conformance covers every exact scoped-help declaration rather than a
+selected sample. Preview has 27 zero-attempt cases. Execute has 28 pre-start
+and 15 post-start phase cases spanning its 41 public codes, with zero/one
+attempt accounting and hostile canaries at output and persistence boundaries.
+Narrow controlled ports provide deterministic boundary observations, while
+infrastructure tests prove that the production file, trust, identity, and
+process adapters emit them. Native runner tests specifically own
+start/wait/limit/cancellation/timeout/identity classifications. Defensive
+encoding or request faults are tested at their owning boundary without adding
+a production fixture escape hatch. Execute encoding conformance consumes a
+result corrupted at the CLI-to-application seam only after the production
+service and controlled process complete exactly one attempt; the production
+application and domain tests independently prove valid undecorated output.
+
 ## Raw execution
 
 Future raw execution is an explicit tailoring bypass, not a permission bypass.
@@ -235,13 +249,17 @@ isolated test root. This proves receipt consumption and exact-digest
 enforcement; it is not a public trust bypass and is not evidence of user
 consent.
 
-The journey must show zero source attempts for pre-start rejection, exactly one
-attempt for every admitted execution, non-retryable classification for every
-post-start failure, and absence of canaries from stdout, stderr, saved state,
-and bounded evidence. It may retain only digests, counters, target identity,
-stable fault codes, and boolean leak checks. Native replay is required on each
-claimed release target so an emulation or cross-build cannot silently replace
-runtime security evidence.
+The journey must verify the complete ordered preview and execute recovery
+signatures from packaged help, show zero source attempts for each induced
+pre-start rejection, exactly one attempt for every induced admitted execution,
+non-retryable classification for every induced post-start failure, and absence
+of canaries from stdout, stderr, saved state, and bounded evidence. Complete
+phase coverage belongs to the production-composition fixture above; exact
+artifact replay proves that the packaged interface retains that complete help
+contract and that its portable induced subset behaves identically. It may
+retain only digests, counters, target identity, stable fault codes, and boolean
+leak checks. Native replay is required on each claimed release target so an
+emulation or cross-build cannot silently replace runtime security evidence.
 
 Each native replay emits one bounded journey document. The aggregation tool
 accepts exactly the five canonical evidence filenames and five matching
