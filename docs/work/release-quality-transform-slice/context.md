@@ -47,7 +47,7 @@
   Actions runs for that SHA. Local `main` was 35 commits ahead of remote
   `main` at `10bf45d1a4d1e13a93ed917f5e25c799f4698ff2`; existing remote green checks
   cover an older workflow without the native artifact matrix and are not
-  milestone evidence. The subsequent temporary-packet evidence commit is also
+  milestone evidence. Subsequent temporary-packet evidence commits are also
   intentionally local under the same no-push constraint.
 - GitHub-hosted evidence cannot be created for a Git object the service does
   not possess. Under this goal's no-push constraint, workflow structure and
