@@ -10,6 +10,7 @@ import (
 	"github.com/tasuku43/atsura/internal/app/bundlebuild"
 	"github.com/tasuku43/atsura/internal/app/doctorcmd"
 	"github.com/tasuku43/atsura/internal/app/planpreview"
+	"github.com/tasuku43/atsura/internal/app/policyinit"
 	"github.com/tasuku43/atsura/internal/app/samplecmd"
 	"github.com/tasuku43/atsura/internal/app/sourceinspect"
 	"github.com/tasuku43/atsura/internal/app/tailorrun"
@@ -40,6 +41,7 @@ type CLI struct {
 	samples *samplecmd.Service
 	sources *sourceinspect.Service
 	bundles *bundlebuild.Service
+	drafts  *policyinit.Service
 }
 
 // New builds the production CLI with offline template adapters.
@@ -79,6 +81,7 @@ func newCLIWithSamples(
 			"github-cli": githubcli.New(sourceexec.New()),
 		}),
 		bundles: bundlebuild.New(catalogjson.New(), policyyaml.New()),
+		drafts:  policyinit.New(catalogjson.New()),
 	}
 }
 

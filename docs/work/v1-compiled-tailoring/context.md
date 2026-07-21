@@ -102,3 +102,7 @@
 - CLI and application tests prove validate/build use the same catalog and
   normalized policy, reject digest mismatch before producing a bundle, emit
   exact catalog-declared JSON shapes, and create no persisted trust state.
+- `policy init` now generates deterministic schema-2 YAML for one exact
+  verified command, requires an explicit effect, and always produces a hidden
+  deny rule. Its output round-trips through `policy validate`; missing and
+  unverified commands fail without generating a draft.

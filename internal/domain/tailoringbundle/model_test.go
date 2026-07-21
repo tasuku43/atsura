@@ -94,6 +94,19 @@ func TestPolicyFailsClosedForUnverifiedMutationAndTransformGaps(t *testing.T) {
 	}
 }
 
+func TestDeniedMutationNeedsNoTargetInference(t *testing.T) {
+	policy := bundlePolicy(t)
+	rule := &policy.Rules[0]
+	rule.Decision = DecisionDeny
+	rule.AppendArgs = []string{}
+	rule.Target = nil
+	rule.Impact = nil
+	rule.Output = nil
+	if err := policy.Validate(bundleCatalog()); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
 func TestBundleDetectsCatalogPolicyAndSurfaceDrift(t *testing.T) {
 	bundle, err := Compile(bundleCatalog(), bundlePolicy(t))
 	if err != nil {

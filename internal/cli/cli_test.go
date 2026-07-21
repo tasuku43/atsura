@@ -663,6 +663,9 @@ func TestEveryCatalogCommandDispatchesThroughItsSpec(t *testing.T) {
 		if spec.Path == "policy validate" || spec.Path == "bundle build" {
 			args = bundleCommandArgs(spec.Path, catalogPath, schema2PolicyPath)
 		}
+		if spec.Path == "policy init" {
+			args = []string{"policy", "init", "--catalog", catalogPath, "--effect", "read", "--", "item", "list"}
+		}
 		if code := runCLI(command, args); code != ExitOK {
 			t.Errorf("Run(%q) code = %d, stderr = %q", spec.Path, code, stderr.String())
 		}

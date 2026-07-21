@@ -96,6 +96,28 @@ func TestPolicyValidateAndBundleBuildCloseCanonicalFileWorkflow(t *testing.T) {
 	}
 }
 
+func TestPolicyInitProducesValidHiddenDenyDraft(t *testing.T) {
+	catalogPath, _ := bundleArtifactPaths(t)
+	var out, errOut bytes.Buffer
+	command := New(strings.NewReader(""), &out, &errOut)
+	args := []string{"policy", "init", "--catalog", catalogPath, "--effect", "read", "--", "item", "list"}
+	if code := command.RunContext(context.Background(), args); code != ExitOK {
+		t.Fatalf("policy init code = %d, stderr = %q", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "visibility: hidden") || !strings.Contains(out.String(), "decision: deny") || strings.Contains(out.String(), "output:") {
+		t.Fatalf("draft = %s", out.String())
+	}
+	policyPath := filepath.Join(t.TempDir(), "draft.yaml")
+	if err := os.WriteFile(policyPath, out.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var validateOut, validateErr bytes.Buffer
+	validator := New(strings.NewReader(""), &validateOut, &validateErr)
+	if code := validator.RunContext(context.Background(), bundleCommandArgs("policy validate", catalogPath, policyPath)); code != ExitOK {
+		t.Fatalf("draft validation code = %d, stderr = %q", code, validateErr.String())
+	}
+}
+
 func TestBundleBuildRejectsCatalogPolicyMismatch(t *testing.T) {
 	catalogPath, policyPath := bundleArtifactPaths(t)
 	raw, err := os.ReadFile(policyPath)

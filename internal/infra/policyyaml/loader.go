@@ -38,15 +38,15 @@ type rule struct {
 	Decision   string   `yaml:"decision"`
 	Reason     string   `yaml:"reason"`
 	AppendArgs []string `yaml:"append_args"`
-	Target     *target  `yaml:"target"`
-	Impact     *impact  `yaml:"impact"`
-	Output     *output  `yaml:"output"`
+	Target     *target  `yaml:"target,omitempty"`
+	Impact     *impact  `yaml:"impact,omitempty"`
+	Output     *output  `yaml:"output,omitempty"`
 }
 
 type target struct {
 	Kind          string `yaml:"kind"`
-	ArgumentIndex *int   `yaml:"argument_index"`
-	Flag          string `yaml:"flag"`
+	ArgumentIndex *int   `yaml:"argument_index,omitempty"`
+	Flag          string `yaml:"flag,omitempty"`
 }
 
 type impact struct {
@@ -78,6 +78,37 @@ func (l *Loader) Load(ctx context.Context, path string) (tailoringbundle.Policy,
 		return tailoringbundle.Policy{}, fault.Wrap(fault.KindInvalidInput, "invalid_policy_yaml", "The schema-2 policy YAML is invalid.", false, err, helpAction())
 	}
 	return parsed, nil
+}
+
+// Encode renders one already normalized policy as deterministic schema-2 YAML.
+func Encode(policy tailoringbundle.Policy) ([]byte, error) {
+	value := document{SchemaVersion: policy.SchemaVersion, CatalogDigest: policy.CatalogDigest, Rules: make([]rule, len(policy.Rules))}
+	for index, source := range policy.Rules {
+		converted := rule{
+			Command:    append(make([]string, 0, len(source.Command)), source.Command...),
+			Visibility: string(source.Visibility), Effect: source.Effect.String(), Decision: string(source.Decision),
+			Reason: source.Reason, AppendArgs: append(make([]string, 0, len(source.AppendArgs)), source.AppendArgs...),
+		}
+		if source.Target != nil {
+			converted.Target = &target{Kind: source.Target.Kind, ArgumentIndex: source.Target.ArgumentIndex, Flag: source.Target.Flag}
+		}
+		if source.Impact != nil {
+			converted.Impact = &impact{Cardinality: source.Impact.Cardinality.String(), Notification: source.Impact.Notification.String(), AccessChange: source.Impact.AccessChange.String(), Destructive: source.Impact.Destructive.String()}
+		}
+		if source.Output != nil {
+			renames := make([]rename, len(source.Output.Rename))
+			for renameIndex, item := range source.Output.Rename {
+				renames[renameIndex] = rename{From: item.From, To: item.To}
+			}
+			converted.Output = &output{Input: source.Output.Input, Select: append(make([]string, 0, len(source.Output.Select)), source.Output.Select...), Rename: renames, Render: source.Output.Render}
+		}
+		value.Rules[index] = converted
+	}
+	encoded, err := yaml.Marshal(value)
+	if err != nil {
+		return nil, fmt.Errorf("encode schema-2 policy YAML: %w", err)
+	}
+	return encoded, nil
 }
 
 func decode(raw []byte) (tailoringbundle.Policy, error) {

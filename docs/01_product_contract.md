@@ -283,11 +283,15 @@ The implemented file workflow is:
 
 ```text
 atr source inspect --adapter github-cli --executable gh > catalog.json
+atr policy init --catalog catalog.json --effect read -- <source-command-path> > policy.yaml
 atr policy validate --catalog catalog.json --policy policy.yaml
 atr bundle build --catalog catalog.json --policy policy.yaml > bundle.json
 ```
 
-`policy validate` strictly decodes and normalizes schema-2 YAML, binds it to
+`policy init` requires an exact `verified_builtin` command and a user-declared
+read/create/write effect. It never infers effect or safety: its only output is
+one `hidden` plus `deny` rule with no target, impact, invocation, or output
+transformation authority. `policy validate` strictly decodes and normalizes schema-2 YAML, binds it to
 the exact catalog digest, and emits its canonical digest and rule counts.
 `bundle build` repeats those checks and emits a wrapper containing the canonical
 bundle and its digest. Both operations are read-only: redirecting their output

@@ -69,6 +69,24 @@ func TestLoadStrictSchema2Policy(t *testing.T) {
 	}
 }
 
+func TestEncodeFailClosedDraftRoundTrips(t *testing.T) {
+	policy := tailoringbundle.Policy{SchemaVersion: 2, CatalogDigest: strings.Repeat("a", 64), Rules: []tailoringbundle.Rule{{
+		Command: []string{"item", "delete"}, Visibility: tailoringbundle.VisibilityHidden, Effect: operation.EffectWrite,
+		Decision: tailoringbundle.DecisionDeny, Reason: "Review and tailor this command before enabling it.", AppendArgs: []string{},
+	}}}
+	raw, err := Encode(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "target:") || strings.Contains(string(raw), "output:") || !strings.Contains(string(raw), "append_args: []") {
+		t.Fatalf("encoded draft = %s", raw)
+	}
+	decoded, err := decode(raw)
+	if err != nil || decoded.Rules[0].Decision != tailoringbundle.DecisionDeny || decoded.Rules[0].AppendArgs == nil {
+		t.Fatalf("decoded = %+v, error = %v", decoded, err)
+	}
+}
+
 func TestLoadRejectsUnknownAliasMultipleAndOversize(t *testing.T) {
 	tests := []struct {
 		name  string

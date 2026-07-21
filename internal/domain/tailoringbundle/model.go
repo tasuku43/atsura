@@ -224,14 +224,20 @@ func (r Rule) validate(commands map[string]sourcecatalog.Command) error {
 		if r.Decision != DecisionConfirm && r.Decision != DecisionDeny {
 			return fmt.Errorf("create/write decision must be confirm or deny")
 		}
-		if r.Target == nil || r.Impact == nil {
-			return fmt.Errorf("create/write rules require target and impact")
-		}
-		if err := r.Target.validate(); err != nil {
-			return err
-		}
-		if err := r.Impact.Validate(); err != nil {
-			return fmt.Errorf("impact: %v", err)
+		if r.Decision == DecisionDeny {
+			if r.Target != nil || r.Impact != nil {
+				return fmt.Errorf("denied create/write rules must not bind target or impact")
+			}
+		} else {
+			if r.Target == nil || r.Impact == nil {
+				return fmt.Errorf("confirmed create/write rules require target and impact")
+			}
+			if err := r.Target.validate(); err != nil {
+				return err
+			}
+			if err := r.Impact.Validate(); err != nil {
+				return fmt.Errorf("impact: %v", err)
+			}
 		}
 	}
 	if r.Decision == DecisionDeny {

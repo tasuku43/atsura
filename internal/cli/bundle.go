@@ -7,6 +7,7 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
+	"github.com/tasuku43/atsura/internal/infra/policyyaml"
 )
 
 const maxBundleOutputBytes = 2 * 1024 * 1024
@@ -45,6 +46,25 @@ func runPolicyValidate(ctx context.Context, c *CLI, _ CommandSpec, intent operat
 		RuleCount: result.RuleCount, VisibleCount: result.VisibleCount, Policy: result.Policy,
 	}}
 	return c.emitJSONDocument(ctx, document, "policy validate")
+}
+
+func runPolicyInit(ctx context.Context, c *CLI, _ CommandSpec, intent operation.Intent, inputs ParsedInputs) int {
+	var effect operation.Effect
+	if err := effect.UnmarshalText([]byte(inputs.One("--effect"))); err != nil {
+		return c.fail(ctx, fault.Wrap(fault.KindInvalidInput, "invalid_policy_effect", "The draft effect must be read, create, or write.", false, err))
+	}
+	policy, err := c.drafts.Init(ctx, intent, inputs.One("--catalog"), effect, inputs.Values("command"))
+	if err != nil {
+		return c.fail(ctx, err)
+	}
+	encoded, err := policyyaml.Encode(policy)
+	if err != nil {
+		return c.fail(ctx, fault.Wrap(fault.KindContract, "output_encoding_failed", "The schema-2 YAML draft could not be encoded.", false, err))
+	}
+	if len(encoded) > 256*1024 {
+		return c.fail(ctx, outputContractExceeded("The schema-2 YAML draft exceeds 256 KiB.", "policy init"))
+	}
+	return c.emitResult(ctx, encoded)
 }
 
 func runBundleBuild(ctx context.Context, c *CLI, _ CommandSpec, intent operation.Intent, inputs ParsedInputs) int {

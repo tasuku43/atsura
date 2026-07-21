@@ -21,7 +21,7 @@
 - [ ] Register the remaining source refresh command and capability contract.
 - [x] Implement pure schema-2 policy invariants and deterministic vendor-neutral bundle compilation.
 - [x] Implement strict schema-2 policy validation and normalized policy output.
-- [ ] Implement `policy init` without auto-trust.
+- [x] Implement `policy init` as an explicit-effect hidden deny draft without auto-trust.
 - [x] Implement canonical bundle build and digest output without auto-trust.
 - [ ] Implement bundle trust receipt and status/drift.
 

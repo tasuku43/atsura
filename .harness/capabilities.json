@@ -40,6 +40,11 @@
     "reason": ""
   },
   {
+    "id": "tailoring.policy.init",
+    "status": "public",
+    "reason": ""
+  },
+  {
     "id": "tailoring.bundle.build",
     "status": "public",
     "reason": ""

@@ -128,6 +128,11 @@ unknown fields, trailing values, and excessive depth. `bundle build` writes
 only stdout and does not create a receipt; a redirected build artifact remains
 untrusted repository or user data.
 
+`policy init` does not infer effect from command names or help. The user must
+declare read, create, or write, and the generated draft remains hidden and
+denied. A denied mutation draft deliberately has no target or impact binding;
+those facts become mandatory only when the user changes it to confirmation.
+
 ## YAML policy boundary
 
 - Per-command YAML is the selected configuration direction.
