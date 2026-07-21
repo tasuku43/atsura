@@ -49,9 +49,11 @@ surface resolution
         +--> command present: deterministic wrapper execution plan
 ```
 
-Bundle-backed plan preview and source execution are paused during the schema
-correction. The next vertical slice will implement pure surface resolution and
-identity-wrapper preview before runtime execution resumes.
+`bundle preview` implements the zero-execution branch of this flow. It requires
+the exact schema-2 bundle to be user-adopted, revalidates the current source
+path, SHA-256, and size, and returns a complete deterministic plan plus its
+digest with `source_process_attempts: 0`. Bundle-backed source execution remains
+unimplemented.
 
 ## Working vocabulary
 
@@ -171,21 +173,41 @@ before/after actions remain planned vocabulary until implemented and tested.
 
 ### Wrapper execution plan
 
-The future complete typed result of resolving an included command against one
-adopted bundle and attempted invocation. A plan will contain:
+The complete typed result of resolving an included command against one adopted
+bundle and attempted invocation. `bundle preview` constructs this plan without
+starting the source. It contains:
 
-- matched tailored command and surface binding;
-- bundle, specification, catalog, and source identity;
+- matched tailored command and explicit or inherited surface binding;
+- bundle, specification, and catalog digests;
+- exact source identity and source-adapter kind/contract version;
 - original and transformed argv;
 - wrapper kind and ordered before/invoke/output/after stages;
-- applied specification entry and reason;
-- tailored or raw mode; and
-- declared source-process attempt count.
+- the exact applied specification entry, or JSON `null` for an inherited
+  surface entry, and the effective reason;
+- tailored mode; and
+- finite source-process attempts, timeout, stdout, and stderr bounds.
 
-Plan existence means the included wrapper pipeline is complete and applicable.
+Plan existence means the included wrapper pipeline is structurally complete
+for future execution after fresh authority and adapter-compatibility checks;
+preview does not apply it.
 The plan does not contain a universal permission decision, source effect,
 authorization target/impact, or confirmation requirement. A command absent
-from the surface produces no plan.
+from the surface produces no plan. The preview envelope is schema version 2 and
+contains `plan_digest`, `plan`, and `source_process_attempts`; the last field is
+always zero. Exact schema-8 agent help publishes the `wrapper-plan` schema
+version and a typed JSON-pointer inventory for every nested plan field.
+
+Resolution first chooses the longest matching command path from the complete
+embedded catalog. It then evaluates command membership and validates each
+observed long option against the matched command's tailored option surface.
+If that command has cataloged descendants and its next token is non-dash but
+does not complete a cataloged descendant, preview cannot distinguish an
+unobserved child from positional data and fails `invalid_invocation`. A caller
+must place `--` before intended positional data in that ambiguous case.
+Only after those steps does it append the wrapper's `append_args` and validate
+the bounded no-shell invocation recorded in the plan. A plan with an output
+transform additionally requires exactly one active cataloged structured-output
+selector for the declared input format before any `--` marker.
 
 ### Raw execution
 
@@ -263,7 +285,7 @@ replace OS, source CLI, credential, or provider authorization.
 
 ## Current public artifact workflow
 
-The schema-correction milestone supports these artifact outcomes:
+The zero-execution preview milestone supports these artifact outcomes:
 
 ```text
 atr source inspect --adapter github-cli --executable <path-or-name>
@@ -272,6 +294,7 @@ atr spec validate --catalog <catalog.json> --spec <spec.yaml>
 atr bundle build --catalog <catalog.json> --spec <spec.yaml>
 atr bundle status --bundle <bundle.json>
 atr bundle trust --bundle <bundle.json>
+atr bundle preview --bundle <bundle.json> -- <source-executable> <argv>
 ```
 
 `spec init` emits an exclude-by-default specification containing one included
@@ -283,8 +306,15 @@ redirection of stdout is caller-selected filesystem behavior.
 adoption, and compares the current source path/hash/size without starting the
 source. `bundle trust` is the only Atsura-owned mutation in this workflow.
 
-Source refresh, bundle plan/runtime, raw, and host-adapter commands are not
-implemented in this correction.
+`bundle preview` is a read-only, JSON-only utility. It admits only the exact
+requested executable spelling or resolved path recorded in an adopted current
+bundle, resolves one cataloged attempted invocation, and returns the complete
+schema-2 tailored plan and canonical SHA-256 plan digest. It reads current
+source identity but reports `source_process_attempts: 0` and performs no output
+transformation.
+
+Source refresh, bundle runtime execution, raw, and host-adapter commands are
+not implemented.
 
 ## Migration contract
 
@@ -298,7 +328,7 @@ semantics are retired experimental formats.
 - No automatic converter is selected because deny/hidden/confirm/effect/target
   cannot be mapped to surface membership and wrapper behavior without
   inventing user intent.
-- Deprecated `policy init`, `policy validate`, `plan preview --config`, and
+- Deprecated `policy init`, `policy validate`, legacy `plan preview --config`, and
   `run --config` invocations return a stable migration diagnostic and start no
   source process.
 - Recovery points to exact `spec` help. It never selects raw or silently builds
@@ -320,16 +350,30 @@ public bundle-runtime compatibility claim.
 The stable project identity is `Atsura`, binary `atr`, and Go module
 `github.com/tasuku43/atsura`.
 
-Shared catalog, specification, bundle, surface, and future plan schemas contain
+Shared catalog, specification, bundle, surface, and plan schemas contain
 no GitHub- or Claude-specific fields. GitHub CLI 2.x remains the first source
 inspection adapter. Claude Code remains a planned host adapter, not the core
 product model. Real compatibility is limited to maintained adapter fixtures and
 version ranges.
 
+The current preview grammar is intentionally narrower than arbitrary source
+CLI grammar. Catalog evidence does not yet model short options, root/global
+options, or command-specific positional arguments completely. Preview accepts
+positional data, but rejects unmodeled dash-prefixed options and cannot prove
+all positional dependencies. A command with cataloged descendants requires an
+inner `--` before otherwise ambiguous positional data. `append_args` are
+appended to the attempted argv exactly, including after an existing `--`; in
+that case the source would treat
+option-looking appended values as positional, and an output selector appended
+there is not active. Preview proves the presence and format of one active
+cataloged selector, but it does not prove that the selector's value encodes the
+plan's requested select/rename fields. Runtime output transformation is not
+implemented.
+
 ## Deliberately unsupported now
 
 - Source refresh and catalog persistence.
-- Bundle-backed plan preview or source execution.
+- Bundle-backed source execution.
 - Raw execution.
 - Hook installation or interception.
 - Arbitrary shell, jq, scripts, plugins, RTK, or external transformers.

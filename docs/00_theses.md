@@ -29,9 +29,9 @@ catalog + reviewed tailoring specification
 adopted bundle + attempted source invocation
   -> resolve command in the tailored surface
   -> compile one wrapper execution plan
-  -> preview the plan without starting the source
+  -> preview the plan and its digest without starting the source
      or
-  -> apply typed stages around one identity-bound source invocation
+  -> future: apply typed stages around one identity-bound source invocation
 ```
 
 Source-CLI inspectors and coding-agent hosts are adapters. They can extend
@@ -133,31 +133,41 @@ and a transform wrapper containing no transformation.
 
 A wrapper execution plan is not an authorization decision. It is the complete,
 typed result of resolving an included command against source evidence, one
-adopted bundle, and the attempted invocation.
+adopted bundle, and the attempted invocation. `bundle preview` constructs that
+plan only after revalidating the bundle's exact user adoption and current
+source path, SHA-256, and size. It starts no source process.
 
 A complete plan identifies at least:
 
 - the matched tailored command;
-- bundle and source identity;
+- bundle, catalog, specification, source, and adapter identity;
 - original and transformed argv;
-- applied specification entry and reason;
+- the exact applied specification entry, or explicit `null` when the surface
+  entry was inherited, plus its reason;
 - before actions;
 - the exact source invocation;
 - declared source-output input format;
 - output transformation;
 - after actions; and
-- tailored or raw mode.
+- tailored mode and finite source-process bounds.
 
-For an included command, successfully constructing the complete plan means the
-wrapper can be applied. For a command absent from the surface, plan construction
-returns a surface-resolution failure. Preview and execution share this plan
+For an included command, successfully constructing the complete plan proves
+that the wrapper pipeline is fully described; it does not claim that current
+Atsura can execute it. For a command absent from the surface, plan construction
+returns a surface-resolution failure. Future execution must reuse this plan
 logic; an old preview is never runtime authority after bundle or source drift.
 
 ### Mechanical enforcement target
 
-Identical validated inputs produce identical plans. Preview starts zero source
-processes. Execution revalidates bundle and source identity and starts at most
-the number of source attempts declared by the wrapper contract.
+Identical validated inputs produce identical plans and the same canonical plan
+digest. Resolution chooses the longest matching command path from the complete
+catalog before checking command and option membership in the tailored surface.
+When a matched command has cataloged descendants, unresolved non-dash data is
+not guessed to be a child or a positional; an explicit `--` must disambiguate
+positional intent.
+Preview reports `source_process_attempts: 0`. Future execution must revalidate
+bundle and source identity, reuse this constructor, and start at most the
+number of source attempts declared by the wrapper contract.
 
 ## Thesis 5: The source CLI owns source-operation meaning and authorization
 
@@ -190,6 +200,10 @@ hatch.
 The preferred path is to request source-native structured output when the
 adapter can verify it, parse it within declared bounds, apply typed built-ins,
 and render a task-specific structure without inventing facts.
+
+Current preview verifies one active cataloged selector for the planned input
+format before `--`; it does not yet prove that the selector value encodes the
+requested select/rename fields for a running source adapter.
 
 Transform failure never changes argv, retries the source process, selects raw
 mode, or silently exposes unreviewed raw output. RTK-equivalent breadth remains
@@ -231,7 +245,7 @@ mechanism count. A result is supported only when it is discoverable, bounded,
 machine-interpretable without undeclared reconstruction, recoverable through
 declared faults, and verified against the same artifacts users install.
 
-The next minimal evidence slice after this thesis correction should be:
+The current minimal evidence slice is:
 
 **A maintainer can create a catalog-bound specification with an explicit
 surface default, include one verified command with either an identity or typed
@@ -252,7 +266,7 @@ integration resumes.
 - Automatic raw or intact-output fallback.
 - Requiring a language model for routine execution.
 - Implementing source refresh, bundle runtime execution, raw, or host adapters
-  during the thesis-correction milestone.
+  during the zero-execution preview milestone.
 - Publishing or releasing Atsura.
 
 ## Open questions
@@ -261,6 +275,12 @@ integration resumes.
   the first finite wrapper vocabulary?
 - How should an agent-facing option surface represent positional arguments and
   mutually dependent source options?
+- How should the catalog and plan grammar model short options, root/global
+  options, and command-specific positional arguments without guessing?
+- Should invocation transforms be allowed to append option-looking arguments
+  after an existing `--`, where the source will interpret them as positional?
+- Which source adapters can prove the structured-output selector encoding used
+  by a wrapper rather than merely record it as a specification value?
 - Which source and host adapters should follow the first compatibility fixtures?
 - What stronger executable identity mechanism can close the remaining
   check-to-exec race on each supported platform?

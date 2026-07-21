@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"runtime"
 	"strings"
 	"testing"
@@ -675,6 +676,10 @@ func TestEveryCatalogCommandDispatchesThroughItsSpec(t *testing.T) {
 		if spec.Path == "bundle status" || spec.Path == "bundle trust" {
 			installTrustedBundleAuthority(command)
 			args = append(args, "--bundle", bundlePath)
+		}
+		if spec.Path == "bundle preview" {
+			installTrustedBundleAuthority(command)
+			args = []string{"bundle", "preview", "--bundle", bundlePath, "--", os.Args[0], "item", "list"}
 		}
 		if code := runCLI(command, args); code != wantCode {
 			t.Errorf("Run(%q) code = %d, want %d, stderr = %q", spec.Path, code, wantCode, stderr.String())

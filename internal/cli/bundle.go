@@ -8,6 +8,7 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
+	"github.com/tasuku43/atsura/internal/domain/tailoringplan"
 	"github.com/tasuku43/atsura/internal/infra/specyaml"
 )
 
@@ -69,6 +70,17 @@ type bundleTrustPayload struct {
 	AlreadyAdopted        bool                    `json:"already_adopted"`
 	Source                bundletrust.SourceState `json:"source"`
 	SourceProcessAttempts int                     `json:"source_process_attempts"`
+}
+
+type bundlePreviewDocument struct {
+	SchemaVersion int                  `json:"schema_version"`
+	Preview       bundlePreviewPayload `json:"preview"`
+}
+
+type bundlePreviewPayload struct {
+	PlanDigest            string             `json:"plan_digest"`
+	Plan                  tailoringplan.Plan `json:"plan"`
+	SourceProcessAttempts int                `json:"source_process_attempts"`
 }
 
 func runSpecValidate(ctx context.Context, c *CLI, _ CommandSpec, intent operation.Intent, inputs ParsedInputs) int {
@@ -137,6 +149,18 @@ func runBundleTrust(ctx context.Context, c *CLI, spec CommandSpec, intent operat
 		Source: result.Source, SourceProcessAttempts: result.SourceProcessAttempts,
 	}}
 	return c.emitJSONDocument(ctx, document, "bundle trust")
+}
+
+func runBundlePreview(ctx context.Context, c *CLI, _ CommandSpec, intent operation.Intent, inputs ParsedInputs) int {
+	result, err := c.previews.Preview(ctx, intent, inputs.One("--bundle"), tailoringplan.Attempt{
+		Executable: inputs.One("source-executable"),
+		Args:       inputs.Values("argv"),
+	})
+	if err != nil {
+		return c.fail(ctx, err)
+	}
+	document := bundlePreviewDocument{SchemaVersion: 2, Preview: bundlePreviewPayload{PlanDigest: result.PlanDigest, Plan: result.Plan, SourceProcessAttempts: result.SourceProcessAttempts}}
+	return c.emitJSONDocument(ctx, document, "bundle preview")
 }
 
 func (c *CLI) emitJSONDocument(ctx context.Context, document any, command string) int {

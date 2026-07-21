@@ -21,8 +21,8 @@
   },
   {
     "id": "tailoring.preview",
-    "status": "deferred",
-    "reason": "The authorization-centered preview was retired; a schema-3 wrapper-stage preview is the next bounded slice."
+    "status": "public",
+    "reason": ""
   },
   {
     "id": "tailoring.execute",

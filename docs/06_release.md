@@ -1,13 +1,15 @@
 # Release Model
 
-## Atsura v0.1 release-quality decision
+## Current pre-release packaging decision
 
 Atsura is not yet published or released. The repository identity is
 `tasuku43/atsura`, the binary is `atr`, and MIT is the deliberate project
-license. ADR 0002 defines release-quality for the first product slice without
-authorizing publication.
+license. ADR 0005 supersedes the earlier v0.1 local-run product boundary. The
+packaging mechanics below remain reviewed infrastructure, but they do not make
+the current zero-execution preview a released runtime product or authorize
+publication.
 
-The v0.1 decisions are:
+The current first-release packaging decisions are:
 
 - retain the inherited Linux amd64/arm64, macOS amd64/arm64, and Windows amd64
   pure-Go artifact matrix;
@@ -17,7 +19,7 @@ The v0.1 decisions are:
   manual public/release review;
 - publish, when separately authorized, through GitHub Releases; stable versions
   may update the repository Homebrew Formula, while prereleases do not;
-- maintain no additional package manager for v0.1;
+- maintain no additional package manager for the first release;
 - claim checksums and reproducible archives, but no code signing, notarization,
   SBOM, or externally verifiable provenance;
 - use a GitHub `release` environment for the publish job and require the
@@ -29,9 +31,10 @@ The v0.1 decisions are:
 - require the repository owner to perform and record the final public-boundary
   review.
 
-These decisions fit a local pure-Go wrapper with no bundled provider SDK or
-credential store. A later native hook, signing system, extra package manager,
-or non-Go runtime dependency must revise the matrix and release contract.
+These decisions fit the current pure-Go artifact and plan-inspection binary
+with no bundled provider SDK or credential store. A later source runtime,
+native hook, signing system, extra package manager, or non-Go runtime
+dependency must revise the matrix and release contract.
 
 The base template defines byte-for-byte reproducible archives within a pinned pure-Go build contract and a public, reproducible-enough overall release path without private package infrastructure. A derived project must review supported platforms, artifact signing, provenance, package managers, and compatibility promises before its first release.
 
@@ -192,10 +195,13 @@ task public:check
 
 Then review the exact commit that will receive the tag. A clean local run does not authorize tagging a different revision.
 
-For the v0.1 series, release preparation also replays both documented local
-tailoring examples: preview must make zero direct source attempts and run must
-make exactly one, return the declared transformed records, and require no live
-provider account.
+Before a first release is approved, release preparation must replay the current
+public artifact, adoption, and `bundle preview` scenarios against the exact
+release artifacts. Preview must require the adopted current bundle, reproduce
+its canonical plan digest, and report `source_process_attempts: 0`. There is no
+current bundle-runtime, raw, or host-integration release claim. A future source
+runtime requires its own accepted compatibility corpus and release evidence;
+the retired legacy `plan preview`/`run` slice is not that evidence.
 
 ## Failure and recovery
 
@@ -222,7 +228,7 @@ Absence of these controls must remain visible in the security model and release 
 
 ## Future release decisions
 
-Revisit the accepted v0.1 choices when evidence requires changing:
+Revisit the accepted first-release choices when evidence requires changing:
 
 1. supported and tested platforms;
 2. the compatibility-stability threshold;

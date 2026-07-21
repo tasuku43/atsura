@@ -2,9 +2,9 @@
 
 The harness turns Atsura's product, architecture, and security claims into
 repeatable checks. A capability is complete only when `task check` passes. The
-current thesis-correction milestone also requires `task security` because it
-changes schema trust, source-process classification, adoption vocabulary, and
-migration behavior.
+current zero-execution wrapper-preview milestone also requires `task security`
+because it admits an attempted source invocation, observes executable identity,
+and exposes a new canonical plan contract.
 
 Do not weaken a check to preserve the superseded authorization-centered model.
 Update the governing contract and its mechanical claim together.
@@ -32,8 +32,8 @@ The underlying stable interface is:
 `task check` is the implementation completion gate. Publication additionally
 requires `task public:check`; release additionally requires
 `task release:check`. Public and release profiles are not completion gates for
-the current non-publication correction milestone unless its changes affect
-their tracked fixtures.
+the current non-publication preview milestone unless its changes affect their
+tracked fixtures.
 
 ## Executable claims
 
@@ -138,19 +138,56 @@ through the central mutation invoker with exact target and impact contracts.
 
 ### Wrapper plan contract
 
-The current milestone exercises pure included/absent resolution and normalized
-wrapper definitions, not process execution. Tests must nevertheless keep the
-future plan boundary unambiguous:
+`bundle preview --bundle <path> -- <source-executable> <argv>` is the current
+zero-execution plan boundary. Tests must prove:
 
-- identical validated inputs resolve identically;
-- an included command resolves to one complete identity or transform wrapper;
-- an excluded command resolves to no plan authority;
+- only a strictly loaded schema-2 bundle with an exact valid adoption receipt
+  is admitted;
+- current source path, SHA-256, and size are observed and must equal the
+  bundle-bound identity before plan construction;
+- the supplied executable is exactly the bundle's requested spelling or
+  resolved path;
+- matching selects the longest command prefix from the complete embedded
+  catalog before command and option membership are evaluated;
+- when the match has cataloged descendants, a following non-dash token that
+  does not complete a known child fails as ambiguous; an explicit inner `--`
+  is required before positional data;
+- an absent command returns `command_not_in_surface`, an absent observed option
+  returns `option_not_in_surface`, and both produce no plan;
+- an explicit surface match includes the exact specification entry, while an
+  inherited match encodes `specification_entry: null`;
+- the plan binds bundle/catalog/specification digests, source and adapter
+  identity, matched command and surface origin, wrapper kind, reason, option
+  surface, original/transformed argv, and ordered before/invoke/output/after
+  stages;
+- the invoke stage declares exactly one maximum attempt plus finite timeout,
+  stdout, and stderr bounds, even though preview never crosses that boundary;
+- `append_args` appear exactly at the end of transformed argv;
+- an output transform requires exactly one active cataloged selector matching
+  its input format before `--`; missing, duplicate, conflicting, or positional
+  selectors fail plan construction;
+- identical validated inputs produce identical canonical plan bytes and
+  `plan_digest` values;
+- the schema-2 preview envelope contains exactly `plan_digest`, `plan`, and
+  `source_process_attempts`, with the attempt count always zero;
+- exact schema-8 agent help publishes the versioned `wrapper-plan` inventory,
+  including nested JSON-pointer paths, scalar/object/array types, array element
+  types, requiredness, and nullable object states; and
 - wrapper stages contain no allow/confirm/deny or source
-  read/create/write/target/impact fields; and
-- pure preview/resolution fakes observe zero source-process attempts.
+  read/create/write/target/impact fields.
 
-When runtime resumes, preview and execution must share one plan constructor and
-tests must compare their plan identity directly.
+Tests must retain fail-closed evidence for the current grammar boundary:
+unmodeled short options fail, root/global and command-specific positional
+grammar are not inferred, ambiguous descendant-versus-positional tokens require
+an inner `--`, and values after `--` are positional. Appended option-looking
+argv after `--` is never silently moved; when it is the required output
+selector, plan construction fails because it is positional. Tests prove the
+active selector flag and declared input format, not that the selector value
+encodes the plan's requested select/rename fields. That encoding requires a
+source-adapter runtime fixture.
+
+Future runtime must use this same plan constructor and compare plan identity
+directly; it may not consume an old preview as authority.
 
 ### Source execution effect and process boundary
 
@@ -165,8 +202,9 @@ Operation tests must prove:
 
 Existing source-inspection process tests retain exact executable/argv,
 no-shell, identity revalidation, time/byte limits, declared attempt counts, and
-non-retryable post-start uncertainty. Bundle runtime is outside this milestone
-and must not be presented as implemented.
+non-retryable post-start uncertainty. `bundle preview` is `EffectRead` and
+starts no source process. Bundle runtime is outside this milestone and must not
+be presented as implemented.
 
 ### Retired-schema migration
 
@@ -216,19 +254,20 @@ snapshots, transcripts, and agent reasoning are absent.
 ## Test ownership
 
 - Domain tests own specification, surface, wrapper, bundle, digest, effect,
-  and pure resolution invariants.
-- Application tests own ordering, port calls, adoption assessment, mutation
-  invocation, and zero-attempt behavior.
+  full-catalog matching, option admission, plan, and pure resolution invariants.
+- Application tests own ordering, port calls, adoption assessment, current
+  source identity assessment, mutation invocation, and zero-attempt behavior.
 - Infrastructure tests own bounded strict codecs, executable identity, process
   limits, safe local persistence, and adapter protocol mechanics.
 - CLI tests own catalog registration, typed argv, help, output schemas,
   migration recovery, and stdout/stderr routing.
-- End-to-end fixtures own clean-state specification through bundle status and
-  adoption without real provider or network effects.
+- End-to-end fixtures own clean-state specification through bundle status,
+  adoption, and zero-execution preview without real provider or network
+  effects.
 - Architecture and public guards own dependency direction and secret-free
   repository state.
 
-## Correction milestone gate
+## Wrapper-preview milestone gate
 
 This milestone is complete only when all of the following are true on the same
 tree:
@@ -236,10 +275,14 @@ tree:
 1. focused domain, codec, application, CLI, and migration tests pass;
 2. schema-3 specification and schema-2 bundle canonical fixtures pass;
 3. surface/wrapper truth-table and `EffectExecute` negative tests pass;
-4. retired authorization schemas fail with zero source attempts;
-5. `task check` passes;
-6. `task security` passes; and
-7. repository search finds no live source-wrapper requirement for
+4. adopted/current bundle preview covers identity and transforming wrappers,
+   explicit and inherited surface entries, longest-prefix matching, option
+   absence, stable plan digests, and exactly zero source attempts;
+5. retired authorization schemas fail with zero source attempts and legacy
+   `plan preview` remains migration-only;
+6. `task check` passes;
+7. `task security` passes; and
+8. repository search finds no live source-wrapper requirement for
    allow/confirm/deny, source read/create/write, or source target/impact outside
    explicit migration and superseded-history contexts.
 

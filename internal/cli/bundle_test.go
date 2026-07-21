@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/tasuku43/atsura/internal/app/bundleauthority"
+	"github.com/tasuku43/atsura/internal/app/planpreview"
 	"github.com/tasuku43/atsura/internal/domain/bundletrust"
 	"github.com/tasuku43/atsura/internal/domain/sourcecatalog"
 	"github.com/tasuku43/atsura/internal/infra/bundlejson"
@@ -30,7 +31,11 @@ type cliConfirmation struct{}
 func (cliConfirmation) Confirm(context.Context, bundletrust.Summary) error { return nil }
 
 func installTrustedBundleAuthority(command *CLI) {
-	command.authority = bundleauthority.New(bundlejson.New(), sourceexec.New(), &cliTrustStore{state: bundletrust.StateAdopted}, cliConfirmation{})
+	loader := bundlejson.New()
+	runner := sourceexec.New()
+	store := &cliTrustStore{state: bundletrust.StateAdopted}
+	command.authority = bundleauthority.New(loader, runner, store, cliConfirmation{})
+	command.previews = planpreview.New(loader, store, runner)
 }
 
 func bundleArtifactPaths(t *testing.T) (string, string) {
@@ -176,6 +181,147 @@ func TestBundleStatusAndTrustUseExactBundleWithoutSourceProcess(t *testing.T) {
 	}
 	if !trustDocument.Trust.Adopted || trustDocument.Trust.AlreadyAdopted || trustDocument.Trust.SourceProcessAttempts != 0 || trust.state != bundletrust.StateAdopted {
 		t.Fatalf("trust = %+v, store = %q", trustDocument.Trust, trust.state)
+	}
+}
+
+func TestBundlePreviewReturnsCompleteSchemaTwoPlanWithoutSourceAttempt(t *testing.T) {
+	catalogPath, specificationPath := bundleArtifactPaths(t)
+	bundlePath := bundleArtifactPath(t, catalogPath, specificationPath)
+	var out, errOut bytes.Buffer
+	command := New(strings.NewReader(""), &out, &errOut)
+	installTrustedBundleAuthority(command)
+	args := []string{"bundle", "preview", "--bundle", bundlePath, "--", os.Args[0], "item", "list", "active"}
+	if code := command.RunContext(context.Background(), args); code != ExitOK {
+		t.Fatalf("bundle preview code=%d stderr=%q", code, errOut.String())
+	}
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(out.Bytes(), &top); err != nil {
+		t.Fatal(err)
+	}
+	assertJSONKeys(t, top, []string{"preview", "schema_version"})
+	var previewObject map[string]json.RawMessage
+	if err := json.Unmarshal(top["preview"], &previewObject); err != nil {
+		t.Fatal(err)
+	}
+	assertJSONKeys(t, previewObject, []string{"plan", "plan_digest", "source_process_attempts"})
+	var planObject map[string]json.RawMessage
+	if err := json.Unmarshal(previewObject["plan"], &planObject); err != nil {
+		t.Fatal(err)
+	}
+	assertJSONKeys(t, planObject, []string{
+		"bundle_digest", "catalog_digest", "matched_command", "mode", "options", "original_argv", "reason",
+		"schema_version", "source", "specification_digest", "specification_entry", "stages", "surface_origin",
+		"transformed_argv", "wrapper_kind",
+	})
+	var sourceObject map[string]json.RawMessage
+	if err := json.Unmarshal(planObject["source"], &sourceObject); err != nil {
+		t.Fatal(err)
+	}
+	assertJSONKeys(t, sourceObject, []string{"adapter_contract_version", "adapter_kind", "requested_executable", "resolved_path", "sha256", "size", "version"})
+	var stagesObject map[string]json.RawMessage
+	if err := json.Unmarshal(planObject["stages"], &stagesObject); err != nil {
+		t.Fatal(err)
+	}
+	assertJSONKeys(t, stagesObject, []string{"after", "before", "invoke", "order", "output"})
+	var invokeObject map[string]json.RawMessage
+	if err := json.Unmarshal(stagesObject["invoke"], &invokeObject); err != nil {
+		t.Fatal(err)
+	}
+	assertJSONKeys(t, invokeObject, []string{"appended_args", "args", "executable", "max_attempts", "stderr_limit_bytes", "stdout_limit_bytes", "timeout_millis"})
+	var document bundlePreviewDocument
+	if err := json.Unmarshal(out.Bytes(), &document); err != nil {
+		t.Fatal(err)
+	}
+	preview := document.Preview
+	if document.SchemaVersion != 2 || len(preview.PlanDigest) != 64 || preview.SourceProcessAttempts != 0 || preview.Plan.SchemaVersion != 2 {
+		t.Fatalf("preview=%+v", preview)
+	}
+	if preview.Plan.Source.ResolvedPath == "" || preview.Plan.WrapperKind != "transform" || preview.Plan.SpecificationEntry == nil || preview.Plan.Stages.Invoke.MaxAttempts != 1 {
+		t.Fatalf("plan=%+v", preview.Plan)
+	}
+	wantOriginal := []string{os.Args[0], "item", "list", "active"}
+	if strings.Join(preview.Plan.OriginalArgv, "\x00") != strings.Join(wantOriginal, "\x00") || preview.Plan.TransformedArgv[len(preview.Plan.TransformedArgv)-1] != "--json=id,name" {
+		t.Fatalf("argv original=%v transformed=%v", preview.Plan.OriginalArgv, preview.Plan.TransformedArgv)
+	}
+}
+
+func TestBundlePreviewRequiresExactAdoptionAndTailoredOptions(t *testing.T) {
+	catalogPath, specificationPath := bundleArtifactPaths(t)
+	bundlePath := bundleArtifactPath(t, catalogPath, specificationPath)
+	loader := bundlejson.New()
+	runner := sourceexec.New()
+	tests := []struct {
+		name  string
+		state bundletrust.State
+		argv  []string
+		code  string
+		exit  int
+	}{
+		{name: "not adopted", state: bundletrust.StateNotAdopted, argv: []string{os.Args[0], "item", "list"}, code: "bundle_not_adopted", exit: ExitRejected},
+		{name: "executable mismatch", state: bundletrust.StateAdopted, argv: []string{"other", "item", "list"}, code: "source_executable_mismatch", exit: ExitUsage},
+		{name: "unknown option", state: bundletrust.StateAdopted, argv: []string{os.Args[0], "item", "list", "--unknown"}, code: "invalid_invocation", exit: ExitUsage},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			command := New(strings.NewReader(""), &out, &errOut)
+			command.previews = planpreview.New(loader, &cliTrustStore{state: test.state}, runner)
+			args := append([]string{"--error-format=json", "bundle", "preview", "--bundle", bundlePath, "--"}, test.argv...)
+			if exit := command.RunContext(context.Background(), args); exit != test.exit || out.Len() != 0 || !strings.Contains(errOut.String(), `"code":"`+test.code+`"`) {
+				t.Fatalf("exit=%d stdout=%q stderr=%q", exit, out.String(), errOut.String())
+			}
+		})
+	}
+
+	raw, err := os.ReadFile(specificationPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hiddenSpecification := filepath.Join(t.TempDir(), "hidden.yaml")
+	if err := os.WriteFile(hiddenSpecification, []byte(strings.Replace(string(raw), "exclude: []", "exclude: [--json]", 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hiddenBundle := bundleArtifactPath(t, catalogPath, hiddenSpecification)
+	var out, errOut bytes.Buffer
+	command := New(strings.NewReader(""), &out, &errOut)
+	command.previews = planpreview.New(loader, &cliTrustStore{state: bundletrust.StateAdopted}, runner)
+	args := []string{"--error-format=json", "bundle", "preview", "--bundle", hiddenBundle, "--", os.Args[0], "item", "list", "--json=id"}
+	if exit := command.RunContext(context.Background(), args); exit != ExitNotFound || out.Len() != 0 || !strings.Contains(errOut.String(), `"code":"option_not_in_surface"`) {
+		t.Fatalf("exit=%d stdout=%q stderr=%q", exit, out.String(), errOut.String())
+	}
+}
+
+func TestBundlePreviewOutputFailureIsRetryableReadFailure(t *testing.T) {
+	catalogPath, specificationPath := bundleArtifactPaths(t)
+	bundlePath := bundleArtifactPath(t, catalogPath, specificationPath)
+	var errOut bytes.Buffer
+	command := New(strings.NewReader(""), shortWriter{}, &errOut)
+	installTrustedBundleAuthority(command)
+	args := []string{"bundle", "preview", "--bundle", bundlePath, "--", os.Args[0], "item", "list"}
+	if exit := command.RunContext(context.Background(), args); exit != ExitInternal || !strings.Contains(errOut.String(), "code: output_write_failed") || !strings.Contains(errOut.String(), "retryable: true") {
+		t.Fatalf("exit=%d stderr=%q", exit, errOut.String())
+	}
+}
+
+func TestBundlePreviewHelpPublishesExactPositionalOnlyGrammar(t *testing.T) {
+	var out, errOut bytes.Buffer
+	command := New(strings.NewReader(""), &out, &errOut)
+	if exit := command.RunContext(context.Background(), []string{"help", "bundle", "preview"}); exit != ExitOK || errOut.Len() != 0 {
+		t.Fatalf("exit=%d stderr=%q", exit, errOut.String())
+	}
+	for _, required := range []string{"atr bundle preview --bundle <path> -- <source-executable> <argv>", "source-executable", "cardinality: repeatable"} {
+		if !strings.Contains(out.String(), required) {
+			t.Fatalf("help missing %q:\n%s", required, out.String())
+		}
+	}
+	out.Reset()
+	if exit := command.RunContext(context.Background(), []string{"help", "bundle", "preview", "--format=agent"}); exit != ExitOK || errOut.Len() != 0 {
+		t.Fatalf("agent help exit=%d stderr=%q", exit, errOut.String())
+	}
+	for _, required := range []string{`"source_process_attempts"`, `"command_not_in_surface"`, `"option_not_in_surface"`, `"id":"wrapper-plan"`, `"path":"/stages/invoke/max_attempts"`} {
+		if !strings.Contains(out.String(), required) {
+			t.Fatalf("agent help missing %q:\n%s", required, out.String())
+		}
 	}
 }
 

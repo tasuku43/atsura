@@ -86,16 +86,30 @@ loading, source drift detection, and vendor-neutral conformance remain.
 
 ### Wrapper execution plan
 
-A future plan describes one resolved wrapper pipeline, not authorization. It
-contains the matched tailored command, bundle/source identity, original and
-transformed argv, before actions, exact source invocation, output input and
-transformation, after actions, applied specification and reason, and
-tailored/raw mode.
+A plan describes one resolved wrapper pipeline, not authorization. The
+zero-execution `bundle preview --bundle <path> -- <source-executable> <argv>`
+path requires exact bundle adoption and current source path/hash/size, then
+constructs the plan without starting the source. It contains the matched
+tailored command, bundle/catalog/specification digests, source and adapter
+identity, original and transformed argv, ordered before/invoke/output/after
+stages, finite process bounds, the exact applied specification entry or `null`
+for inheritance, reason, and tailored mode. Its canonical bytes determine the
+plan digest; the preview reports `source_process_attempts: 0`.
 
-An included command with a complete plan is applicable. A command outside the
-surface has no plan. Confirmation is not a universal source permission state;
-if evidence later requires interaction, it must be a typed wrapper stage or a
-host interaction request with its own contract.
+An included command with a complete plan is structurally applicable after
+future runtime revalidates its authority and adapter compatibility; current
+preview does not apply it. A command outside the surface has no plan.
+Confirmation is not a universal source
+permission state; if evidence later requires interaction, it must be a typed
+wrapper stage or a host interaction request with its own contract.
+
+Command resolution selects the longest prefix from the complete embedded
+catalog before evaluating command and option membership. This avoids treating
+the tailored surface as a competing command registry. A non-dash token after a
+matched command with cataloged descendants is not guessed to be an unobserved
+child or positional value; the caller must use `--` to state positional intent.
+Future execution must reuse the same constructor and revalidate authority
+rather than treating an old preview as runtime authority.
 
 ### Source-owned execution and Atsura-owned mutation
 
@@ -147,8 +161,8 @@ An automatic converter is not selected. In particular, hidden/deny and
 confirm/create/write rules cannot be mapped without inventing surface or source
 meaning. A maintainer creates and reviews a new schema-3 specification.
 
-Source refresh, bundle runtime execution, raw, and host integration remain
-paused until the schema-3 surface and wrapper model passes its gates.
+The legacy `plan preview` path remains migration-only. Source refresh, bundle
+runtime execution, raw, and host integration remain unimplemented.
 
 ## Consequences
 
@@ -166,11 +180,18 @@ paused until the schema-3 surface and wrapper model passes its gates.
 
 - Existing experimental specifications and bundles require deliberate
   recreation and adoption.
-- The previous preview/run slice is retired before its replacement runtime is
-  implemented.
+- The previous authorization preview/run slice is retired; the replacement
+  exposes only zero-execution wrapper-plan inspection while runtime remains
+  unimplemented.
 - Surface and option composition add schema and validation complexity.
 - `EffectExecute` requires catalog and invariant audits that cannot treat every
   non-read command as a mutation.
+- The current catalog does not completely model short options, root/global
+  options, or command-specific positional grammar beyond the explicit
+  descendant-versus-positional `--` rule. Appended argv after `--`
+  remains after that marker. Preview proves one active cataloged selector and
+  its input format, but not the selector value's select/rename encoding at
+  runtime.
 
 ## Mechanical enforcement
 
@@ -184,6 +205,11 @@ paused until the schema-3 surface and wrapper model passes its gates.
   contain no permission decision or inferred source effect.
 - Trust-summary tests assert surface/wrapper counts and prohibit permission or
   source-effect counts.
+- Plan-preview tests require adopted/current path-hash-size evidence, longest
+  full-catalog prefix matching, exact/null specification entries, stable
+  canonical plan digests, complete ordered stages and process bounds, exactly
+  one active matching structured-output selector when required, and zero
+  source-process attempts.
 - Future host fixtures must test transport mapping separately from core state.
 - Focused, full, and security profiles decide completion of this correction.
 

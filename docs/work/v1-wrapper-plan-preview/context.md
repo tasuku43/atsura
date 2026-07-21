@@ -74,3 +74,19 @@
 - Agent-readiness transcript showing root plus one scoped help call, direct
   plan consumption, and zero external processing/source attempts.
 - Focused, full, and security gate results from the final tree.
+
+## Recorded evidence
+
+- Core plan and application boundary committed as `3425e5e`.
+- Focused domain/application/CLI tests and `go test ./...` pass with Go 1.26.5.
+- `task check:fast`, `task check`, and `task security` pass on the public-surface
+  tree; security reports no vulnerabilities.
+- Exact schema-8 agent help measures 5,114 UTF-8 bytes at root and 16,369 bytes
+  for `bundle preview`; the scoped output publishes `wrapper-plan` version 2
+  with a typed JSON-pointer field inventory.
+- Review found and the implementation closed cancellation misclassification,
+  unknown adoption state, ambiguous descendant/positional parsing, output
+  selector absence/duplication/position, nested schema discoverability, and
+  preview-specific argument recovery.
+- Repository audit finds no process executor in `planpreview`, no runtime/raw/
+  host command added, and no authorization decision fields in the plan.

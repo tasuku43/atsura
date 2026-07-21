@@ -227,6 +227,26 @@ type OutputField struct {
 	Type          OutputFieldType `json:"type"`
 	Description   string          `json:"description"`
 	ReferenceKind string          `json:"reference_kind,omitempty"`
+	Schema        *OutputSchema   `json:"schema,omitempty"`
+}
+
+// OutputSchema publishes a versioned, flat JSON-pointer inventory for a
+// structured object whose nested shape would otherwise be opaque in agent
+// help. Required applies when the field's parent object is present.
+type OutputSchema struct {
+	ID      string              `json:"id"`
+	Version int                 `json:"version"`
+	Fields  []OutputSchemaField `json:"fields"`
+}
+
+// OutputSchemaField describes one nested value. ElementType is required only
+// for arrays. Nullable distinguishes an explicit JSON null from omission.
+type OutputSchemaField struct {
+	Path        string          `json:"path"`
+	Type        OutputFieldType `json:"type"`
+	ElementType OutputFieldType `json:"element_type,omitempty"`
+	Required    bool            `json:"required"`
+	Nullable    bool            `json:"nullable"`
 }
 
 // OutputDelivery states whether one invocation returns its complete selected
@@ -466,6 +486,119 @@ func bundleFileErrors(command string) []CommandError {
 	}
 }
 
+func bundlePreviewErrors() []CommandError {
+	errors := bundleFileErrors("bundle preview")
+	errors[0] = declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help bundle preview", "Pass one bundle path, the exact source executable, and at least one source argv element after --.")
+	return append(errors,
+		declaredCommandError(fault.KindRejected, "invalid_bundle_trust_store", false, "bundle status", "Repair or reconcile invalid user-local adoption state."),
+		declaredCommandError(fault.KindRejected, "bundle_not_adopted", false, "bundle trust", "Review and adopt the exact bundle digest before previewing a plan."),
+		declaredCommandError(fault.KindRejected, "bundle_source_drift", false, "bundle status", "Rebuild and adopt current source evidence before previewing a plan."),
+		declaredCommandError(fault.KindNotFound, "source_executable_not_found", false, "bundle status", "Reconcile the missing bundle-bound source executable."),
+		declaredCommandError(fault.KindUnavailable, "source_identity_unavailable", true, "bundle status", "Retry after the bundle-bound source identity can be read."),
+		declaredCommandError(fault.KindInvalidInput, "unsafe_source_executable", false, "bundle status", "Select and inspect a supported regular source executable."),
+		declaredCommandError(fault.KindRejected, "source_identity_changed", false, "bundle status", "Rebuild from stable current source identity evidence."),
+		declaredCommandError(fault.KindContract, "invalid_source_identity", false, "bundle status", "Repair invalid source identity evidence."),
+		declaredCommandError(fault.KindInvalidInput, "source_executable_mismatch", false, "help bundle preview", "Use the exact requested executable or resolved path recorded in the bundle."),
+		declaredCommandError(fault.KindInvalidInput, "invalid_invocation", false, "help bundle preview", "Use a cataloged command path and deterministic observed long-option grammar."),
+		declaredCommandError(fault.KindNotFound, "command_not_in_surface", false, "help bundle preview", "Select a command present in the compiled tailored surface."),
+		declaredCommandError(fault.KindNotFound, "option_not_in_surface", false, "help bundle preview", "Use only options present in the matched command's tailored option surface."),
+		declaredCommandError(fault.KindContract, "invalid_wrapper_plan", false, "help bundle preview", "Repair the bundle or plan constructor so it produces one complete typed plan."),
+		declaredCommandError(fault.KindContract, "output_contract_exceeded", false, "help bundle preview", "Reduce the bounded invocation and plan output."),
+		declaredCommandError(fault.KindContract, "output_encoding_failed", false, "help bundle preview", "Repair deterministic schema-2 preview JSON."),
+		declaredCommandError(fault.KindInternal, "internal_error", false, "bundle status", "Inspect bundle, adoption, source identity, and plan wiring."),
+		declaredCommandError(fault.KindInternal, "output_write_failed", true, "bundle preview", "Retry with a writable output stream."),
+		declaredCommandError(fault.KindCanceled, "operation_canceled", true, "bundle preview", "Retry when the caller is ready."),
+	)
+}
+
+func wrapperPlanOutputSchema() *OutputSchema {
+	field := func(path string, fieldType OutputFieldType) OutputSchemaField {
+		return OutputSchemaField{Path: path, Type: fieldType, Required: true}
+	}
+	array := func(path string, elementType OutputFieldType) OutputSchemaField {
+		return OutputSchemaField{Path: path, Type: OutputFieldTypeArray, ElementType: elementType, Required: true}
+	}
+	fields := []OutputSchemaField{
+		field("/bundle_digest", OutputFieldTypeString),
+		field("/catalog_digest", OutputFieldTypeString),
+		array("/matched_command", OutputFieldTypeString),
+		field("/mode", OutputFieldTypeString),
+		field("/options", OutputFieldTypeObject),
+		field("/options/default", OutputFieldTypeString),
+		array("/options/exclude", OutputFieldTypeString),
+		array("/options/include", OutputFieldTypeString),
+		array("/original_argv", OutputFieldTypeString),
+		field("/reason", OutputFieldTypeString),
+		field("/schema_version", OutputFieldTypeInteger),
+		field("/source", OutputFieldTypeObject),
+		field("/source/adapter_contract_version", OutputFieldTypeInteger),
+		field("/source/adapter_kind", OutputFieldTypeString),
+		field("/source/requested_executable", OutputFieldTypeString),
+		field("/source/resolved_path", OutputFieldTypeString),
+		field("/source/sha256", OutputFieldTypeString),
+		field("/source/size", OutputFieldTypeInteger),
+		field("/source/version", OutputFieldTypeString),
+		field("/specification_digest", OutputFieldTypeString),
+		field("/specification_entry", OutputFieldTypeObject),
+		array("/specification_entry/command", OutputFieldTypeString),
+		field("/specification_entry/options", OutputFieldTypeObject),
+		field("/specification_entry/options/default", OutputFieldTypeString),
+		array("/specification_entry/options/exclude", OutputFieldTypeString),
+		array("/specification_entry/options/include", OutputFieldTypeString),
+		field("/specification_entry/presence", OutputFieldTypeString),
+		field("/specification_entry/reason", OutputFieldTypeString),
+		field("/specification_entry/wrapper", OutputFieldTypeObject),
+		array("/specification_entry/wrapper/after", OutputFieldTypeObject),
+		field("/specification_entry/wrapper/after/*/kind", OutputFieldTypeString),
+		array("/specification_entry/wrapper/before", OutputFieldTypeObject),
+		field("/specification_entry/wrapper/before/*/kind", OutputFieldTypeString),
+		field("/specification_entry/wrapper/invoke", OutputFieldTypeObject),
+		array("/specification_entry/wrapper/invoke/append_args", OutputFieldTypeString),
+		field("/specification_entry/wrapper/kind", OutputFieldTypeString),
+		field("/specification_entry/wrapper/output", OutputFieldTypeObject),
+		field("/specification_entry/wrapper/output/input", OutputFieldTypeString),
+		array("/specification_entry/wrapper/output/rename", OutputFieldTypeObject),
+		field("/specification_entry/wrapper/output/rename/*/from", OutputFieldTypeString),
+		field("/specification_entry/wrapper/output/rename/*/to", OutputFieldTypeString),
+		field("/specification_entry/wrapper/output/render", OutputFieldTypeString),
+		array("/specification_entry/wrapper/output/select", OutputFieldTypeString),
+		field("/stages", OutputFieldTypeObject),
+		array("/stages/after", OutputFieldTypeObject),
+		field("/stages/after/*/kind", OutputFieldTypeString),
+		array("/stages/before", OutputFieldTypeObject),
+		field("/stages/before/*/kind", OutputFieldTypeString),
+		field("/stages/invoke", OutputFieldTypeObject),
+		array("/stages/invoke/appended_args", OutputFieldTypeString),
+		array("/stages/invoke/args", OutputFieldTypeString),
+		field("/stages/invoke/executable", OutputFieldTypeString),
+		field("/stages/invoke/max_attempts", OutputFieldTypeInteger),
+		field("/stages/invoke/stderr_limit_bytes", OutputFieldTypeInteger),
+		field("/stages/invoke/stdout_limit_bytes", OutputFieldTypeInteger),
+		field("/stages/invoke/timeout_millis", OutputFieldTypeInteger),
+		array("/stages/order", OutputFieldTypeString),
+		field("/stages/output", OutputFieldTypeObject),
+		field("/stages/output/input", OutputFieldTypeString),
+		array("/stages/output/rename", OutputFieldTypeObject),
+		field("/stages/output/rename/*/from", OutputFieldTypeString),
+		field("/stages/output/rename/*/to", OutputFieldTypeString),
+		field("/stages/output/render", OutputFieldTypeString),
+		array("/stages/output/select", OutputFieldTypeString),
+		field("/surface_origin", OutputFieldTypeString),
+		array("/transformed_argv", OutputFieldTypeString),
+		field("/wrapper_kind", OutputFieldTypeString),
+	}
+	for index := range fields {
+		switch fields[index].Path {
+		case "/specification_entry", "/stages/output":
+			fields[index].Nullable = true
+		case "/specification_entry/wrapper/output":
+			fields[index].Required = false
+		}
+	}
+	sort.Slice(fields, func(i, j int) bool { return fields[i].Path < fields[j].Path })
+	return &OutputSchema{ID: "wrapper-plan", Version: 2, Fields: fields}
+}
+
 func legacyMigrationCommand(path, summary, args, outcome, recovery string, inputs []CommandInput, handler commandHandler) CommandSpec {
 	return CommandSpec{
 		Path: path, Summary: summary, Args: args, Effect: operation.EffectRead, Role: RoleUtility,
@@ -566,7 +699,7 @@ func DefaultCatalog() Catalog {
 					Delivery:           OutputDeliveryComplete,
 					CollectionCoverage: CollectionCoverageExhaustive,
 					JSONEnvelope:       "commands",
-					JSONSchemaVersion:  7,
+					JSONSchemaVersion:  8,
 				},
 				Prerequisites: []string{},
 				Errors: []CommandError{
@@ -749,6 +882,35 @@ func DefaultCatalog() Catalog {
 				),
 			},
 			handler: runBundleStatus,
+		},
+		CommandSpec{
+			Path:    "bundle preview",
+			Summary: "Preview one adopted wrapper plan without source execution",
+			Args:    "--bundle <path> -- <source-executable> <argv>",
+			Effect:  operation.EffectRead,
+			Role:    RoleUtility,
+			Agent: AgentContract{
+				CapabilityID: "tailoring.preview",
+				Outcome:      "Resolve one exact attempted invocation against an adopted current bundle and return the complete deterministic tailored wrapper plan without starting the source",
+				Inputs: []CommandInput{
+					{Name: "--bundle", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read the exact bounded JSON document emitted by bundle build.", AllowedValues: []string{}},
+					{Name: "source-executable", Source: InputSourceArgument, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Use the exact requested executable spelling or resolved path recorded in the bundle after the positional-only marker.", AllowedValues: []string{}},
+					{Name: "argv", Source: InputSourceArgument, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalityRepeatable, Description: "Pass the source command path, options, and positional values as separate argv elements; dash-prefixed values require the published positional-only or equals grammar.", AllowedValues: []string{}},
+				},
+				Output: CommandOutput{
+					Formats: []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
+					Fields: []OutputField{
+						{Name: "plan_digest", Type: OutputFieldTypeString, Description: "SHA-256 identity of the complete canonical wrapper plan."},
+						{Name: "plan", Type: OutputFieldTypeObject, Description: "Complete schema-2 tailored plan binding source, artifacts, surface, specification entry, argv, stages, and runtime process bounds.", Schema: wrapperPlanOutputSchema()},
+						{Name: "source_process_attempts", Type: OutputFieldTypeInteger, Description: "Always zero; preview reads identity evidence but never starts the source process."},
+					},
+					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable,
+					JSONEnvelope: "preview", JSONSchemaVersion: 2,
+				},
+				Prerequisites: []string{"One current schema-2 bundle whose exact digest is user-adopted; preview revalidates source path, SHA-256, and size and never treats adoption as source authorization."},
+				Errors:        bundlePreviewErrors(),
+			},
+			handler: runBundlePreview,
 		},
 		CommandSpec{
 			Path:    "bundle trust",
@@ -1370,6 +1532,9 @@ func validateAgentContract(command CommandSpec) error {
 			if field.Type != OutputFieldTypeString {
 				return fmt.Errorf("agent output reference field %q must have string type", field.Name)
 			}
+		}
+		if err := validateOutputSchema(field); err != nil {
+			return fmt.Errorf("agent output field %q schema: %w", field.Name, err)
 		}
 	}
 	if err := contract.Output.Delivery.validate(); err != nil {
@@ -2304,6 +2469,64 @@ func validateOutputFieldName(value string) error {
 	return nil
 }
 
+func validateOutputSchema(field OutputField) error {
+	if field.Schema == nil {
+		return nil
+	}
+	if field.Type != OutputFieldTypeObject {
+		return fmt.Errorf("only object fields may publish a nested schema")
+	}
+	if err := validateReferenceName(field.Schema.ID); err != nil {
+		return fmt.Errorf("id: %w", err)
+	}
+	if field.Schema.Version <= 0 || field.Schema.Fields == nil || len(field.Schema.Fields) == 0 || len(field.Schema.Fields) > 128 {
+		return fmt.Errorf("version and a non-empty bounded field inventory are required")
+	}
+	previous := ""
+	for index, nested := range field.Schema.Fields {
+		if err := validateOutputSchemaPath(nested.Path); err != nil {
+			return fmt.Errorf("field %d: %w", index, err)
+		}
+		if nested.Path <= previous {
+			return fmt.Errorf("field paths must be sorted and unique")
+		}
+		previous = nested.Path
+		if err := nested.Type.validate(); err != nil {
+			return fmt.Errorf("field %q: %w", nested.Path, err)
+		}
+		if nested.Type == OutputFieldTypeArray {
+			if err := nested.ElementType.validate(); err != nil {
+				return fmt.Errorf("array field %q element type: %w", nested.Path, err)
+			}
+		} else if nested.ElementType != OutputFieldTypeUnknown {
+			return fmt.Errorf("non-array field %q cannot declare an element type", nested.Path)
+		}
+		if nested.Nullable && nested.Type != OutputFieldTypeObject {
+			return fmt.Errorf("nullable field %q must be an object", nested.Path)
+		}
+	}
+	return nil
+}
+
+func validateOutputSchemaPath(path string) error {
+	if len(path) < 2 || len(path) > 512 || !strings.HasPrefix(path, "/") || strings.HasSuffix(path, "/") {
+		return fmt.Errorf("schema path is invalid: %q", path)
+	}
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	for index, part := range parts {
+		if part == "*" {
+			if index == 0 || index == len(parts)-1 {
+				return fmt.Errorf("array wildcard must occur between named path segments: %q", path)
+			}
+			continue
+		}
+		if err := validateOutputFieldName(part); err != nil {
+			return fmt.Errorf("schema path segment: %w", err)
+		}
+	}
+	return nil
+}
+
 // Commands returns a copy in the curated display order.
 func (c Catalog) Commands() []CommandSpec {
 	commands := make([]CommandSpec, len(c.commands))
@@ -2378,6 +2601,13 @@ func cloneAgentContract(contract AgentContract) AgentContract {
 	}
 	contract.Output.Formats = cloneSlice(contract.Output.Formats)
 	contract.Output.Fields = cloneSlice(contract.Output.Fields)
+	for index := range contract.Output.Fields {
+		if contract.Output.Fields[index].Schema != nil {
+			schema := *contract.Output.Fields[index].Schema
+			schema.Fields = cloneSlice(schema.Fields)
+			contract.Output.Fields[index].Schema = &schema
+		}
+	}
 	if contract.Pagination != nil {
 		pagination := *contract.Pagination
 		contract.Pagination = &pagination

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 	"reflect"
 	"sort"
 	"strings"
@@ -44,6 +45,7 @@ func TestJSONOutputMatchesCatalogContract(t *testing.T) {
 		{path: "spec validate", args: bundleCommandArgs("spec validate", catalogPath, specificationPath), build: newDefault},
 		{path: "bundle build", args: bundleCommandArgs("bundle build", catalogPath, specificationPath), build: newDefault},
 		{path: "bundle status", args: []string{"bundle", "status", "--bundle", bundlePath}, build: newBundleAuthority},
+		{path: "bundle preview", args: []string{"bundle", "preview", "--bundle", bundlePath, "--", os.Args[0], "item", "list"}, build: newBundleAuthority},
 		{path: "bundle trust", args: []string{"bundle", "trust", "--bundle", bundlePath}, build: newBundleAuthority},
 		{path: "sample list", args: []string{"sample", "list", "--format=json"}, build: newDefault},
 		{path: "sample read", args: []string{"sample", "read", "--id", "smp_2f4a6c8e0b1d", "--format=json"}, build: newDefault},

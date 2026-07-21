@@ -91,7 +91,7 @@ a core permission decision.
 
 Project-local host installation must use exact ownership markers, preserve
 unrelated settings, and fail closed on malformed or conflicting state. Host
-work is outside the current correction milestone.
+work is outside the current preview milestone.
 
 ## Surface composition is not isolation
 
@@ -115,11 +115,14 @@ Surface membership and wrapper behavior are validated independently:
 - a transforming wrapper contains at least one supported typed transform; and
 - unsupported before/after actions are invalid rather than ignored.
 
-A future plan binds the adopted bundle, source identity, matched command,
-original and transformed argv, ordered stages, specification entry, and reason.
-It does not carry a universal permission decision. Preview starts zero source
-processes. Runtime revalidates the bundle and source identity rather than using
-an old preview as authority.
+`bundle preview` binds the adopted bundle, bundle/catalog/specification
+digests, exact source and adapter identity, matched command, original and
+transformed argv, ordered stages, finite process bounds, and the exact applied
+specification entry or `null` for inheritance. It does not carry a universal
+permission decision. Preview revalidates current source path, SHA-256, and size,
+returns a canonical plan digest, and reports `source_process_attempts: 0`.
+Future runtime must revalidate again rather than using an old preview as
+authority.
 
 ## Source process execution
 
@@ -142,8 +145,9 @@ The process boundary must:
 The source CLI remains responsible for credential prompts, source-specific
 confirmation, authorization, destinations, and downstream effects.
 
-Bundle-backed source execution is paused during this correction milestone.
-Existing inspection probes remain bounded source execution.
+Bundle-backed source execution remains unimplemented. The read-only
+`bundle preview` path does not cross the source-process boundary. Existing
+inspection probes remain bounded source execution.
 
 ## Atsura-owned mutations
 
@@ -177,7 +181,7 @@ Future raw execution is an explicit tailoring bypass, not a permission bypass.
 It revalidates bundle-bound source identity but applies no surface selection or
 wrapper transformation. Raw is never automatic fallback, never a recovery
 suggestion, and never part of the tailored agent surface. Raw is outside the
-current correction milestone.
+current preview milestone.
 
 ## Failure policy
 
@@ -190,6 +194,7 @@ owns, including:
 - invalid surface membership or option override;
 - missing, incomplete, or contradictory wrapper stages;
 - command absent from the tailored surface;
+- attempted option absent from the matched command's tailored option surface;
 - missing adoption, source drift, or pre-start identity mismatch; or
 - unknown core effect.
 
@@ -216,15 +221,28 @@ echo arbitrary secret-bearing environment values or unbounded hostile text.
   result of the source CLI.
 - Source help can omit dynamic behavior or change through plugins and
   environment; adapter compatibility remains bounded evidence.
+- Preview recognizes complete catalog command paths by longest prefix, but the
+  catalog and plan grammar do not yet model short options, root/global options,
+  or command-specific positional arguments completely. When a matched command
+  has cataloged descendants, a non-dash token that is not a known child fails
+  closed unless an inner `--` marks positional intent.
+- `append_args` are appended exactly even after a positional-only `--`; preview
+  exposes that result but does not prove that the source interprets it as an
+  option.
+- Preview requires exactly one active cataloged structured-output selector for
+  the planned input format before `--`, but its value's select/rename encoding
+  and runtime behavior have not been proven by this zero-execution milestone.
 - Before/after actions, richer argv transforms, runtime, raw, and host adapters
-  remain unimplemented during the correction milestone.
+  remain unimplemented.
 
 ## Security claim for the current milestone
 
-The correction milestone may claim only that validated schema-3 specifications
-compile deterministically into schema-2 bundles whose surface/wrapper truth
-table and exact-digest adoption are mechanically checked; commands absent from
-the surface produce no plan; retired authorization schemas fail with explicit
-migration diagnostics; and these paths start zero source processes. It may not
-claim source-operation authorization, sandboxing, runtime enforcement, raw
-execution, or host integration.
+The zero-execution preview milestone may claim only that validated schema-3
+specifications compile deterministically into schema-2 bundles whose
+surface/wrapper truth table and exact-digest adoption are mechanically checked;
+`bundle preview` requires the adopted digest and current source path/hash/size,
+resolves command and option membership, and returns one canonical bounded plan
+with zero source-process attempts; commands absent from the surface produce no
+plan; and retired authorization schemas fail with explicit migration
+diagnostics. It may not claim source-operation authorization, sandboxing,
+runtime enforcement, raw execution, or host integration.

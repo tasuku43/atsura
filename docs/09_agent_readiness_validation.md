@@ -54,7 +54,7 @@ For each derived command, verify all four stages.
 | Stage | Evidence |
 |---|---|
 | Discover | Root `view: index` exposes path, namespace, summary, capability, outcome, effect, and role plus a machine-readable `scope_request`; selected `view: scope` declares the argv grammar, inputs, input sources, prerequisites, effect, output, authentication, errors, mutation facts, and workflow edges |
-| Execute | Arguments are copied from declared fields or explicit configuration; the resolved command, exclusive reference/fixed target binding, effect, runtime target, auth requirement, and impact validate before I/O |
+| Execute | Arguments are copied from declared fields or explicit configuration, and the resolved command, effect, and any declared authentication requirement validate before I/O. Source execution additionally binds exact executable identity, argv, and process bounds but has no mutation target or impact. An Atsura-owned create/write additionally validates its exclusive reference/fixed-target binding, mutation target, and impact. |
 | Interpret | The result is bound to its declared task and every target, parent, or scope dimension that task actually carries before rendering; scoped empty collections retain scope and interpretation-relevant absent, empty, zero, false, and unresolved states stay distinct; machine output has declared fields/types/delivery/collection coverage; structural runes are visibly projected; scoped I/O metadata marks external text as untrusted data; opaque references retain exact values and their field-required kinds |
 | Recover | Failure kind/code/retryability/next actions are structured; auth, permission, ambiguity, missing targets, rate limits, temporary failure, cancellation, and contract failure remain distinct |
 
@@ -162,7 +162,7 @@ go run ./cmd/atr sample read --id smp_2f4a6c8e0b1d --format json
 go run ./cmd/atr --error-format json sample read --id smp_000000000000
 ```
 
-The root agent contract must be schema version 7 with `view: index`, reveal the
+The root agent contract must be schema version 8 with `view: index`, reveal the
 `sample` namespace and both exact paths, and contain no input, output,
 authentication, error, mutation, fixed-target, or workflow detail. Its
 `scope_request` must identify the selector fields and exact invocation template.
@@ -196,14 +196,16 @@ measurements were 1,517 bytes for root agent help, 5,359 bytes for exact
 `sample read` help, and 8,359 bytes for the `sample` namespace. The 512-byte
 limit continues to bound each root selection entry.
 
-With schema 7, measured on 2026-07-21 for the schema-correction catalog, the
-current root is 4,755 bytes, exact `sample read` help is 5,845 bytes, and the
+With schema 8, measured on 2026-07-21 for the wrapper-preview catalog, the
+current root is 5,114 bytes, exact `sample read` help is 5,845 bytes, and the
 `sample` namespace is 8,734 bytes. Exact artifact contracts remain scoped:
 `spec validate` is 8,967 bytes, `bundle build` is 8,386 bytes, `bundle status`
-is 7,527 bytes, and `bundle trust` is 8,743 bytes. The root contains selection
-entries rather than those complete invocation and failure contracts.
+is 7,527 bytes, `bundle trust` is 8,743 bytes, and `bundle preview` is 16,369
+bytes. Preview's larger scoped contract includes the versioned `wrapper-plan`
+JSON-pointer field/type inventory. The root contains selection entries rather than those complete
+invocation and failure contracts.
 
-Schema 7 retains the fixed derived-scale regression with six selected commands, 18
+Schema 8 retains the fixed derived-scale regression with six selected commands, 18
 producer endpoints, 18 consumer endpoints, and 324 implicit same-kind edges.
 The grouped document is 26,643 UTF-8 bytes; a pair-expanded representation of
 the same facts is 179,909 bytes. The fixed corpus has a 65,536-byte
@@ -290,8 +292,9 @@ rebound. `spec init` is the executable route to a catalog-bound draft.
   effect.
 
 This scenario validates artifact inspection, specification composition, and
-deterministic compilation. It does not validate bundle runtime, wrapper-plan
-preview, output transformation at runtime, raw bypass, or host integration.
+deterministic compilation. Scenario E separately owns wrapper-plan preview.
+Neither scenario validates bundle runtime, output transformation at runtime,
+raw bypass, or host integration.
 
 ## Scenario D: Atsura bundle adoption
 
@@ -338,6 +341,105 @@ Status and trust both report `source_process_attempts: 0`.
 This scenario validates an Atsura-owned adoption-store mutation. Adoption is
 not source authorization, command approval, runtime activation, or proof that
 hidden commands are inaccessible through another route.
+
+## Scenario E: Atsura zero-execution wrapper-plan preview
+
+### Outcome
+
+Given one adopted current schema-2 bundle, a maintainer can resolve an exact
+attempted source invocation into its complete deterministic tailored wrapper
+plan and digest without starting the source executable.
+
+### Runnable probe
+
+Continue from Scenarios C and D:
+
+```sh
+go run ./cmd/atr help bundle preview --format agent
+go run ./cmd/atr bundle preview --bundle /tmp/atsura-bundle.json -- gh pr list
+```
+
+The scoped contract publishes the exact
+`--bundle <path> -- <source-executable> <argv>` positional-only grammar. Preview
+strictly loads the bundle, requires its exact digest to be adopted, and
+revalidates the current source path, SHA-256, and size. It accepts only the
+requested executable spelling or resolved path bound into the bundle.
+
+Resolution selects the longest matching command prefix from the complete
+embedded catalog before evaluating command membership and the matched command's
+option surface. If the match has cataloged descendants, a following non-dash
+token that does not complete a known child is ambiguous rather than assumed to
+be positional; the caller must put an inner `--` before positional data. The
+schema-2 JSON envelope contains `plan_digest`, `plan`, and
+`source_process_attempts`. Exact schema-8 agent help declares the nested plan
+as `wrapper-plan` version 2 and publishes its typed JSON-pointer inventory. The
+plan binds:
+
+- bundle, catalog, and specification digests;
+- exact source path/hash/size/version and adapter kind/contract version;
+- matched command and explicit or inherited surface origin;
+- the exact schema-3 specification entry for an explicit match, or JSON `null`
+  for an inherited match;
+- reason, option surface, and wrapper kind;
+- original and transformed argv;
+- ordered before, invoke, output, and after stages; and
+- maximum attempts, timeout, stdout, and stderr bounds for the future source
+  invocation.
+
+The plan digest is the SHA-256 identity of the canonical complete plan.
+Repeating preview with identical validated evidence and argv returns the same
+plan and digest. The runnable `spec init` example produces an explicit identity
+wrapper entry; fixture coverage also exercises an inherited entry and a typed
+transforming wrapper. Every success and failure reports or proves
+`source_process_attempts: 0`; no provider credential or network call is needed.
+
+### Recovery probes
+
+- A missing adoption receipt returns `bundle_not_adopted` and points to
+  `bundle trust`; invalid adoption storage and current source drift point to
+  status reconciliation.
+- A different executable spelling than the bundle's requested or resolved path
+  returns `source_executable_mismatch`.
+- Argv without a cataloged command prefix returns `invalid_invocation`.
+- A cataloged command outside the compiled surface returns
+  `command_not_in_surface`; an observed option outside the matched option
+  surface returns `option_not_in_surface`. Neither produces a plan.
+- Unmodeled short options and ambiguous dash-prefixed separated values fail
+  closed instead of being inferred.
+- An unknown non-dash token immediately after a command with cataloged
+  descendants fails as child-versus-positional ambiguity; `--` makes the
+  positional intent explicit.
+- Legacy `plan preview --config` remains a zero-execution
+  `legacy_tailoring_schema` diagnostic; it does not dispatch to `bundle
+  preview` or read the retired policy as authority.
+- Changed bundle content, source path/hash/size, or malformed plan evidence
+  fails before any source-process attempt.
+- An output transform with no active cataloged selector, more than one, a
+  conflicting input format, or a selector only after `--` fails before a plan.
+
+### Current compatibility limits
+
+The catalog and plan grammar do not yet model source short options,
+root/global options, or command-specific positional arguments completely.
+Positional values are preserved, but their source-specific dependencies are
+not inferred. A command with cataloged descendants requires an inner `--`
+before otherwise ambiguous positional data. `append_args` are appended to the
+exact attempted argv even when
+it already contains `--`; option-looking appended values then remain after the
+positional-only marker rather than being silently relocated. Preview requires
+one active cataloged selector matching the planned input format, but does not
+prove that its value encodes the requested select/rename fields against a
+running source adapter or transformer.
+
+### Acceptance
+
+An agent that knows only the preview outcome reaches its scoped contract with
+at most two help-discovery invocations; a known path takes one. It can identify
+every plan field from the declared JSON contract, distinguish explicit from
+inherited surface origin without reconstructing policy, and select every
+recovery command from structured faults. Routine external processing and
+source-process attempts are both zero. This acceptance proves plan inspection,
+not runtime application, raw execution, or host integration.
 
 ## Review record
 

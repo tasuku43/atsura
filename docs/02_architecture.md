@@ -6,11 +6,10 @@ authorization-centered source-wrapper model from ADR 0004: the core compiles a
 purpose-specific command and option surface plus deterministic wrapper
 pipelines. It does not decide whether a source operation is permitted.
 
-The current correction milestone stops at strict schema-3 specification
-loading, schema-2 bundle compilation and adoption, pure surface resolution, and
-explicit diagnostics for retired authorization schemas. Bundle-backed source
-execution, raw execution, and host adapters remain paused until this corrected
-model has passed the repository gates.
+The current zero-execution preview milestone extends strict schema-3
+specification loading, schema-2 bundle compilation and adoption, and pure
+surface resolution through one complete bundle-backed wrapper plan. Source
+runtime, raw execution, and host adapters remain unimplemented.
 
 ## Dependency direction
 
@@ -42,9 +41,13 @@ catalog + strict tailoring specification schema 3
   -> exact-digest user adoption
 
 adopted bundle + attempted invocation
-  -> pure surface resolution
+  -> revalidate adoption and current source path/hash/size
+  -> longest command-prefix match over the complete catalog
+  -> fail closed on child-versus-positional ambiguity unless `--` is explicit
+  -> pure surface and option resolution
        -> absent command: command_not_in_surface, no wrapper plan
-       -> included command: one complete wrapper plan
+       -> included command: one complete schema-2 wrapper plan and digest
+  -> zero source-process attempts
 ```
 
 Surface membership and wrapper behavior are independent inputs to compilation.
@@ -52,7 +55,7 @@ An excluded command has no wrapper. An included command has an explicit option
 surface and exactly one complete wrapper. A wrapper change cannot add a
 command, and a membership change cannot invent a transformation.
 
-Future preview and execution will share one pure plan constructor:
+Current preview owns one pure plan constructor that future execution must reuse:
 
 ```text
 typed before stages
@@ -62,9 +65,12 @@ typed before stages
   -> typed after stages
 ```
 
-The plan describes these stages and their evidence. It contains no universal
-allow/confirm/deny decision, inferred source read/create/write effect, or
-source-operation target and impact.
+The previewed plan binds bundle/catalog/specification digests, exact source and
+adapter identity, the matched command, explicit or inherited surface origin,
+the exact specification entry or `null`, original and transformed argv,
+ordered stages, and finite process bounds. Its canonical bytes determine the
+plan digest. It contains no universal allow/confirm/deny decision, inferred
+source read/create/write effect, or source-operation target and impact.
 
 ## Architectural principles
 
@@ -106,7 +112,7 @@ source-operation target and impact.
 - deterministic invocation and typed output transformations;
 - canonical schema-2 bundles, digests, and drift validation;
 - pure surface resolution and `command_not_in_surface`;
-- future ordered wrapper execution plans; and
+- ordered schema-2 wrapper execution plans and canonical plan digests; and
 - operation effects, including `EffectExecute` for starting a source-owned
   process and create/write contracts for Atsura-owned state only.
 
@@ -134,11 +140,11 @@ host protocol.
 - compile and resolve the purpose-specific surface;
 - build canonical bundles without ambient values;
 - assess exact-digest adoption and source drift;
-- return a pure resolved wrapper description without starting the source in
-  this milestone;
+- require exact bundle adoption, revalidate current source path/hash/size, and
+  construct one pure wrapper plan without starting the source;
 - coordinate Atsura-owned trust-store changes through the central mutation
   invoker; and
-- later construct and apply one complete wrapper plan through an
+- later apply that same complete wrapper plan through an
   identity-bound source-process port.
 
 Application code receives typed observations. It does not parse vendor help,
@@ -159,6 +165,7 @@ Atsura mutation target or impact to the downstream source operation.
 - strictly decode bounded schema-3 YAML and schema-2 JSON;
 - reject duplicate or unknown fields and retired schema versions;
 - read and persist exact-digest adoption receipts safely;
+- observe the current path/hash/size identity used by zero-execution preview;
 - execute a future exact executable plus argv vector without a shell under
   declared time and byte bounds;
 - parse declared source formats through bounded decoders; and
@@ -183,10 +190,10 @@ will authorize its downstream operation.
 - specification validation and bundle-build presentation;
 - adoption and drift status presentation;
 - stable migration diagnostics for retired policy and bundle schemas;
-- future wrapper-plan and tailored-result rendering; and
+- schema-2 wrapper-plan and future tailored-result rendering; and
 - composition of application tasks with infrastructure adapters.
 
-The correction milestone does not add bundle execution, raw execution, or host
+The preview milestone does not add bundle execution, raw execution, or host
 installation commands. Retired authorization command paths may remain only as
 catalog-declared migration diagnostics and must start zero source processes.
 
@@ -235,7 +242,7 @@ core authorization judgment or claim that a hidden command is sandboxed.
 
 ## Current milestone boundary
 
-The finite correction milestone is:
+The finite zero-execution preview milestone is:
 
 ```text
 strict schema-3 specification
@@ -243,7 +250,11 @@ strict schema-3 specification
   -> pure surface and wrapper compilation
   -> canonical schema-2 bundle
   -> exact-digest adoption/status
-  -> pure included/absent surface resolution
+  -> current source path/hash/size observation
+  -> longest full-catalog command match
+  -> included/absent command and option resolution
+  -> complete schema-2 wrapper plan + digest
+  -> source_process_attempts: 0
 
 retired authorization schema or command
   -> explicit migration diagnostic
@@ -251,13 +262,20 @@ retired authorization schema or command
 ```
 
 Runtime plan application, raw execution, source refresh, and host integration
-are deliberately outside this milestone. They resume only after the corrected
-surface and wrapper model is mechanically enforced.
+are deliberately outside this milestone.
 
 ## Unresolved architecture decisions
 
 - Which argv replacement/default operations and typed before/after actions join
   exact append arguments and structured output transformation.
+- How catalog and plan grammar should model short options, root/global options,
+  and command-specific positional arguments beyond the current explicit `--`
+  disambiguation rule.
+- Whether `append_args` may follow an existing positional-only `--`, and how a
+  wrapper should express any required insertion point.
+- How each source adapter proves its structured-output selector encoding before
+  runtime applies that transform; current preview proves only one active
+  cataloged selector and its declared input format.
 - Whether named profiles or multiple adopted bundles are needed and how they
   are selected.
 - Executable identity evidence beyond exact path, bytes, observed version, and

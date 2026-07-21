@@ -4,7 +4,7 @@ Atsura is pre-release and maintained on a best-effort basis. Support currently
 covers source inspection through the registered GitHub CLI adapter, schema-3
 tailoring specification creation and validation, schema-2 bundle compilation,
 exact-digest bundle status and interactive adoption, repository development,
-and the verification harness.
+zero-execution schema-2 wrapper-plan preview, and the verification harness.
 
 ## Where to ask
 
@@ -33,6 +33,7 @@ The supported tailoring boundary is the artifact workflow:
 atr source inspect
 atr spec init / spec validate
 atr bundle build / bundle status / bundle trust
+atr bundle preview --bundle <path> -- <source-executable> <argv>
 ```
 
 Specification schema 3 composes command and option membership independently
@@ -41,12 +42,21 @@ source, catalog, normalized specification, and compiled surface. `bundle trust`
 means user adoption of one exact purpose-specific bundle; it is not source
 authorization.
 
-Bundle-backed plan preview and source execution, source refresh, hooks, host
-adapters, raw bypass, history, RTK or external transformers, additional source
-adapters, and published release installation are not current capabilities.
-Retired policy schemas 1 and 2, bundle schema 1, `plan preview`, and `run` are
-supported only by explicit zero-execution migration diagnostics and are not
-automatically converted.
+`bundle preview` requires that exact adoption and current source path/hash/size,
+then returns the complete deterministic plan and digest with
+`source_process_attempts: 0`. The current grammar does not completely model
+source short options, root/global options, or command-specific positional
+arguments. A command with cataloged descendants requires an inner `--` before
+otherwise ambiguous positional data; appended argv after `--` stays after that
+marker. Preview proves an active selector and planned input format, but the
+selector value's select/rename encoding is not runtime-proven.
+
+Bundle-backed source execution, source refresh, hooks, host adapters, raw
+bypass, history, RTK or external transformers, additional source adapters, and
+published release installation are not current capabilities. Retired policy
+schemas 1 and 2, bundle schema 1, legacy `plan preview`, and `run` are supported
+only by explicit zero-execution migration diagnostics and are not automatically
+converted.
 
 Before requesting help, read [README.md](README.md), [AGENTS.md](AGENTS.md), and
 the [documentation map](docs/README.md), then run the smallest relevant

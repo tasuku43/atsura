@@ -10,6 +10,7 @@ import (
 	"github.com/tasuku43/atsura/internal/app/bundleauthority"
 	"github.com/tasuku43/atsura/internal/app/bundlebuild"
 	"github.com/tasuku43/atsura/internal/app/doctorcmd"
+	"github.com/tasuku43/atsura/internal/app/planpreview"
 	"github.com/tasuku43/atsura/internal/app/samplecmd"
 	"github.com/tasuku43/atsura/internal/app/sourceinspect"
 	"github.com/tasuku43/atsura/internal/app/specinit"
@@ -41,6 +42,7 @@ type CLI struct {
 	bundles   *bundlebuild.Service
 	drafts    *specinit.Service
 	authority *bundleauthority.Service
+	previews  *planpreview.Service
 }
 
 // New builds the production CLI with offline template adapters.
@@ -69,6 +71,9 @@ func newCLIWithSamples(
 		errOut = io.Discard
 	}
 	trustPath, _ := trustfile.DefaultPath()
+	bundleLoader := bundlejson.New()
+	sourceRunner := sourceexec.New()
+	trustStore := trustfile.New(trustPath)
 	return &CLI{
 		In: in, Out: out, Err: errOut,
 		Version: "dev",
@@ -80,7 +85,8 @@ func newCLIWithSamples(
 		}),
 		bundles:   bundlebuild.New(catalogjson.New(), specyaml.New()),
 		drafts:    specinit.New(catalogjson.New()),
-		authority: bundleauthority.New(bundlejson.New(), sourceexec.New(), trustfile.New(trustPath), terminalconfirm.New()),
+		authority: bundleauthority.New(bundleLoader, sourceRunner, trustStore, terminalconfirm.New()),
+		previews:  planpreview.New(bundleLoader, trustStore, sourceRunner),
 	}
 }
 

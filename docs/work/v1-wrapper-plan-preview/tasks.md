@@ -8,33 +8,33 @@
 - [x] Confirm profile, clean baseline, governing theses, ADR, and deferred
   capability.
 - [x] Select a distinct `bundle preview` path and finite input/output boundary.
-- [ ] Update durable product/architecture/security/harness contracts.
+- [x] Update durable product/architecture/security/harness contracts.
 
 ## Domain and application
 
-- [ ] Add bounded attempted-invocation and complete plan types.
-- [ ] Implement longest-prefix command resolution and option-surface parsing.
-- [ ] Implement wrapper argv transformation, canonical validation, and digest.
-- [ ] Add identity/transform, surface absence, invalid invocation, option, and
+- [x] Add bounded attempted-invocation and complete plan types.
+- [x] Implement longest-prefix command resolution and option-surface parsing.
+- [x] Implement wrapper argv transformation, canonical validation, and digest.
+- [x] Add identity/transform, surface absence, invalid invocation, option, and
   deterministic fixture tests.
-- [ ] Add application preflight for exact intent, adoption, and source identity.
-- [ ] Prove all application failures and success start zero source processes.
+- [x] Add application preflight for exact intent, adoption, and source identity.
+- [x] Prove all application failures and success start zero source processes.
 
 ## CLI and evidence
 
-- [ ] Register `bundle preview` with public capability and exact agent contract.
-- [ ] Compose existing bundle/adoption/identity ports and render schema-2 plan.
-- [ ] Add catalog, help, argv, JSON exact-key, fault, output-write, and hostile
+- [x] Register `bundle preview` with public capability and exact agent contract.
+- [x] Compose existing bundle/adoption/identity ports and render schema-2 plan.
+- [x] Add catalog, help, argv, JSON exact-key, fault, output-write, and hostile
   input tests.
-- [ ] Preserve legacy `plan preview` migration behavior.
-- [ ] Update README, capability ledger, and agent-readiness scenario.
+- [x] Preserve legacy `plan preview` migration behavior.
+- [x] Update README, capability ledger, and agent-readiness scenario.
 
 ## Verification and handoff
 
-- [ ] Run focused tests and `git diff --check`.
-- [ ] Run `task check` and `task security` with Go 1.26.5.
-- [ ] Audit zero runtime/raw/host additions and authorization vocabulary.
-- [ ] Review every acceptance item and preserve unrelated changes.
-- [ ] Commit the milestone without publication.
+- [x] Run focused tests and `git diff --check`.
+- [x] Run `task check` and `task security` with Go 1.26.5.
+- [x] Audit zero runtime/raw/host additions and authorization vocabulary.
+- [x] Review every acceptance item and preserve unrelated changes.
+- [x] Commit the milestone without publication.
 - [ ] Remove this temporary packet, re-run required gates, and commit cleanup.
 - [ ] Report exact evidence, remaining unknowns, and the next runtime outcome.

@@ -10,11 +10,12 @@ authorization, operation semantics, and remote effects.
 
 ## Project status
 
-The current schema-correction milestone implements the artifact workflow, not
-bundle-backed source execution:
+The current milestone implements artifact compilation, adoption, and
+zero-execution wrapper-plan inspection, not bundle-backed source execution:
 
 ```text
 source inspect -> spec init/validate -> bundle build -> bundle status/trust
+  -> bundle preview
 ```
 
 - Tailoring specification schema 3 independently declares command membership,
@@ -23,12 +24,15 @@ source inspect -> spec init/validate -> bundle build -> bundle status/trust
   specification, and the compiled purpose-specific surface.
 - `bundle trust` interactively records adoption of one exact bundle digest. It
   does not grant permission to run source operations.
-- The retired authorization-oriented policy schemas, `plan preview`, and `run`
-  have migration diagnostics only. They are not current tailoring capabilities.
+- `bundle preview --bundle <path> -- <source-executable> <argv>` returns one
+  deterministic schema-2 wrapper plan and digest with zero source-process
+  attempts.
+- The retired authorization-oriented policy schemas, legacy `plan preview`,
+  and `run` have migration diagnostics only. They are not current tailoring
+  capabilities.
 
 Source refresh, bundle runtime execution, raw bypass, and host adapters remain
-paused until pure surface resolution and identity-wrapper planning are
-implemented and validated.
+unimplemented.
 
 The `atr` binary also contains the foundry's `doctor` and synthetic `sample`
 commands as executable architecture and harness examples. They are not
@@ -57,12 +61,14 @@ catalog + reviewed schema-3 specification
 
 exact bundle digest
   -> explicit user adoption
+  -> current source path/hash/size validation
+  -> deterministic zero-execution wrapper plan + digest
 ```
 
 An excluded command is absent from the tailored surface; it is not denied or
 classified as unsafe. Surface membership and wrapper transformation are
-independent. A future wrapper plan will describe ordered stages and exact argv,
-not an authorization decision. Hiding is a discoverability and composition
+independent. A wrapper plan describes ordered stages and exact argv, not an
+authorization decision. Hiding is a discoverability and composition
 feature, not an OS sandbox.
 
 ## Try the artifact workflow
@@ -105,10 +111,22 @@ the exact digest after reviewing the source, surface, and wrapper summary:
 ```sh
 go run ./cmd/atr bundle trust --bundle /tmp/atsura-bundle.json
 go run ./cmd/atr bundle status --bundle /tmp/atsura-bundle.json
+go run ./cmd/atr bundle preview \
+  --bundle /tmp/atsura-bundle.json \
+  -- gh pr list
 ```
 
+`bundle preview` requires the exact bundle digest to be adopted and the current
+source path, SHA-256, and size to match its catalog evidence. It selects the
+longest command prefix from the complete catalog, applies command and option
+surface membership, and returns source/adapter identity, the exact or `null`
+specification entry, original/transformed argv, ordered stages, finite future
+process bounds, and a canonical plan digest. It always reports
+`source_process_attempts: 0` and does not transform output at preview time.
+
 Use `atr help <exact-command> --format agent` for the complete machine-readable
-contract. Agent help currently uses schema version 7.
+contract. Agent help currently uses schema version 8; object outputs may publish
+a versioned nested JSON-pointer field inventory.
 
 ## Current decisions and open work
 
@@ -122,7 +140,6 @@ The following remain later research or vertical-slice decisions:
 
 - additional source CLIs and adapter compatibility;
 - source refresh and command-discovery depth;
-- pure surface resolution and identity-wrapper plan output;
 - bundle runtime and exact post-start failure behavior;
 - Claude Code and other host-adapter responsibilities;
 - wrapper installation or hook integration mechanisms;
@@ -130,6 +147,16 @@ The following remain later research or vertical-slice decisions:
 - output transformations beyond the schema-3 built-ins;
 - usage-history collection; and
 - jq, RTK, plugin, or external-transformer boundaries.
+
+Current plan parsing is deliberately bounded. Source short options,
+root/global options, and command-specific positional grammar are not completely
+modeled. If a matched command has cataloged descendants, an unknown following
+non-dash token is ambiguous rather than assumed positional; use an inner `--`
+before positional data. `append_args` remain at the end even after an existing
+`--`, and option-looking values there are positional. Preview requires one active
+cataloged selector matching a planned structured input, but its value's
+select/rename encoding is not proven against a running source adapter. These
+are compatibility limits, not inferred behavior.
 
 See [Project Theses](docs/00_theses.md), [Product Contract](docs/01_product_contract.md),
 [Architecture](docs/02_architecture.md), and [Security Model](docs/03_security_model.md).

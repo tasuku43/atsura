@@ -484,6 +484,114 @@ func TestExecuteEffectIsNonMutationAndRequiresNonRetryableOutputRecovery(t *test
 	}
 }
 
+func TestBundlePreviewCatalogDeclaresPurePlanOutcome(t *testing.T) {
+	spec, found := DefaultCatalog().Lookup("bundle preview")
+	if !found {
+		t.Fatal("bundle preview is missing from the catalog")
+	}
+	if spec.Effect != operation.EffectRead || spec.Role != RoleUtility || spec.Agent.CapabilityID != "tailoring.preview" || spec.Agent.Mutation != nil || spec.Agent.FixedTarget != nil {
+		t.Fatalf("bundle preview contract=%+v", spec)
+	}
+	if spec.Args != "--bundle <path> -- <source-executable> <argv>" || len(spec.Agent.Inputs) != 3 {
+		t.Fatalf("bundle preview grammar=%q inputs=%+v", spec.Args, spec.Agent.Inputs)
+	}
+	wantInputs := []struct {
+		name        string
+		source      InputSource
+		cardinality InputCardinality
+	}{
+		{name: "--bundle", source: InputSourceFlag, cardinality: InputCardinalitySingle},
+		{name: "source-executable", source: InputSourceArgument, cardinality: InputCardinalitySingle},
+		{name: "argv", source: InputSourceArgument, cardinality: InputCardinalityRepeatable},
+	}
+	for index, want := range wantInputs {
+		got := spec.Agent.Inputs[index]
+		if got.Name != want.name || got.Source != want.source || got.Cardinality != want.cardinality || !got.Required {
+			t.Fatalf("input %d=%+v want=%+v", index, got, want)
+		}
+	}
+	if spec.Agent.Output.JSONEnvelope != "preview" || spec.Agent.Output.JSONSchemaVersion != 2 || spec.Agent.Output.Delivery != OutputDeliveryComplete || spec.Agent.Output.CollectionCoverage != CollectionCoverageNotApplicable {
+		t.Fatalf("output=%+v", spec.Agent.Output)
+	}
+	wantFields := []string{"plan_digest", "plan", "source_process_attempts"}
+	for index, want := range wantFields {
+		if spec.Agent.Output.Fields[index].Name != want {
+			t.Fatalf("output field %d=%q want=%q", index, spec.Agent.Output.Fields[index].Name, want)
+		}
+	}
+	planSchema := spec.Agent.Output.Fields[1].Schema
+	if planSchema == nil || planSchema.ID != "wrapper-plan" || planSchema.Version != 2 || len(planSchema.Fields) < 60 {
+		t.Fatalf("plan schema=%+v", planSchema)
+	}
+	paths := make(map[string]OutputSchemaField, len(planSchema.Fields))
+	for _, field := range planSchema.Fields {
+		paths[field.Path] = field
+	}
+	for path, fieldType := range map[string]OutputFieldType{
+		"/schema_version":                      OutputFieldTypeInteger,
+		"/source/sha256":                       OutputFieldTypeString,
+		"/specification_entry":                 OutputFieldTypeObject,
+		"/stages/invoke/max_attempts":          OutputFieldTypeInteger,
+		"/stages/invoke/args":                  OutputFieldTypeArray,
+		"/stages/output/rename/*/from":         OutputFieldTypeString,
+		"/specification_entry/options/include": OutputFieldTypeArray,
+	} {
+		declared, exists := paths[path]
+		if !exists || declared.Type != fieldType {
+			t.Errorf("schema field %q=%+v", path, declared)
+		}
+	}
+	if !paths["/specification_entry"].Nullable || !paths["/stages/output"].Nullable || paths["/specification_entry/wrapper/output"].Required {
+		t.Fatalf("nullable/conditional schema fields=%+v %+v %+v", paths["/specification_entry"], paths["/stages/output"], paths["/specification_entry/wrapper/output"])
+	}
+	spec.Agent.Output.Fields[1].Schema.Fields[0].Path = "/changed"
+	fresh, found := DefaultCatalog().Lookup("bundle preview")
+	if !found || fresh.Agent.Output.Fields[1].Schema.Fields[0].Path == "/changed" {
+		t.Fatal("catalog lookup returned an aliased nested output schema")
+	}
+	codes := make(map[string]CommandError, len(spec.Agent.Errors))
+	for _, declared := range spec.Agent.Errors {
+		codes[declared.Code] = declared
+	}
+	for code, kind := range map[string]fault.Kind{
+		"bundle_not_adopted":         fault.KindRejected,
+		"bundle_source_drift":        fault.KindRejected,
+		"source_executable_mismatch": fault.KindInvalidInput,
+		"invalid_invocation":         fault.KindInvalidInput,
+		"command_not_in_surface":     fault.KindNotFound,
+		"option_not_in_surface":      fault.KindNotFound,
+		"invalid_wrapper_plan":       fault.KindContract,
+	} {
+		declared, exists := codes[code]
+		if !exists || declared.Kind != kind || declared.Retryable {
+			t.Errorf("fault %q=%+v", code, declared)
+		}
+	}
+	if err := DefaultCatalog().Validate(); err != nil {
+		t.Fatalf("default catalog validation: %v", err)
+	}
+}
+
+func TestCatalogRejectsMalformedNestedOutputSchema(t *testing.T) {
+	base := utilitySpec("inspect")
+	base.Agent.Output.Fields[0] = OutputField{
+		Name: "result", Type: OutputFieldTypeObject, Description: "Structured test result.",
+		Schema: &OutputSchema{ID: "test-schema", Version: 1, Fields: []OutputSchemaField{
+			{Path: "/values", Type: OutputFieldTypeArray, Required: true},
+		}},
+	}
+	if err := NewCatalog(base).Validate(); err == nil || !strings.Contains(err.Error(), "element type") {
+		t.Fatalf("missing array element type error=%v", err)
+	}
+	base.Agent.Output.Fields[0].Schema.Fields = []OutputSchemaField{
+		{Path: "/z", Type: OutputFieldTypeString, Required: true},
+		{Path: "/a", Type: OutputFieldTypeString, Required: true},
+	}
+	if err := NewCatalog(base).Validate(); err == nil || !strings.Contains(err.Error(), "sorted and unique") {
+		t.Fatalf("unsorted schema fields error=%v", err)
+	}
+}
+
 func TestInputRelationsMustLeaveEveryDeclaredInputUsable(t *testing.T) {
 	base := utilitySpec("inspect")
 	base.Args = "[--a <value>] [--b <value>] [--c <value>]"
