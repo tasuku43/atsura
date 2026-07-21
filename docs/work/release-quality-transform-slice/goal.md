@@ -45,7 +45,7 @@ release-quality runtime claim is broader than its executable evidence.
 - [ ] Every claimed release OS/architecture runs the exact `atr` executable extracted from its packaged archive in CI.
 - [x] Exact-artifact conformance seeds only an isolated non-shipped receipt through the production store; existing production tests separately prove controlling-terminal full-digest consent and no release command exposes a bypass.
 - [x] The release gate detects removal or weakening of native artifact replay.
-- [ ] `task check`, `task security`, `task public:check`, and `task release:check` pass on one clean committed tree.
+- [x] `task check`, `task security`, `task public:check`, and `task release:check` pass on one clean committed tree.
 
 ## Governing documents
 

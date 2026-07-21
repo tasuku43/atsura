@@ -30,9 +30,9 @@
 ## Verify
 
 - [x] Focused tests pass. Evidence: all changed Go packages pass on Go 1.26.5.
-- [ ] `task check` passes. Evidence:
-- [ ] `task security` passes. Evidence:
-- [ ] `task public:check` passes. Evidence:
+- [x] `task check` passes. Evidence: full tests, race tests, architecture, contract, and hygiene checks pass on the committed clean tree.
+- [x] `task security` passes. Evidence: module verification, security guard, gosec, and vulnerability scan pass on the committed clean tree.
+- [x] `task public:check` passes. Evidence: public guard and contract lint pass on the committed clean tree.
 - [x] `task release:check` passes. Evidence: local release profile includes exact Darwin/arm64 archive replay.
 - [x] Runtime-only behavior is observed on the native host. Evidence: extracted Darwin/arm64 archive reports five help contracts, 4 inspection attempts, 5 zero-attempt rejections, 9 total fixture attempts, matching plan digest, and absent canaries.
 - [x] Routine-success external-processing count is zero. Evidence: the fixture has no provider transport and the journey uses no external interpreter or model.
@@ -42,5 +42,5 @@
 
 - [ ] Acceptance criteria have evidence.
 - [ ] Durable decisions are promoted and the temporary packet is removed.
-- [ ] All implementation is committed by concern and the tree is clean.
+- [x] All implementation is committed by concern and the tree is clean.
 - [ ] The milestone goal is completed and the far successor goal is created.
