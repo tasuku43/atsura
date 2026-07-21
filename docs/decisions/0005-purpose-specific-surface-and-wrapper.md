@@ -6,7 +6,8 @@
 - Scope: Product semantics, tailoring schema, bundle, plan, operation effects, trust, host adapters, migration, and release quality
 - Supersedes: docs/decisions/0002-v0.1-local-run-boundary.md and docs/decisions/0004-v1-compiled-tailoring-bundle.md
 - Superseded by: None
-- Extended by: docs/decisions/0006-adapter-proven-transform-runtime.md
+- Extended by: docs/decisions/0006-adapter-proven-transform-runtime.md and
+  docs/decisions/0007-prefer-explicit-rtk-optimizer-defaults.md
 
 ## Context
 

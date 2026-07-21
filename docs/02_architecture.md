@@ -1,12 +1,14 @@
 # Architecture
 
 Atsura keeps source inspection, surface composition, wrapper planning, source
-execution, and presentation in separate layers. ADR 0005 supersedes the
+execution, output processing, and presentation in separate layers. ADR 0005 supersedes the
 authorization-centered source-wrapper model from ADR 0004: the core compiles a
 purpose-specific command and option surface plus deterministic wrapper
 pipelines. It does not decide whether a source operation is permitted. ADR
 0006 adds the first compatibility-admitted transform runtime without making its
-GitHub CLI evidence part of the shared model.
+GitHub CLI evidence part of the shared model. ADR 0007 accepts explicit
+RTK-backed optimizer defaults as a future finite processor contract without
+delegating source execution to RTK.
 
 The current runtime milestone extends strict schema-3 specification loading,
 schema-2 bundle compilation/adoption, and pure surface resolution through one
@@ -155,7 +157,10 @@ host protocol.
   invoker; and
 - apply a supported transform plan through an identity-bound source-process
   port, a vendor-neutral compatibility port, strict source-format parser, and
-  pure transformer.
+  pure transformer; and
+- for a future optimizer, require exact external-processor identity and
+  compatibility before source start, then coordinate at most one processor
+  attempt only after an admitted successful source result.
 
 Application code receives typed observations. It does not parse vendor help,
 YAML, arbitrary source bytes, shell syntax, or host payloads. It does not infer
@@ -180,7 +185,10 @@ target or impact to the downstream source operation.
   declared time and byte bounds;
 - admit only command and argv combinations covered by the exact source-adapter
   compatibility contract before a source attempt;
-- parse declared source formats through bounded decoders; and
+- parse declared source formats through bounded decoders;
+- run a future exact output processor with bounded stdin/stdout/stderr, an
+  isolated environment and working directory, no shell, and separately counted
+  attempts without giving it source-execution authority; and
 - translate a future host protocol without changing core surface or wrapper
   meaning.
 
@@ -195,6 +203,34 @@ not a core permission state.
 Infrastructure reports observations and typed failures. It does not decide
 which command is included, which wrapper applies, or whether the source CLI
 will authorize its downstream operation.
+
+### External output processors
+
+An output processor is orthogonal to source and host adapters. Shared domain
+types describe a projection or original-preserving optimizer contract; they do
+not contain RTK command lines, host fields, or arbitrary executable
+configuration. The specification selects one namespaced, versioned
+compatibility-contract identifier. Infrastructure translates that finite
+identifier into fixed processor argv, while bundle construction receives an
+explicit processor-identity observation rather than searching ambient `PATH`.
+
+The first intended RTK boundary is `pipe` with one explicit filter after Atsura
+has started the exact source once. RTK receives only the bounded admitted stage
+input and never resolves or starts the source CLI. Source and processor
+identity, attempt, status, stderr, timeout, and byte evidence remain distinct.
+Missing or drifted processor identity at preflight is checked before source
+start. After admitted source success, identity is revalidated before processor
+start; a change at that phase is non-retryable with one source attempt and zero
+processor attempts. A processor failure after start is non-retryable.
+
+The processor runs with isolated configuration roots and a minimal environment.
+Compatibility fixtures, not environment flags alone, record that each exact
+native artifact and invocation read no project filter, created no
+tracking/tee/telemetry state outside temporary roots, and attempted no network
+I/O within the platform harness's declared observation scope. This is bounded
+compatibility evidence, not an OS or network sandbox; portable processor
+identity checks retain a check-to-exec race. A host adapter consumes the already
+compiled stage and never selects RTK at invocation time.
 
 ### CLI
 
@@ -347,8 +383,9 @@ retired authorization schema or command
   -> zero source-process attempts
 ```
 
-Identity/argv-only plan application, raw execution, source refresh, and host
-integration are deliberately outside this milestone.
+Identity/argv-only plan application, original-preserving optimizers, external
+processor execution, raw execution, source refresh, and host integration are
+deliberately outside this milestone.
 
 ## Unresolved architecture decisions
 
@@ -368,6 +405,11 @@ integration are deliberately outside this milestone.
 - Streaming and output budgets beyond the current bounded buffered process
   boundary.
 - Further source and host adapters and their individual compatibility ranges.
-- Whether a future jq, RTK, plugin, or external-transformer port is justified.
+- Which exact Git/RTK `git log` source, format, filter, version, and platform
+  contract should prove the first original-preserving optimizer.
+- Which explicit processor-observation input and storage boundary should bind an
+  exact RTK artifact at bundle build without consulting ambient `PATH`.
+- Whether jq, plugins, scripts, or other external processors ever justify a
+  similarly finite port.
 - The exact raw and host-adapter public contracts after wrapper runtime is
   validated.

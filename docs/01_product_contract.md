@@ -2,8 +2,10 @@
 
 This contract defines Atsura's current vocabulary and supported product
 boundaries. ADR 0005 supersedes the authorization-centered source-wrapper
-semantics of ADR 0004; ADR 0006 adds the first compatibility-admitted runtime
-while retaining one canonical vendor-neutral bundle.
+semantics of ADR 0004; ADR 0006 adds the first compatibility-admitted runtime;
+ADR 0007 prefers explicit RTK-backed optimizer defaults for exact maintained
+compatibility contracts. One canonical vendor-neutral bundle remains the
+authority.
 
 ## Product statement
 
@@ -137,7 +139,9 @@ The exact implemented constraints are:
 - a transform wrapper contains at least one supported transform;
 - before and after lists are explicit and currently must be empty because no
   built-in actions have yet been selected; and
-- arbitrary shell, script, jq, plugin, RTK, or runtime-LLM actions are invalid.
+- arbitrary shell, script, jq, plugin, RTK program/argv, or runtime-LLM actions
+  are invalid. The accepted finite output-processor direction is not implemented
+  by schema 3.
 
 Schema 3 contains no source allow/confirm/deny, source read/create/write,
 authorization target, or authorization impact fields.
@@ -173,6 +177,42 @@ An included command with a typed deterministic pipeline. The initial accepted
 transform vocabulary retains exact argv additions and structured JSON
 select/rename/compact rendering. Removal, replacement, defaults, and typed
 before/after actions remain planned vocabulary until implemented and tested.
+
+### Typed output projection
+
+An output stage that promises one declared agent-facing shape. The current JSON
+select/rename/compact stage is a projection. If its parser, input, selected
+fields, or renderer cannot satisfy the declared contract, execution fails and
+does not expose the projection input.
+
+### Original-preserving output optimizer
+
+A planned output stage that may produce either a smaller `optimized` result or
+the byte-identical admitted stage input as `preserved`. Preservation is valid
+only when the reviewed specification, bundle, and plan explicitly state that
+the original stage input is allowed agent-facing output. An optimizer does not
+make a confidentiality or complete-information claim about its optimized
+result. Because RTK does not report which internal branch produced its bytes,
+Atsura derives the disposition only from the admitted stage boundary: valid
+processor stdout equal byte-for-byte to the admitted input is `preserved`; any
+different valid stdout is `optimized`. This labels observable bytes, not RTK's
+internal parser or fallback path.
+
+An RTK-backed optimizer is the authoring default when Atsura's maintained
+registry proves an exact source adapter/version/command and RTK version/filter
+contract. The generated specification contains that choice explicitly before
+review; a user or proposing agent may replace it explicitly before compilation.
+RTK never selects or starts the source CLI in this boundary. The current schema
+and runtime do not implement this concept.
+
+### Materialized authoring default
+
+A preferred wrapper choice written into the tailoring specification before the
+user reviews and compiles it. It is ordinary canonical input after generation.
+Installed tools, host messages, and runtime discovery never add or replace a
+stage implicitly. Outside the proven RTK matrix no RTK candidate is generated.
+A built-in or identity alternative is offered only when its own contract is
+supported; otherwise authoring reports that no maintained default exists.
 
 ### Wrapper execution plan
 
@@ -255,6 +295,10 @@ The controlling-terminal summary identifies:
 It contains no source read/create/write or allow/confirm/deny counts. The
 user-local receipt stores only the exact bundle digest. Repository content and
 redirected stdin cannot create a receipt.
+
+A future optimizer trust summary additionally identifies the processor kind,
+version and exact identity, namespaced compatibility contract and filter
+mapping, and whether original stage input may remain agent-visible.
 
 ### Source-owned execution effect
 
@@ -369,11 +413,16 @@ semantics are retired experimental formats.
 
 ## Output failure boundary
 
-Source execution and output transformation are separate facts. A transform
-failure after the one source attempt does not retry or change the invocation,
-claim transformed success, expose raw output, or select raw mode. Cancellation,
-timeout, output overflow, malformed JSON, missing fields, transform failure,
+Source execution and output processing are separate facts. A projection failure
+after the one source attempt does not retry or change the invocation, claim
+transformed success, expose its input, or select raw mode. Cancellation,
+timeout, output overflow, malformed JSON, missing fields, projection failure,
 and final output-write failure after start are all non-retryable.
+
+A future original-preserving optimizer may emit byte-identical `preserved`
+output only as an adopted success disposition, never as recovery from another
+stage. Processor failure remains non-retryable after source start and exposes
+neither processor stderr nor failed intermediate output.
 
 The no-shell process adapter compares the plan-bound path/hash/size before
 start, immediately before start, and after wait. A portable race remains
@@ -396,7 +445,7 @@ The stable project identity is `Atsura`, binary `atr`, and Go module
 `github.com/tasuku43/atsura`.
 
 Shared catalog, specification, bundle, surface, and plan schemas contain
-no GitHub- or Claude-specific fields. GitHub CLI 2.x remains the first source
+no GitHub-, Claude-, or RTK-specific transport fields. GitHub CLI 2.x remains the first source
 adapter. Inspection contract 2 uses four fixed offline probes and exposes
 runtime field/selector evidence only for `issue list` and `pr list`. Its
 maintained runtime accepts GitHub CLI major 2, but one captured version does not
@@ -426,7 +475,10 @@ ordering differences, or selectors after `--` fail before source start.
 - Identity-wrapper and argv-only-transform execution.
 - Raw execution.
 - Hook installation or interception.
-- Arbitrary shell, jq, scripts, plugins, RTK, or external transformers.
+- The accepted RTK-backed optimizer stage and its authoring default; both await
+  an exact external-processor compatibility slice.
+- Arbitrary shell, jq programs, scripts, plugins, RTK programs/argv, or
+  unregistered external transformers.
 - Non-JSON, streaming, aggregate, filter, map, sort, or multi-source transforms.
 - Usage-history collection or agent-generated automatic activation.
 - Direct external APIs.

@@ -3,8 +3,10 @@
 These theses define Atsura's product direction. They are working hypotheses,
 but they govern implementation until evidence justifies another revision. ADR
 0005 corrects the authorization-centered interpretation introduced by ADR
-0004, and ADR 0006 accepts the first compatibility-admitted transform runtime
-while retaining the vendor-neutral, compiled-bundle architecture.
+0004, ADR 0006 accepts the first compatibility-admitted transform runtime, and
+ADR 0007 prefers explicit RTK-backed optimizer defaults where Atsura maintains
+an exact compatibility contract. The vendor-neutral, compiled-bundle
+architecture remains authoritative.
 
 ## North star
 
@@ -83,8 +85,13 @@ evidence and one purpose-specific wrapper surface. It may describe:
 
 The implemented schema may support these dimensions incrementally. Unsupported
 actions remain explicit unknowns rather than generic strings or embedded code.
-Arbitrary shell, arbitrary scripts, external transformers, and a runtime
-language model are not part of the initial specification.
+A specification may eventually select one finite compatibility contract for an
+external output processor from Atsura's maintained registry. It never embeds an
+arbitrary command, shell fragment, RTK program, plugin, or script. An authoring default is
+materialized into the reviewed specification before compilation; neither the
+compiler nor runtime inserts an ambient tool implicitly. Arbitrary shell,
+arbitrary scripts, and a runtime language model are not part of the initial
+specification.
 
 ### Consequences
 
@@ -194,12 +201,19 @@ carry an Atsura mutation target or impact. `EffectCreate` and `EffectWrite`
 retain the existing mutation contracts for Atsura-owned state. Unknown effects
 remain non-executable.
 
-## Thesis 6: Output transformation is a first-class wrapper stage
+## Thesis 6: Output projection and optimization are first-class wrapper stages
 
 Invocation transformation chooses the exact source executable and argv. Output
-transformation interprets successful source output and produces the declared
-agent-facing result. They are separate stages and share no generic shell escape
+stages interpret successful source output and produce the declared agent-facing
+result. They are separate from invocation and share no generic shell escape
 hatch.
+
+A typed projection and an original-preserving optimizer have different
+contracts. A projection promises a declared shape and fails closed without
+exposing its input. An optimizer may return either optimized output or its
+byte-identical admitted input, but only when the adopted plan explicitly permits
+that input as agent-facing output. This `preserved` result is declared behavior,
+not an automatic recovery from a failed projection.
 
 The preferred path is to request source-native structured output when the
 adapter can verify it, parse it within declared bounds, apply typed built-ins,
@@ -213,9 +227,19 @@ currently admits only `issue list` and `pr list` after four fixed offline
 version/reference/command-help probes. Successful stdout is still untrusted and
 must satisfy the bounded JSON parser and typed transform.
 
-Transform failure never changes argv, retries the source process, selects raw
-mode, or silently exposes unreviewed raw output. RTK-equivalent breadth remains
-a research target rather than a present compatibility claim.
+Projection failure never changes argv, retries the source process, selects raw
+mode, or silently exposes unreviewed raw output.
+
+Where Atsura proves an exact source/version/command and RTK filter contract, the
+authoring workflow materializes an explicit RTK-backed optimizer as the default
+wrapper choice. A user or proposing agent may explicitly choose another
+reviewable stage before compilation; an installed tool never changes the
+choice. The bundle and plan bind exact RTK identity, version, filter, bounds,
+original-output allowance, and reason. Atsura still executes the source itself;
+RTK is never the source executor, a runtime-selected fallback, or a permission
+mechanism. RTK's advertised support list is evidence to investigate, not the
+compatibility registry itself. This direction is accepted, but no RTK stage is
+implemented by the current schema or runtime.
 
 ## Thesis 7: Agents propose; the deterministic core compiles
 
@@ -246,6 +270,11 @@ bundle-bound source identity but applies no surface selection, argv transform,
 or output transform. Raw is never automatic fallback, a recovery suggestion,
 or part of the tailored agent surface.
 
+Returning the exact admitted input from an adopted original-preserving optimizer
+is not raw execution. It does not bypass surface resolution, source identity,
+invocation transformation, or any preceding output stage, and the trust summary
+must state that original stage input may remain visible.
+
 ## Release-quality target
 
 Release quality closes one supported maintainer result rather than maximizing
@@ -273,9 +302,11 @@ reproducibility alone is not that evidence.
 - Replacing source CLI, OS, credential, or remote-provider authorization.
 - Claiming that hidden commands are sandboxed or impossible to invoke elsewhere.
 - Reimplementing source CLI domain semantics or remote APIs.
-- Arbitrary shell, scripts, jq, RTK, plugins, or external transformers in the
-  initial specification.
-- Automatic raw or intact-output fallback.
+- Arbitrary shell, scripts, jq programs, RTK programs/argv, plugins, or
+  unregistered external transformers in the initial specification. The
+  accepted RTK optimizer direction remains unimplemented.
+- Unplanned or implicit raw/intact-output fallback. An adopted optimizer's
+  declared byte-identical `preserved` result is not fallback.
 - Requiring a language model for routine execution.
 - Executing identity wrappers, argv-only transforms, nonempty successful
   stderr, or typed before/after actions in the initial transform runtime.
@@ -297,8 +328,11 @@ reproducibility alone is not that evidence.
 - Which source and host adapters should follow the first compatibility fixtures?
 - What stronger executable identity mechanism can close the remaining
   check-to-exec race on each supported platform?
-- When, if ever, should jq, RTK, external transformers, plugins, or scripts be
-  admitted?
+- Which exact RTK versions, pipe filters, source commands, and platforms satisfy
+  the first no-state optimizer compatibility contract, and how quickly can that
+  proven matrix expand?
+- When, if ever, should jq, other external transformers, plugins, or scripts be
+  admitted through a similarly finite contract?
 - How, if at all, should usage evidence be collected without storing secrets or
   raw confidential output?
 

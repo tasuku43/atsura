@@ -95,8 +95,9 @@ Domain, codec, application, and CLI tests must prove:
 - identity wrappers contain no transformations;
 - transform wrappers contain at least one supported transformation;
 - before/after lists are explicit and reject unsupported actions;
-- arbitrary shell, script, jq, RTK, plugin, and runtime-LLM actions are
-  rejected; and
+- the current schema rejects every shell, script, jq, RTK, plugin, external-
+  processor, and runtime-LLM action; acceptance of a future finite RTK adapter
+  does not make arbitrary executable names or argv valid; and
 - bounded strict decoding rejects aliases, excessive depth/nodes/bytes,
   duplicate or unknown fields, and trailing documents.
 
@@ -229,6 +230,49 @@ public source-runtime boundary. Tests must prove:
   types, and visible projection of structural external text remain distinct;
 - secret-shaped canaries in unselected fields and source stderr do not appear
   in success output, faults, persisted bundles, receipts, or diagnostics.
+
+### Deferred original-preserving optimizer contract
+
+`tailoring.output.optimize` remains deferred. Schema 3 and the current runtime
+continue to reject RTK and arbitrary external-processor actions. ADR 0007
+selects a future contract; neither the current transform-runtime milestone nor
+its passing gates claim an optimizer, an RTK authoring default, or RTK runtime
+compatibility.
+
+An implementing slice may change that ledger state only after tests prove:
+
+- projection and original-preserving optimizer are disjoint typed contracts;
+  projection never preserves failed input, while successful valid processor
+  stdout byte-equal to admitted input is `preserved` and different valid stdout
+  is `optimized`; preservation is valid only when the adopted plan explicitly
+  permits the original stage input as agent-facing output, and the disposition
+  makes no claim about RTK's internal branch;
+- the preferred backend, exact processor contract, filter, and reason are
+  materialized by the authoring workflow into canonical specification, bundle,
+  plan, and trust-summary facts; an explicit authoring override remains
+  reviewable, and compilation and execution never discover or insert ambient
+  RTK implicitly;
+- source adapter, source version, command contract, source argv, processor path,
+  SHA-256, size, version, adapter contract, filter, and claimed platform form
+  one exact compatibility tuple; the trust summary exposes the processor kind,
+  version and identity, contract/filter mapping, and original-output visibility;
+- missing or drifted processor identity at preflight fails before either
+  process starts; after admitted source success, Atsura revalidates processor
+  identity before start, and a change then is non-retryable with one source
+  attempt and zero processor attempts;
+- Atsura starts the source at most once and starts the processor at most once
+  only after admitted source success; source failure produces one source
+  attempt and zero processor attempts, while every post-source processor
+  failure is non-retryable and leaks no source bytes, processor bytes, or
+  processor stderr;
+- the processor uses no shell, receives only the bounded admitted stage input,
+  and runs with finite time and byte limits in isolated working and
+  configuration roots; native fixtures observe the exact invocation's file
+  effects and attempted network I/O within declared platform capabilities,
+  without claiming an OS/network sandbox, and tests retain the portable
+  processor check-to-exec race as a stated limitation; and
+- every claimed platform replays an exact native RTK artifact and records
+  Apache-2.0 provenance, license, notice, dependency, and SBOM evidence.
 
 ### Source execution effect and process boundary
 
@@ -393,9 +437,10 @@ jobs; an exact commit has complete platform evidence only after the required CI
 matrix succeeds. Emulation and cross-build metadata do not count as native
 runtime evidence.
 
-The gate does not claim identity-wrapper or argv-only-transform execution, raw
-execution, host installation, arbitrary transformer integration, support for a
-source CLI beyond an accepted adapter contract, or publication authorization.
+The gate does not claim identity-wrapper or argv-only-transform execution,
+original-preserving optimization, external-processor execution, raw execution,
+host installation, arbitrary transformer integration, support for a source CLI
+beyond an accepted adapter contract, or publication authorization.
 
 ## Evidence discipline
 

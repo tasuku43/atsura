@@ -6,6 +6,7 @@
 - Scope: Bundle runtime, adapter compatibility, source process, output
   transformation, faults, tests, and release evidence
 - Extends: docs/decisions/0005-purpose-specific-surface-and-wrapper.md
+- Extended by: docs/decisions/0007-prefer-explicit-rtk-optimizer-defaults.md
 - Supersedes: None
 - Superseded by: None
 
@@ -130,7 +131,9 @@ compatibility evidence.
 - Nonempty successful source stderr.
 - A source adapter beyond an accepted compatibility contract.
 - Source refresh, raw execution, and host integration.
-- Arbitrary shell, jq, RTK, plugin, script, or runtime-LLM transformers.
+- Arbitrary shell, jq, RTK program/argv, plugin, script, or runtime-LLM
+  transformers. ADR 0007 accepts only a future finite identity-bound RTK
+  optimizer contract and does not change this milestone's implemented schema.
 - A stronger platform-specific executable handle that closes the remaining
   check-to-exec race.
 

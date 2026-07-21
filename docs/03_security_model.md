@@ -175,7 +175,7 @@ with a read-only reconciliation action.
 Those controls must never be used to claim knowledge about the downstream
 effect of a source CLI command.
 
-## Output transformation
+## Output projection and optimization
 
 Source output is untrusted and may contain control characters, prompt-like
 text, malformed encodings, secrets, or very large structures. Typed parsers and
@@ -183,11 +183,44 @@ transformers use explicit format, depth, node, record, field, and byte bounds;
 reject duplicate keys where semantics would be ambiguous; and preserve visible
 projection rules at the CLI boundary.
 
-If output optimization cannot be applied safely, Atsura must not change argv,
-retry the source, select raw mode, invent a partial success, or silently expose
-unreviewed raw output. The source attempt's meaning is preserved and the
-transform failure is reported separately. Persistent state contains no raw
-stdout, stderr, credentials, tokens, or transcripts.
+A typed projection may receive source output only behind its declared parser and
+must fail closed without exposing its input when it cannot produce the adopted
+shape. It must not change argv, retry the source, select raw mode, invent a
+partial success, or silently expose unreviewed bytes. The source attempt and
+projection failure are reported separately.
+
+An original-preserving optimizer has a narrower and explicit exception: it may
+emit byte-identical `preserved` stage input only when the adopted plan already
+permits that exact input as agent-facing output. Preservation is a success
+disposition, not failure recovery, and it cannot cross a confidentiality-
+selecting projection boundary in the unsafe direction. Trust output must state
+that original stage input may remain visible. Atsura derives the disposition
+from bytes only: successful valid processor stdout equal to admitted input is
+`preserved`; different valid stdout is `optimized`. It does not infer the
+processor's internal branch. Persistent state still contains no raw stdout,
+stderr, credentials, tokens, or transcripts.
+
+### External output processors
+
+An external output processor is untrusted executable code. Atsura pins and
+revalidates its exact path, SHA-256, size, observed version, compatibility
+contract, and argv. It starts the processor without a shell, in an isolated
+working directory and minimal environment, with closed noninteractive stdin
+except for the bounded stage input and with finite time and output limits.
+
+The processor receives no separately supplied credential material, source
+stderr, environment snapshot, host payload, transcript, or authority to launch
+the source. Its admitted stage input is still untrusted source output and may
+itself contain secrets; original-output visibility is therefore a reviewed plan
+fact. Atsura disables telemetry, tee, project-filter lookup, and tracking
+defensively where the processor supports those controls. For each claimed
+platform, a native fixture records that the exact artifact and invocation
+created no state outside isolated temporary roots and attempted no network I/O
+within the harness's declared observation scope. That evidence is not an OS or
+network sandbox. Portable processor identity checks retain a check-to-exec
+race. A source failure starts no processor. A processor failure after source
+start is non-retryable and exposes neither processor stderr nor failed
+intermediate output.
 
 Recovery conformance covers every exact scoped-help declaration rather than a
 selected sample. Preview has 27 zero-attempt cases. Execute has 28 pre-start
@@ -210,6 +243,11 @@ It revalidates bundle-bound source identity but applies no surface selection or
 wrapper transformation. Raw is never automatic fallback, never a recovery
 suggestion, and never part of the tailored agent surface. Raw is outside the
 current transform-runtime milestone.
+
+A byte-identical `preserved` result from an adopted optimizer is not raw
+execution: surface resolution, invocation transformation, exact source
+identity, source execution, and all preceding stages still apply. It is invalid
+unless the plan explicitly permits original stage input as output.
 
 ## Failure policy
 
@@ -315,7 +353,8 @@ job produced it.
 - Successful nonempty stderr is rejected without exposing it because the first
   result schema has no reviewed stderr meaning.
 - Identity/argv-only execution, before/after actions, richer argv transforms,
-  raw, and host adapters remain unimplemented.
+  original-preserving optimizers, external output processors, raw, and host
+  adapters remain unimplemented.
 
 ## Security claim for the current milestone
 
@@ -328,4 +367,4 @@ starts at most once without a shell, and returns only the complete typed
 selected JSON result. Pre-start contract failures start zero processes. Every post-start
 failure is non-retryable and exposes no raw source output. The milestone does
 not claim source-operation authorization, sandboxing, identity/raw execution,
-or host integration.
+external-output-processor execution, or host integration.

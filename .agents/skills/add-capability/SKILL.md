@@ -101,6 +101,40 @@ For source-owned execution, specify:
   output-write failure; and
 - audit-safe fields and secret/raw-output fields.
 
+For an output-stage capability, classify the stage before selecting a backend:
+
+- a typed projection promises one declared result shape and fails closed
+  without exposing its input; and
+- an original-preserving optimizer may return `optimized` output or its exact
+  admitted input as `preserved` only when the adopted plan explicitly permits
+  that input as agent-facing output. Derive that disposition from observable
+  bytes: successful valid processor stdout equal to the admitted input is
+  `preserved`; different valid stdout is `optimized`. Do not infer the
+  processor's internal branch.
+
+For a finite external output processor such as RTK, keep the compatibility
+adapter choice in a namespaced registry and materialize any preferred default
+into the specification before review. Do not accept an executable name, argv,
+shell fragment, plugin, or program from the specification, and do not detect or
+insert an ambient processor at compile or runtime. Atsura starts the exact
+source itself; the processor receives only bounded admitted stage input and
+never receives source-selection authority, separately supplied credentials,
+source stderr, host payloads, or ambient configuration.
+
+Bind and revalidate exact processor identity, compatibility contract, fixed
+argv, original-output allowance, limits, environment, and reason before source
+start. Count source and processor attempts separately. Prove processor-missing
+or drifted state at preflight causes zero source attempts, a source failure
+causes zero processor attempts, and an admitted success causes at most one of
+each. Revalidate processor identity after admitted source success and before
+processor start; a change then is non-retryable with one source attempt and zero
+processor attempts. Run an external processor without a shell in isolated roots
+and observe filesystem and network behavior for each exact native artifact
+within the platform harness's declared capabilities. Retain the check-to-exec
+race as a limitation rather than claiming sandboxing. Any processor failure
+after source start is non-retryable and exposes neither intermediate
+input/output nor processor stderr.
+
 Do not require or infer allow/confirm/deny, read/create/write, target, or impact
 for the downstream source operation. A host protocol may translate surface or
 interaction states into transport decisions, but those values do not enter the
