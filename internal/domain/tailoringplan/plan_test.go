@@ -102,6 +102,17 @@ func TestBuildProducesDeterministicCompleteTransformPlan(t *testing.T) {
 	if !reflect.DeepEqual(first.TransformedArgv, wantTransformed) || !reflect.DeepEqual(first.Stages.Invoke.Args, wantTransformed[1:]) || first.Stages.Output == nil {
 		t.Fatalf("transformed plan = %+v", first)
 	}
+	if first.Stages.Invoke.StdinMode != StdinModeClosed || first.Stages.Invoke.WorkingDirectoryMode != WorkingDirectoryModeInherit || first.Stages.Invoke.EnvironmentMode != EnvironmentModeInherit {
+		t.Fatalf("process framing = %+v", first.Stages.Invoke)
+	}
+	request, err := first.SourceRequest()
+	if err != nil || request.Process.Executable != first.Source.ResolvedPath || !reflect.DeepEqual(request.Process.Args, first.Stages.Invoke.Args) || request.ExpectedIdentity != currentIdentity() {
+		t.Fatalf("SourceRequest() = %+v, error = %v", request, err)
+	}
+	output, present, err := first.OutputPlan()
+	if err != nil || !present || !reflect.DeepEqual(output.Select, []string{"id", "name"}) || output.Rename[0].To != "item_id" {
+		t.Fatalf("OutputPlan() = %+v, %t, %v", output, present, err)
+	}
 	encoded, err := json.Marshal(first)
 	if err != nil {
 		t.Fatal(err)
@@ -135,6 +146,9 @@ func TestBuildDistinguishesInheritedSurfaceAndIdentityWrapper(t *testing.T) {
 	}
 	if plan.SurfaceOrigin != SurfaceOriginInherited || plan.SpecificationEntry != nil || plan.WrapperKind != tailoringbundle.WrapperIdentity || plan.Stages.Output != nil || len(plan.Stages.Invoke.AppendedArgs) != 0 {
 		t.Fatalf("plan = %+v", plan)
+	}
+	if _, present, err := plan.OutputPlan(); err != nil || present {
+		t.Fatalf("identity OutputPlan() present=%t error=%v", present, err)
 	}
 	encoded, _ := json.Marshal(plan)
 	if !strings.Contains(string(encoded), `"output":null`) {

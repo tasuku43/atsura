@@ -46,7 +46,7 @@ adopted bundle + attempted invocation
   -> fail closed on child-versus-positional ambiguity unless `--` is explicit
   -> pure surface and option resolution
        -> absent command: command_not_in_surface, no wrapper plan
-       -> included command: one complete schema-2 wrapper plan and digest
+       -> included command: one complete schema-3 wrapper plan and digest
   -> zero source-process attempts
 ```
 
@@ -112,7 +112,7 @@ source read/create/write effect, or source-operation target and impact.
 - deterministic invocation and typed output transformations;
 - canonical schema-2 bundles, digests, and drift validation;
 - pure surface resolution and `command_not_in_surface`;
-- ordered schema-2 wrapper execution plans and canonical plan digests; and
+- ordered schema-3 wrapper execution plans and canonical plan digests; and
 - operation effects, including `EffectExecute` for starting a source-owned
   process and create/write contracts for Atsura-owned state only.
 
@@ -253,7 +253,7 @@ strict schema-3 specification
   -> current source path/hash/size observation
   -> longest full-catalog command match
   -> included/absent command and option resolution
-  -> complete schema-2 wrapper plan + digest
+  -> complete schema-3 wrapper plan + digest
   -> source_process_attempts: 0
 
 retired authorization schema or command

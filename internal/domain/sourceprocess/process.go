@@ -35,6 +35,29 @@ type Request struct {
 	StderrLimit int
 }
 
+// BoundRequest binds one process request to executable identity evidence that
+// was established outside the process adapter. Bundle runtime uses this form;
+// inspection uses Request because discovering identity is part of that task.
+type BoundRequest struct {
+	Process          Request
+	ExpectedIdentity Identity
+}
+
+// Validate rejects a process request that could resolve to anything other
+// than its expected executable bytes.
+func (r BoundRequest) Validate() error {
+	if err := r.Process.Validate(); err != nil {
+		return err
+	}
+	if err := r.ExpectedIdentity.Validate(); err != nil {
+		return fmt.Errorf("%w: expected identity: %v", ErrInvalidRequest, err)
+	}
+	if r.Process.Executable != r.ExpectedIdentity.ResolvedPath {
+		return fmt.Errorf("%w: executable must equal the expected resolved path", ErrInvalidRequest)
+	}
+	return nil
+}
+
 // Validate rejects an incomplete or unbounded process request.
 func (r Request) Validate() error {
 	if err := validateArgument(r.Executable); err != nil {
@@ -124,6 +147,21 @@ func (r Result) Validate(request Request, succeeded bool) error {
 	}
 	if !succeeded && r.ExitCode < -1 {
 		return fmt.Errorf("%w: failed exit code is invalid", ErrInvalidResult)
+	}
+	return nil
+}
+
+// ValidateBound additionally proves that a one-attempt result belongs to the
+// exact identity authorized by a bound request.
+func (r Result) ValidateBound(request BoundRequest, succeeded bool) error {
+	if err := request.Validate(); err != nil {
+		return fmt.Errorf("%w: request: %v", ErrInvalidResult, err)
+	}
+	if err := r.Validate(request.Process, succeeded); err != nil {
+		return err
+	}
+	if r.Attempts == 1 && r.Identity != request.ExpectedIdentity {
+		return fmt.Errorf("%w: result identity does not match the bound request", ErrInvalidResult)
 	}
 	return nil
 }

@@ -227,13 +227,13 @@ func TestBundlePreviewReturnsCompleteSchemaTwoPlanWithoutSourceAttempt(t *testin
 	if err := json.Unmarshal(stagesObject["invoke"], &invokeObject); err != nil {
 		t.Fatal(err)
 	}
-	assertJSONKeys(t, invokeObject, []string{"appended_args", "args", "executable", "max_attempts", "stderr_limit_bytes", "stdout_limit_bytes", "timeout_millis"})
+	assertJSONKeys(t, invokeObject, []string{"appended_args", "args", "environment_mode", "executable", "max_attempts", "stderr_limit_bytes", "stdin_mode", "stdout_limit_bytes", "timeout_millis", "working_directory_mode"})
 	var document bundlePreviewDocument
 	if err := json.Unmarshal(out.Bytes(), &document); err != nil {
 		t.Fatal(err)
 	}
 	preview := document.Preview
-	if document.SchemaVersion != 2 || len(preview.PlanDigest) != 64 || preview.SourceProcessAttempts != 0 || preview.Plan.SchemaVersion != 2 {
+	if document.SchemaVersion != 2 || len(preview.PlanDigest) != 64 || preview.SourceProcessAttempts != 0 || preview.Plan.SchemaVersion != 3 {
 		t.Fatalf("preview=%+v", preview)
 	}
 	if preview.Plan.Source.ResolvedPath == "" || preview.Plan.WrapperKind != "transform" || preview.Plan.SpecificationEntry == nil || preview.Plan.Stages.Invoke.MaxAttempts != 1 {

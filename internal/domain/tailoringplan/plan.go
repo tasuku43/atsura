@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -19,7 +20,7 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
 )
 
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 var (
 	ErrInvalidInvocation        = errors.New("invalid tailored invocation")
@@ -63,14 +64,27 @@ const (
 
 // Invocation is the exact no-shell source invocation produced by the wrapper.
 type Invocation struct {
-	Executable       string   `json:"executable"`
-	Args             []string `json:"args"`
-	AppendedArgs     []string `json:"appended_args"`
-	MaxAttempts      int      `json:"max_attempts"`
-	TimeoutMillis    int64    `json:"timeout_millis"`
-	StdoutLimitBytes int      `json:"stdout_limit_bytes"`
-	StderrLimitBytes int      `json:"stderr_limit_bytes"`
+	Executable           string               `json:"executable"`
+	Args                 []string             `json:"args"`
+	AppendedArgs         []string             `json:"appended_args"`
+	StdinMode            StdinMode            `json:"stdin_mode"`
+	WorkingDirectoryMode WorkingDirectoryMode `json:"working_directory_mode"`
+	EnvironmentMode      EnvironmentMode      `json:"environment_mode"`
+	MaxAttempts          int                  `json:"max_attempts"`
+	TimeoutMillis        int64                `json:"timeout_millis"`
+	StdoutLimitBytes     int                  `json:"stdout_limit_bytes"`
+	StderrLimitBytes     int                  `json:"stderr_limit_bytes"`
 }
+
+type StdinMode string
+type WorkingDirectoryMode string
+type EnvironmentMode string
+
+const (
+	StdinModeClosed             StdinMode            = "closed"
+	WorkingDirectoryModeInherit WorkingDirectoryMode = "inherit"
+	EnvironmentModeInherit      EnvironmentMode      = "inherit"
+)
 
 // StageKind is one fixed position in the wrapper pipeline.
 type StageKind string
@@ -203,13 +217,16 @@ func Build(bundleDigest string, bundle tailoringbundle.Bundle, current sourcepro
 			Order:  []StageKind{StageBefore, StageInvoke, StageOutput, StageAfter},
 			Before: append([]tailoringbundle.StageAction{}, entry.Wrapper.Before...),
 			Invoke: Invocation{
-				Executable:       bundle.Catalog.Source.ResolvedPath,
-				Args:             append([]string{}, transformedArgs...),
-				AppendedArgs:     append([]string{}, entry.Wrapper.Invoke.AppendArgs...),
-				MaxAttempts:      1,
-				TimeoutMillis:    sourceprocess.MaxTimeout.Milliseconds(),
-				StdoutLimitBytes: sourceprocess.MaxStdoutBytes,
-				StderrLimitBytes: sourceprocess.MaxStderrBytes,
+				Executable:           bundle.Catalog.Source.ResolvedPath,
+				Args:                 append([]string{}, transformedArgs...),
+				AppendedArgs:         append([]string{}, entry.Wrapper.Invoke.AppendArgs...),
+				StdinMode:            StdinModeClosed,
+				WorkingDirectoryMode: WorkingDirectoryModeInherit,
+				EnvironmentMode:      EnvironmentModeInherit,
+				MaxAttempts:          1,
+				TimeoutMillis:        sourceprocess.MaxTimeout.Milliseconds(),
+				StdoutLimitBytes:     sourceprocess.MaxStdoutBytes,
+				StderrLimitBytes:     sourceprocess.MaxStderrBytes,
 			},
 			Output: cloneOutput(entry.Wrapper.Output),
 			After:  append([]tailoringbundle.StageAction{}, entry.Wrapper.After...),
@@ -287,6 +304,9 @@ func (p Plan) Validate() error {
 	if !reflect.DeepEqual(wantArgs, p.Stages.Invoke.Args) {
 		return invalidPlan("invoke args are not the exact original args plus appended args")
 	}
+	if p.Stages.Invoke.StdinMode != StdinModeClosed || p.Stages.Invoke.WorkingDirectoryMode != WorkingDirectoryModeInherit || p.Stages.Invoke.EnvironmentMode != EnvironmentModeInherit {
+		return invalidPlan("source process framing is invalid")
+	}
 	if p.Stages.Invoke.MaxAttempts != 1 || p.Stages.Invoke.TimeoutMillis != sourceprocess.MaxTimeout.Milliseconds() || p.Stages.Invoke.StdoutLimitBytes != sourceprocess.MaxStdoutBytes || p.Stages.Invoke.StderrLimitBytes != sourceprocess.MaxStderrBytes {
 		return invalidPlan("source process bounds are invalid")
 	}
@@ -328,6 +348,48 @@ func (p Plan) Validate() error {
 		return invalidPlan("source invocation: %v", err)
 	}
 	return nil
+}
+
+// SourceRequest returns the sole exact process contract represented by this
+// plan. Runtime callers do not reconstruct executable identity or bounds.
+func (p Plan) SourceRequest() (sourceprocess.BoundRequest, error) {
+	if err := p.Validate(); err != nil {
+		return sourceprocess.BoundRequest{}, err
+	}
+	request := sourceprocess.BoundRequest{
+		Process: sourceprocess.Request{
+			Executable:  p.Stages.Invoke.Executable,
+			Args:        append([]string{}, p.Stages.Invoke.Args...),
+			Timeout:     time.Duration(p.Stages.Invoke.TimeoutMillis) * time.Millisecond,
+			StdoutLimit: p.Stages.Invoke.StdoutLimitBytes,
+			StderrLimit: p.Stages.Invoke.StderrLimitBytes,
+		},
+		ExpectedIdentity: sourceprocess.Identity{ResolvedPath: p.Source.ResolvedPath, SHA256: p.Source.SHA256, Size: p.Source.Size},
+	}
+	if err := request.Validate(); err != nil {
+		return sourceprocess.BoundRequest{}, invalidPlan("source request: %v", err)
+	}
+	return request, nil
+}
+
+// OutputPlan returns a detached typed output transform. A valid plan without
+// an output stage returns present=false.
+func (p Plan) OutputPlan() (tailoring.OutputPlan, bool, error) {
+	if err := p.Validate(); err != nil {
+		return tailoring.OutputPlan{}, false, err
+	}
+	if p.Stages.Output == nil {
+		return tailoring.OutputPlan{}, false, nil
+	}
+	renames := make([]tailoring.Rename, len(p.Stages.Output.Rename))
+	for index, rename := range p.Stages.Output.Rename {
+		renames[index] = tailoring.Rename{From: rename.From, To: rename.To}
+	}
+	result := tailoring.OutputPlan{Input: tailoring.InputFormat(p.Stages.Output.Input), Select: append([]string{}, p.Stages.Output.Select...), Rename: renames, Render: tailoring.RenderFormat(p.Stages.Output.Render)}
+	if err := result.Validate(); err != nil {
+		return tailoring.OutputPlan{}, false, invalidPlan("output plan: %v", err)
+	}
+	return result, true, nil
 }
 
 // CanonicalJSON returns the sole digest representation for a complete plan.

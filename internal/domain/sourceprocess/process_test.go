@@ -72,3 +72,32 @@ func TestResultValidationDistinguishesZeroAndOneAttempt(t *testing.T) {
 		}
 	}
 }
+
+func TestBoundRequestAndResultRequireExactExpectedIdentity(t *testing.T) {
+	identity := validIdentity()
+	request := validRequest()
+	request.Executable = identity.ResolvedPath
+	bound := BoundRequest{Process: request, ExpectedIdentity: identity}
+	if err := bound.Validate(); err != nil {
+		t.Fatalf("Validate() = %v", err)
+	}
+	result := Result{Attempts: 1, ExitCode: 0, Stdout: []byte(`[]`), Identity: identity}
+	if err := result.ValidateBound(bound, true); err != nil {
+		t.Fatalf("ValidateBound() = %v", err)
+	}
+
+	wrongPath := bound
+	wrongPath.Process.Executable = "/synthetic/other"
+	if err := wrongPath.Validate(); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("wrong path error = %v", err)
+	}
+	wrongHash := bound
+	wrongHash.ExpectedIdentity.SHA256 = "1123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	if err := result.ValidateBound(wrongHash, true); !errors.Is(err, ErrInvalidResult) {
+		t.Fatalf("wrong identity error = %v", err)
+	}
+	zero := Result{ExitCode: -1}
+	if err := zero.ValidateBound(bound, false); err != nil {
+		t.Fatalf("zero-attempt bound result = %v", err)
+	}
+}

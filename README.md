@@ -25,7 +25,7 @@ source inspect -> spec init/validate -> bundle build -> bundle status/trust
 - `bundle trust` interactively records adoption of one exact bundle digest. It
   does not grant permission to run source operations.
 - `bundle preview --bundle <path> -- <source-executable> <argv>` returns one
-  deterministic schema-2 wrapper plan and digest with zero source-process
+  deterministic schema-3 wrapper plan and digest with zero source-process
   attempts.
 - The retired authorization-oriented policy schemas, legacy `plan preview`,
   and `run` have migration diagnostics only. They are not current tailoring

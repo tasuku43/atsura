@@ -372,7 +372,7 @@ token that does not complete a known child is ambiguous rather than assumed to
 be positional; the caller must put an inner `--` before positional data. The
 schema-2 JSON envelope contains `plan_digest`, `plan`, and
 `source_process_attempts`. Exact schema-8 agent help declares the nested plan
-as `wrapper-plan` version 2 and publishes its typed JSON-pointer inventory. The
+as `wrapper-plan` version 3 and publishes its typed JSON-pointer inventory. The
 plan binds:
 
 - bundle, catalog, and specification digests;
@@ -383,8 +383,8 @@ plan binds:
 - reason, option surface, and wrapper kind;
 - original and transformed argv;
 - ordered before, invoke, output, and after stages; and
-- maximum attempts, timeout, stdout, and stderr bounds for the future source
-  invocation.
+- closed stdin, inherited working-directory and environment modes, plus maximum
+  attempts, timeout, stdout, and stderr bounds for the future source invocation.
 
 The plan digest is the SHA-256 identity of the canonical complete plan.
 Repeating preview with identical validated evidence and argv returns the same

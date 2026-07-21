@@ -53,6 +53,16 @@ func (r *Runner) Identify(ctx context.Context, executable string) (sourceprocess
 
 // Run resolves, fingerprints, revalidates, and starts at most one process.
 func (r *Runner) Run(ctx context.Context, request sourceprocess.Request) (sourceprocess.Result, error) {
+	return r.run(ctx, request, nil)
+}
+
+// RunBound starts at most one process only when every executable observation
+// matches identity evidence supplied by the caller.
+func (r *Runner) RunBound(ctx context.Context, request sourceprocess.BoundRequest) (sourceprocess.Result, error) {
+	return r.run(ctx, request.Process, &request.ExpectedIdentity)
+}
+
+func (r *Runner) run(ctx context.Context, request sourceprocess.Request, expected *sourceprocess.Identity) (sourceprocess.Result, error) {
 	zero := sourceprocess.Result{ExitCode: -1}
 	if ctx == nil {
 		return zero, fmt.Errorf("source process context is nil")
@@ -60,22 +70,37 @@ func (r *Runner) Run(ctx context.Context, request sourceprocess.Request) (source
 	if err := ctx.Err(); err != nil {
 		return zero, err
 	}
-	if err := request.Validate(); err != nil {
+	if expected != nil {
+		if err := (sourceprocess.BoundRequest{Process: request, ExpectedIdentity: *expected}).Validate(); err != nil {
+			return zero, fault.Wrap(fault.KindContract, "invalid_source_process_request", "The source process request is invalid.", false, err, helpAction())
+		}
+	} else if err := request.Validate(); err != nil {
 		return zero, fault.Wrap(fault.KindContract, "invalid_source_process_request", "The source process request is invalid.", false, err, helpAction())
 	}
-	resolved, err := resolveExecutable(request.Executable)
-	if err != nil {
-		return zero, err
+	resolved := request.Executable
+	if expected == nil {
+		var err error
+		resolved, err = resolveExecutable(request.Executable)
+		if err != nil {
+			return zero, err
+		}
 	}
 	identity, err := identifyExecutable(resolved)
 	if err != nil {
 		return zero, err
 	}
+	authority := identity
+	if expected != nil {
+		authority = *expected
+		if identity != authority {
+			return zero, fault.New(fault.KindRejected, "source_identity_changed", "The resolved source executable does not match the bundle-bound identity.", false, helpAction())
+		}
+	}
 	if r != nil && r.beforeStart != nil {
 		r.beforeStart(resolved)
 	}
 	revalidated, err := identifyExecutable(resolved)
-	if err != nil || revalidated != identity {
+	if err != nil || revalidated != authority {
 		return zero, fault.Wrap(fault.KindRejected, "source_identity_changed", "The resolved source executable changed before it could be started.", false, err, helpAction())
 	}
 
@@ -85,7 +110,7 @@ func (r *Runner) Run(ctx context.Context, request sourceprocess.Request) (source
 	stderr := &limitedBuffer{limit: request.StderrLimit, cancel: cancel}
 	// #nosec G204 -- the product executes the validated regular executable and
 	// argv vector above; no string is interpreted by a shell.
-	command := exec.CommandContext(runCtx, identity.ResolvedPath, request.Args...)
+	command := exec.CommandContext(runCtx, authority.ResolvedPath, request.Args...)
 	command.Stdin = nil
 	command.Stdout = stdout
 	command.Stderr = stderr
@@ -93,7 +118,7 @@ func (r *Runner) Run(ctx context.Context, request sourceprocess.Request) (source
 	if err := command.Start(); err != nil {
 		return zero, fault.Wrap(fault.KindUnavailable, "source_process_start_failed", "The source process could not be started.", true, err, helpAction())
 	}
-	result := sourceprocess.Result{Attempts: 1, ExitCode: -1, Identity: identity}
+	result := sourceprocess.Result{Attempts: 1, ExitCode: -1, Identity: authority}
 	if r != nil && r.afterStart != nil {
 		r.afterStart(resolved)
 	}
@@ -117,7 +142,7 @@ func (r *Runner) Run(ctx context.Context, request sourceprocess.Request) (source
 		return result, fault.Wrap(fault.KindUnavailable, "source_command_timeout", "The source process exceeded its declared timeout.", false, waitErr, helpAction())
 	}
 	postIdentity, identityErr := identifyExecutable(resolved)
-	if identityErr != nil || postIdentity != identity {
+	if identityErr != nil || postIdentity != authority {
 		return result, fault.Wrap(fault.KindRejected, "source_identity_changed", "The resolved source executable changed during execution.", false, identityErr, helpAction())
 	}
 	if waitErr != nil {

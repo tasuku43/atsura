@@ -49,6 +49,16 @@ func helperRequest(timeout time.Duration) sourceprocess.Request {
 	}
 }
 
+func boundHelperRequest(t *testing.T, runner *Runner, request sourceprocess.Request) sourceprocess.BoundRequest {
+	t.Helper()
+	identity, err := runner.Identify(context.Background(), request.Executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Executable = identity.ResolvedPath
+	return sourceprocess.BoundRequest{Process: request, ExpectedIdentity: identity}
+}
+
 func publicCode(t *testing.T, err error) string {
 	t.Helper()
 	public, ok := fault.PublicCopy(err)
@@ -189,5 +199,61 @@ func TestRunDetectsExecutableDriftBeforeAndAfterStart(t *testing.T) {
 	result, err = (&Runner{afterStart: replace}).Run(context.Background(), afterRequest)
 	if got := publicCode(t, err); got != "source_identity_changed" || result.Attempts != 1 {
 		t.Fatalf("after drift code = %q, attempts = %d", got, result.Attempts)
+	}
+}
+
+func TestRunBoundRequiresExpectedIdentityAtEveryRaceBoundary(t *testing.T) {
+	copyExecutable := func(t *testing.T) string {
+		t.Helper()
+		value, err := os.ReadFile(os.Args[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(t.TempDir(), "helper")
+		if err := os.WriteFile(path, value, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	replace := func(path string) {
+		replacement := path + ".replacement"
+		_ = os.WriteFile(replacement, []byte("changed executable"), 0o700)
+		_ = os.Rename(replacement, path)
+	}
+
+	initialPath := copyExecutable(t)
+	initialRequest := helperRequest(10 * time.Second)
+	initialRequest.Executable = initialPath
+	initialRunner := New()
+	initialBound := boundHelperRequest(t, initialRunner, initialRequest)
+	replace(initialPath)
+	result, err := initialRunner.RunBound(context.Background(), initialBound)
+	if got := publicCode(t, err); got != "source_identity_changed" || result.Attempts != 0 {
+		t.Fatalf("initial mismatch code=%q attempts=%d", got, result.Attempts)
+	}
+
+	beforePath := copyExecutable(t)
+	beforeRequest := helperRequest(10 * time.Second)
+	beforeRequest.Executable = beforePath
+	beforeRunner := &Runner{beforeStart: replace}
+	beforeBound := boundHelperRequest(t, beforeRunner, beforeRequest)
+	result, err = beforeRunner.RunBound(context.Background(), beforeBound)
+	if got := publicCode(t, err); got != "source_identity_changed" || result.Attempts != 0 {
+		t.Fatalf("pre-start mismatch code=%q attempts=%d", got, result.Attempts)
+	}
+
+	t.Setenv("ATSURA_SOURCEEXEC_HELPER", "1")
+	t.Setenv("ATSURA_SOURCEEXEC_MODE", "default")
+	afterPath := copyExecutable(t)
+	afterRequest := helperRequest(10 * time.Second)
+	afterRequest.Executable = afterPath
+	afterRunner := &Runner{afterStart: replace}
+	afterBound := boundHelperRequest(t, afterRunner, afterRequest)
+	result, err = afterRunner.RunBound(context.Background(), afterBound)
+	if got := publicCode(t, err); got != "source_identity_changed" || result.Attempts != 1 {
+		t.Fatalf("post-start mismatch code=%q attempts=%d", got, result.Attempts)
+	}
+	if validateErr := result.ValidateBound(afterBound, false); validateErr != nil {
+		t.Fatalf("ValidateBound() = %v", validateErr)
 	}
 }

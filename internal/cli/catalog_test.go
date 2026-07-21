@@ -520,7 +520,7 @@ func TestBundlePreviewCatalogDeclaresPurePlanOutcome(t *testing.T) {
 		}
 	}
 	planSchema := spec.Agent.Output.Fields[1].Schema
-	if planSchema == nil || planSchema.ID != "wrapper-plan" || planSchema.Version != 2 || len(planSchema.Fields) < 60 {
+	if planSchema == nil || planSchema.ID != "wrapper-plan" || planSchema.Version != 3 || len(planSchema.Fields) < 63 {
 		t.Fatalf("plan schema=%+v", planSchema)
 	}
 	paths := make(map[string]OutputSchemaField, len(planSchema.Fields))
@@ -528,13 +528,16 @@ func TestBundlePreviewCatalogDeclaresPurePlanOutcome(t *testing.T) {
 		paths[field.Path] = field
 	}
 	for path, fieldType := range map[string]OutputFieldType{
-		"/schema_version":                      OutputFieldTypeInteger,
-		"/source/sha256":                       OutputFieldTypeString,
-		"/specification_entry":                 OutputFieldTypeObject,
-		"/stages/invoke/max_attempts":          OutputFieldTypeInteger,
-		"/stages/invoke/args":                  OutputFieldTypeArray,
-		"/stages/output/rename/*/from":         OutputFieldTypeString,
-		"/specification_entry/options/include": OutputFieldTypeArray,
+		"/schema_version":                       OutputFieldTypeInteger,
+		"/source/sha256":                        OutputFieldTypeString,
+		"/specification_entry":                  OutputFieldTypeObject,
+		"/stages/invoke/max_attempts":           OutputFieldTypeInteger,
+		"/stages/invoke/args":                   OutputFieldTypeArray,
+		"/stages/invoke/stdin_mode":             OutputFieldTypeString,
+		"/stages/invoke/environment_mode":       OutputFieldTypeString,
+		"/stages/invoke/working_directory_mode": OutputFieldTypeString,
+		"/stages/output/rename/*/from":          OutputFieldTypeString,
+		"/specification_entry/options/include":  OutputFieldTypeArray,
 	} {
 		declared, exists := paths[path]
 		if !exists || declared.Type != fieldType {

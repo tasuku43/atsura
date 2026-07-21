@@ -570,11 +570,14 @@ func wrapperPlanOutputSchema() *OutputSchema {
 		field("/stages/invoke", OutputFieldTypeObject),
 		array("/stages/invoke/appended_args", OutputFieldTypeString),
 		array("/stages/invoke/args", OutputFieldTypeString),
+		field("/stages/invoke/environment_mode", OutputFieldTypeString),
 		field("/stages/invoke/executable", OutputFieldTypeString),
 		field("/stages/invoke/max_attempts", OutputFieldTypeInteger),
 		field("/stages/invoke/stderr_limit_bytes", OutputFieldTypeInteger),
+		field("/stages/invoke/stdin_mode", OutputFieldTypeString),
 		field("/stages/invoke/stdout_limit_bytes", OutputFieldTypeInteger),
 		field("/stages/invoke/timeout_millis", OutputFieldTypeInteger),
+		field("/stages/invoke/working_directory_mode", OutputFieldTypeString),
 		array("/stages/order", OutputFieldTypeString),
 		field("/stages/output", OutputFieldTypeObject),
 		field("/stages/output/input", OutputFieldTypeString),
@@ -596,7 +599,7 @@ func wrapperPlanOutputSchema() *OutputSchema {
 		}
 	}
 	sort.Slice(fields, func(i, j int) bool { return fields[i].Path < fields[j].Path })
-	return &OutputSchema{ID: "wrapper-plan", Version: 2, Fields: fields}
+	return &OutputSchema{ID: "wrapper-plan", Version: 3, Fields: fields}
 }
 
 func legacyMigrationCommand(path, summary, args, outcome, recovery string, inputs []CommandInput, handler commandHandler) CommandSpec {

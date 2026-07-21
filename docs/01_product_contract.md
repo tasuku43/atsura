@@ -309,7 +309,8 @@ source. `bundle trust` is the only Atsura-owned mutation in this workflow.
 `bundle preview` is a read-only, JSON-only utility. It admits only the exact
 requested executable spelling or resolved path recorded in an adopted current
 bundle, resolves one cataloged attempted invocation, and returns the complete
-schema-2 tailored plan and canonical SHA-256 plan digest. It reads current
+schema-3 tailored plan inside a schema-2 preview envelope plus its canonical
+SHA-256 plan digest. It reads current
 source identity but reports `source_process_attempts: 0` and performs no output
 transformation.
 
