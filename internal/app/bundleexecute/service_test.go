@@ -186,7 +186,7 @@ func TestExecuteClassifiesPostStartFailuresWithoutRawOutputOrRetry(t *testing.T)
 		err    error
 		code   string
 	}{
-		{name: "known post start", result: sourceprocess.Result{Attempts: 1, ExitCode: 7, Stdout: []byte("secret stdout"), Stderr: []byte("secret stderr"), Identity: identity}, err: fault.New(fault.KindRejected, "source_command_failed", "The source process exited without a successful result.", false), code: "source_command_failed"},
+		{name: "known post start", result: sourceprocess.Result{Attempts: 1, ExitCode: 7, Stdout: []byte("secret stdout"), Stderr: []byte("secret stderr"), Identity: identity}, err: fault.New(fault.KindRejected, "source_command_failed", "hostile adapter message with secret stderr", false), code: "source_command_failed"},
 		{name: "unknown post start", result: sourceprocess.Result{Attempts: 1, ExitCode: -1, Identity: identity}, err: errors.New("secret cause"), code: "unclassified_source_execution_outcome"},
 		{name: "invalid success result", result: sourceprocess.Result{ExitCode: -1}, code: "unclassified_source_execution_outcome"},
 	}

@@ -54,20 +54,83 @@ func VerifyRuntime(plan tailoringplan.Plan) error {
 	}
 
 	want := "--json=" + strings.Join(output.Select, ",")
-	matches := 0
-	for _, argument := range plan.Stages.Invoke.Args[len(plan.MatchedCommand):] {
-		if argument == "--" {
-			break
-		}
-		if argument == "--json" || strings.HasPrefix(argument, "--json=") {
-			matches++
-			if argument != want {
-				return fmt.Errorf("%w: selector value does not match the output plan", ErrRuntimeSelector)
-			}
-		}
+	matches, err := verifyRuntimeArgs(path, plan.Stages.Invoke.Args[len(plan.MatchedCommand):], want)
+	if err != nil {
+		return err
 	}
 	if matches != 1 {
 		return fmt.Errorf("%w: expected exactly one active selector", ErrRuntimeSelector)
 	}
 	return nil
+}
+
+type runtimeArgContract struct {
+	values   map[string]struct{}
+	booleans map[string]struct{}
+}
+
+var runtimeArgContracts = map[string]runtimeArgContract{
+	"issue list": {
+		values: stringSet("--app", "--assignee", "--author", "--label", "--limit", "--mention", "--milestone", "--repo", "--search", "--state"),
+	},
+	"pr list": {
+		values:   stringSet("--app", "--assignee", "--author", "--base", "--head", "--label", "--limit", "--repo", "--search", "--state"),
+		booleans: stringSet("--draft"),
+	},
+}
+
+func verifyRuntimeArgs(path string, arguments []string, wantedSelector string) (int, error) {
+	contract, ok := runtimeArgContracts[path]
+	if !ok {
+		return 0, fmt.Errorf("%w: command argv contract is not covered", ErrRuntimeUnsupported)
+	}
+	matches := 0
+	for index := 0; index < len(arguments); index++ {
+		argument := arguments[index]
+		if argument == "--" {
+			if index != len(arguments)-1 {
+				return 0, fmt.Errorf("%w: positional arguments are not covered", ErrRuntimeUnsupported)
+			}
+			continue
+		}
+		name, value, inline := strings.Cut(argument, "=")
+		switch name {
+		case "--json":
+			matches++
+			if !inline || argument != wantedSelector {
+				return 0, fmt.Errorf("%w: selector value does not match the output plan", ErrRuntimeSelector)
+			}
+			continue
+		case "--jq", "--template", "--web":
+			return 0, fmt.Errorf("%w: competing output mode is not covered", ErrRuntimeSelector)
+		}
+		if _, allowed := contract.booleans[name]; allowed {
+			if inline {
+				return 0, fmt.Errorf("%w: boolean option encoding is not covered", ErrRuntimeUnsupported)
+			}
+			continue
+		}
+		if _, allowed := contract.values[name]; !allowed {
+			return 0, fmt.Errorf("%w: option or positional argument is not covered", ErrRuntimeUnsupported)
+		}
+		if inline {
+			if value == "" {
+				return 0, fmt.Errorf("%w: empty option values are not covered", ErrRuntimeUnsupported)
+			}
+			continue
+		}
+		if index+1 >= len(arguments) || strings.HasPrefix(arguments[index+1], "-") {
+			return 0, fmt.Errorf("%w: separated option value is missing or ambiguous", ErrRuntimeUnsupported)
+		}
+		index++
+	}
+	return matches, nil
+}
+
+func stringSet(values ...string) map[string]struct{} {
+	result := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		result[value] = struct{}{}
+	}
+	return result
 }

@@ -1185,7 +1185,7 @@ func DefaultCatalog() Catalog {
 					Fields: []OutputField{
 						{Name: "catalog_digest", Type: OutputFieldTypeString, Description: "SHA-256 identity of the canonical catalog bytes."},
 						{Name: "catalog", Type: OutputFieldTypeObject, Description: "Vendor-neutral source identity, adapter, provenance, probe, command, option, and structured-output evidence."},
-						{Name: "source_process_attempts", Type: OutputFieldTypeInteger, Description: "Exact bounded offline probe attempts; two for the GitHub CLI v1 adapter."},
+						{Name: "source_process_attempts", Type: OutputFieldTypeInteger, Description: "Exact bounded offline probe attempts; four for GitHub CLI adapter contract 2."},
 					},
 					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageExhaustive,
 					JSONEnvelope: "inspection", JSONSchemaVersion: 1,

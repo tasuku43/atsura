@@ -105,7 +105,7 @@ type Stages struct {
 	After  []tailoringbundle.StageAction `json:"after"`
 }
 
-// Plan is the canonical complete result shared by preview and future runtime.
+// Plan is the canonical complete result shared by preview and supported runtime.
 type Plan struct {
 	SchemaVersion       int                           `json:"schema_version"`
 	Mode                Mode                          `json:"mode"`

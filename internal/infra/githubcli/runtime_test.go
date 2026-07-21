@@ -94,9 +94,9 @@ func TestVerifyRuntimeProvesSupportedGitHubJSONSelectors(t *testing.T) {
 			if err := VerifyRuntime(plan); err != nil {
 				t.Fatalf("supported major-2 prerelease: %v", err)
 			}
-			plan = replaceAppendedArgs(t, plan, []string{"--json=number,title", "--", "--json=untrusted"})
+			plan = replaceAppendedArgs(t, plan, []string{"--limit", "1", "--state=all", "--json=number,title"})
 			if err := VerifyRuntime(plan); err != nil {
-				t.Fatalf("inactive positional selector must be ignored: %v", err)
+				t.Fatalf("supported filtering argv: %v", err)
 			}
 		})
 	}
@@ -138,13 +138,36 @@ func TestVerifyRuntimeRejectsUnprovenSelectors(t *testing.T) {
 		{name: "separated", args: []string{"--json", "number,title"}},
 		{name: "wrong order", args: []string{"--json=title,number"}},
 		{name: "duplicate", args: []string{"--json=number,title", "--json=number,title"}},
-		{name: "only after positional marker", args: []string{"--", "--json=number,title"}},
 		{name: "empty", args: []string{"--json="}},
+		{name: "jq conflict", args: []string{"--jq=.[]", "--json=number,title"}},
+		{name: "template conflict", args: []string{"--template={{.number}}", "--json=number,title"}},
+		{name: "web conflict", args: []string{"--web", "--json=number,title"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			plan := replaceAppendedArgs(t, transformRuntimePlan(t, "issue", "list"), test.args)
 			if err := VerifyRuntime(plan); !errors.Is(err, ErrRuntimeSelector) || errors.Is(err, ErrRuntimeUnsupported) {
+				t.Fatalf("error = %v", err)
+			}
+		})
+	}
+}
+
+func TestVerifyRuntimeRejectsUnmodeledArgv(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "positional", args: []string{"unexpected", "--json=number,title"}},
+		{name: "positional after marker", args: []string{"--json=number,title", "--", "unexpected"}},
+		{name: "unknown option", args: []string{"--unknown=value", "--json=number,title"}},
+		{name: "missing separated value", args: []string{"--limit", "--json=number,title"}},
+		{name: "boolean value", args: []string{"--draft=true", "--json=number,title"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			plan := replaceAppendedArgs(t, transformRuntimePlan(t, "pr", "list"), test.args)
+			if err := VerifyRuntime(plan); !errors.Is(err, ErrRuntimeUnsupported) || errors.Is(err, ErrRuntimeSelector) {
 				t.Fatalf("error = %v", err)
 			}
 		})

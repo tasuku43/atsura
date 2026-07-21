@@ -185,9 +185,55 @@ func classifyProcess(request sourceprocess.BoundRequest, result sourceprocess.Re
 		case "source_process_start_failed":
 			action = fault.NextAction{Command: Command, Reason: "Retry the exact invocation only after confirming that no source process started."}
 		}
-		return fault.New(public.Kind, public.Code, public.Message, public.Retryable, action)
+		kind, message, retryable, safe := safeProcessFault(0, public.Code)
+		if !safe {
+			return unclassifiedProcess(err)
+		}
+		return fault.New(kind, public.Code, message, retryable, action)
 	}
-	return fault.New(public.Kind, public.Code, public.Message, false, action)
+	kind, message, _, safe := safeProcessFault(1, public.Code)
+	if !safe {
+		return unclassifiedProcess(err)
+	}
+	return fault.New(kind, public.Code, message, false, action)
+}
+
+func safeProcessFault(attempts int, code string) (fault.Kind, string, bool, bool) {
+	if attempts == 0 {
+		switch code {
+		case "source_identity_changed":
+			return fault.KindRejected, "The source executable identity changed before it could be started.", false, true
+		case "source_identity_unavailable":
+			return fault.KindUnavailable, "The source executable identity could not be read before start.", true, true
+		case "unsafe_source_executable":
+			return fault.KindInvalidInput, "The source executable is not a supported regular executable.", false, true
+		case "source_executable_not_found":
+			return fault.KindNotFound, "The source executable was not found before start.", false, true
+		case "invalid_source_identity":
+			return fault.KindContract, "The source executable identity is invalid.", false, true
+		case "source_process_start_failed":
+			return fault.KindUnavailable, "The source process could not be started.", true, true
+		}
+		return "", "", false, false
+	}
+	switch code {
+	case "source_stdout_too_large":
+		return fault.KindContract, "The source process stdout exceeded the declared limit.", false, true
+	case "source_stderr_too_large":
+		return fault.KindContract, "The source process stderr exceeded the declared limit.", false, true
+	case "source_execution_canceled":
+		return fault.KindCanceled, "The caller canceled after the source process started; replay is not known to be safe.", false, true
+	case "source_command_timeout":
+		return fault.KindUnavailable, "The source process exceeded its declared timeout.", false, true
+	case "source_identity_changed":
+		return fault.KindRejected, "The source executable identity changed during execution.", false, true
+	case "source_command_failed":
+		return fault.KindRejected, "The source process exited without a successful result.", false, true
+	case "source_process_wait_failed":
+		return fault.KindUnavailable, "The source process result could not be collected.", false, true
+	default:
+		return "", "", false, false
+	}
 }
 
 func unclassifiedProcess(cause error) error {
