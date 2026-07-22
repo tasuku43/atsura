@@ -69,6 +69,19 @@ var wantedCommands = []string{
 	"pr list",
 }
 
+var (
+	wantedTransformedCallerArgv = []string{"pr", "list", "--limit=1"}
+	wantedAppendOnlyCallerArgv  = []string{"issue", "list", "--search=append value", "--label=one", "--label=two"}
+	wantedIdentityCallerArgv    = []string{
+		"pr", "list",
+		"--search=space value;$(touch atsura-artifact-injection)",
+		"--label=first",
+		"--label=Unicode 雪",
+		"--repo=-dash",
+	}
+	wantedGoCallerArgv = []string{"test"}
+)
+
 type targetContract struct {
 	fileName  string
 	target    string
@@ -232,16 +245,17 @@ type optimizerFaultEvidence struct {
 }
 
 type wrapperCaseEvidence struct {
-	Name                  string `json:"name"`
-	WrapperKind           string `json:"wrapper_kind"`
-	ResultMode            string `json:"result_mode"`
-	BundleDigest          string `json:"bundle_digest"`
-	PlanDigest            string `json:"plan_digest"`
-	WrapperSourceSHA256   string `json:"wrapper_source_sha256"`
-	StdoutSHA256          string `json:"stdout_sha256"`
-	StderrSHA256          string `json:"stderr_sha256"`
-	SourceExitCode        int    `json:"source_exit_code"`
-	SourceProcessAttempts int    `json:"source_process_attempts"`
+	Name                  string   `json:"name"`
+	WrapperKind           string   `json:"wrapper_kind"`
+	ResultMode            string   `json:"result_mode"`
+	CallerArgv            []string `json:"caller_argv"`
+	BundleDigest          string   `json:"bundle_digest"`
+	PlanDigest            string   `json:"plan_digest"`
+	WrapperSourceSHA256   string   `json:"wrapper_source_sha256"`
+	StdoutSHA256          string   `json:"stdout_sha256"`
+	StderrSHA256          string   `json:"stderr_sha256"`
+	SourceExitCode        int      `json:"source_exit_code"`
+	SourceProcessAttempts int      `json:"source_process_attempts"`
 }
 
 type aggregateDocument struct {
@@ -517,7 +531,7 @@ func requireJSONEOF(decoder *json.Decoder) error {
 
 func validateEvidence(document evidenceDocument, target, archiveName, version, revision string) error {
 	journey := document.ArtifactJourney
-	if document.SchemaVersion != 6 {
+	if document.SchemaVersion != 7 {
 		return fmt.Errorf("evidence schema version is invalid")
 	}
 	if journey.Target != target || journey.ObservedHost != target || journey.ArchiveName != archiveName || journey.Version != version || journey.Revision != revision {
@@ -541,7 +555,13 @@ func validateEvidence(document evidenceDocument, target, archiveName, version, r
 		if journey.WrapperOutcome != "ordinary_command_verified" || journey.WrapperSourceAttempts != wantedPOSIXWrappers || journey.FixtureAttempts != wantedPOSIXAttempts {
 			return fmt.Errorf("POSIX wrapper evidence is invalid")
 		}
-		if err := validateWrapperCases(journey.WrapperCases, journey.BundleDigest, journey.PlanDigest); err != nil {
+		if err := validateWrapperCases(
+			journey.WrapperCases,
+			journey.BundleDigest,
+			journey.PlanDigest,
+			journey.IssueBundleDigest,
+			journey.IssuePlanDigest,
+		); err != nil {
 			return err
 		}
 	}
@@ -574,8 +594,11 @@ func validateTailoredHelp(evidence tailoredHelpEvidence, journey artifactJourney
 		return nil
 	}
 	if evidence.Outcome != "compiled_views_verified" || evidence.BundleDigest != journey.BundleDigest ||
-		len(journey.WrapperCases) == 0 || evidence.WrapperSourceSHA256 == emptySHA256 ||
+		len(journey.WrapperCases) < 2 || evidence.BundleDigest != journey.WrapperCases[0].BundleDigest ||
+		evidence.BundleDigest != journey.WrapperCases[1].BundleDigest ||
+		evidence.WrapperSourceSHA256 == emptySHA256 ||
 		evidence.WrapperSourceSHA256 != journey.WrapperCases[0].WrapperSourceSHA256 ||
+		evidence.WrapperSourceSHA256 != journey.WrapperCases[1].WrapperSourceSHA256 ||
 		evidence.WrapperContractVersion != wrapperbinding.ContractVersion || !evidence.RuntimeNonExecutableDuringSuccess ||
 		evidence.SourceProcessAttempts != 0 || evidence.ProcessorProcessAttempts != 0 {
 		return fmt.Errorf("POSIX tailored help binding evidence is invalid")
@@ -585,8 +608,10 @@ func validateTailoredHelp(evidence tailoredHelpEvidence, journey artifactJourney
 		argv []string
 	}{
 		{name: "root", argv: []string{"--help"}},
-		{name: "namespace", argv: []string{"pr", "--help"}},
-		{name: "exact_command", argv: []string{"pr", "list", "--help"}},
+		{name: "issue_namespace", argv: []string{"issue", "--help"}},
+		{name: "issue_exact_command", argv: []string{"issue", "list", "--help"}},
+		{name: "pr_namespace", argv: []string{"pr", "--help"}},
+		{name: "pr_exact_command", argv: []string{"pr", "list", "--help"}},
 	}
 	if evidence.Views == nil || len(evidence.Views) != len(wantedViews) {
 		return fmt.Errorf("POSIX tailored help view inventory is invalid")
@@ -603,7 +628,7 @@ func validateTailoredHelp(evidence tailoredHelpEvidence, journey artifactJourney
 		name, code string
 		argv       []string
 	}{
-		{name: "hidden_command", code: "command_not_in_surface", argv: []string{"issue", "list", "--help"}},
+		{name: "hidden_command", code: "command_not_in_surface", argv: []string{"api", "--help"}},
 		{name: "unknown_selector", code: "invalid_invocation", argv: []string{"unknown", "--help"}},
 	}
 	if evidence.FallthroughFaults == nil || len(evidence.FallthroughFaults) != len(wantedFaults) {
@@ -625,9 +650,22 @@ func expectedTailoredHelpOutput(bundleDigest, view string) ([]byte, error) {
 	}
 	lines := []string{"Atsura tailored help", "Bundle digest: " + bundleDigest}
 	switch view {
-	case "root", "namespace":
+	case "root":
+		lines = append(lines, "Commands:", "  issue list", "  pr list")
+	case "issue_namespace":
+		lines = append(lines, "Commands:", "  issue list")
+	case "issue_exact_command":
+		lines = append(lines,
+			"Command: issue list",
+			"Source summary: List issues",
+			"Tailoring reason: Append one fixed reviewed source argument and preserve its streams.",
+			"Options:",
+			"  --label=<value> (value required)",
+			"  --search=<value> (value required)",
+		)
+	case "pr_namespace":
 		lines = append(lines, "Commands:", "  pr list")
-	case "exact_command":
+	case "pr_exact_command":
 		lines = append(lines,
 			"Command: pr list",
 			"Source summary: List pull requests",
@@ -668,7 +706,8 @@ func validateGoSourceEvidence(evidence goSourceEvidence, target string) error {
 	}
 	identity := evidence.WrapperCases[0]
 	if identity.Name != "go_test_identity" || identity.WrapperKind != "identity" ||
-		identity.ResultMode != "source_stream_passthrough" || identity.BundleDigest != evidence.BundleDigest ||
+		identity.ResultMode != "source_stream_passthrough" || !equalStrings(identity.CallerArgv, wantedGoCallerArgv) ||
+		identity.BundleDigest != evidence.BundleDigest ||
 		identity.PlanDigest != evidence.PlanDigest || !lowercaseHex(identity.WrapperSourceSHA256, digestLength) ||
 		identity.WrapperSourceSHA256 == emptySHA256 || !lowercaseHex(identity.StdoutSHA256, digestLength) ||
 		identity.StdoutSHA256 == emptySHA256 || identity.StderrSHA256 != emptySHA256 || identity.SourceExitCode != 0 ||
@@ -782,47 +821,55 @@ func validateProcessorEvidence(evidence processorArtifactEvidence, target string
 	return nil
 }
 
-func validateWrapperCases(cases []wrapperCaseEvidence, transformedBundleDigest, transformedPlanDigest string) error {
+func validateWrapperCases(
+	cases []wrapperCaseEvidence,
+	transformedBundleDigest, transformedPlanDigest string,
+	directIssueBundleDigest, directIssuePlanDigest string,
+) error {
 	if len(cases) != wantedPOSIXWrappers {
 		return fmt.Errorf("POSIX wrapper case inventory is invalid")
 	}
-	if cases[0].BundleDigest != transformedBundleDigest || cases[0].PlanDigest != transformedPlanDigest {
-		return fmt.Errorf("POSIX transformed wrapper identity is invalid")
+	if transformedBundleDigest == directIssueBundleDigest || transformedPlanDigest == directIssuePlanDigest ||
+		directIssueBundleDigest == emptySHA256 || directIssuePlanDigest == emptySHA256 ||
+		cases[0].BundleDigest != transformedBundleDigest || cases[0].PlanDigest != transformedPlanDigest ||
+		cases[1].BundleDigest != cases[0].BundleDigest || cases[1].PlanDigest == cases[0].PlanDigest ||
+		cases[1].PlanDigest == directIssuePlanDigest {
+		return fmt.Errorf("POSIX shared wrapper plan identity is invalid")
 	}
 	wanted := []struct {
 		name, kind, mode     string
+		callerArgv           []string
 		stdoutSHA, stderrSHA string
 		exitCode             int
 	}{
-		{name: "transformed_json", kind: "transform", mode: "transformed_json", stdoutSHA: transformedStdoutSHA256, stderrSHA: emptySHA256, exitCode: 0},
-		{name: "identity", kind: "identity", mode: "source_stream_passthrough", stdoutSHA: identityStdoutSHA256, stderrSHA: identityStderrSHA256, exitCode: 0},
-		{name: "append_only", kind: "transform", mode: "source_stream_passthrough", stdoutSHA: appendStdoutSHA256, stderrSHA: appendStderrSHA256, exitCode: 23},
+		{name: "transformed_json", kind: "transform", mode: "transformed_json", callerArgv: wantedTransformedCallerArgv, stdoutSHA: transformedStdoutSHA256, stderrSHA: emptySHA256, exitCode: 0},
+		{name: "append_only", kind: "transform", mode: "source_stream_passthrough", callerArgv: wantedAppendOnlyCallerArgv, stdoutSHA: appendStdoutSHA256, stderrSHA: appendStderrSHA256, exitCode: 23},
+		{name: "identity", kind: "identity", mode: "source_stream_passthrough", callerArgv: wantedIdentityCallerArgv, stdoutSHA: identityStdoutSHA256, stderrSHA: identityStderrSHA256, exitCode: 0},
 	}
-	bundleDigests := make(map[string]struct{}, len(cases))
 	planDigests := make(map[string]struct{}, len(cases))
-	wrapperDigests := make(map[string]struct{}, len(cases))
 	for index, expected := range wanted {
 		actual := cases[index]
-		if actual.Name != expected.name || actual.WrapperKind != expected.kind || actual.ResultMode != expected.mode || actual.SourceExitCode != expected.exitCode || actual.SourceProcessAttempts != 1 ||
+		if actual.Name != expected.name || actual.WrapperKind != expected.kind || actual.ResultMode != expected.mode ||
+			!equalStrings(actual.CallerArgv, expected.callerArgv) ||
+			actual.SourceExitCode != expected.exitCode || actual.SourceProcessAttempts != 1 ||
 			!lowercaseHex(actual.BundleDigest, digestLength) || !lowercaseHex(actual.PlanDigest, digestLength) || !lowercaseHex(actual.WrapperSourceSHA256, digestLength) ||
+			actual.BundleDigest == emptySHA256 || actual.PlanDigest == emptySHA256 || actual.WrapperSourceSHA256 == emptySHA256 ||
 			!lowercaseHex(actual.StdoutSHA256, digestLength) || !lowercaseHex(actual.StderrSHA256, digestLength) {
 			return fmt.Errorf("POSIX wrapper case %d is invalid", index)
 		}
 		if actual.StdoutSHA256 != expected.stdoutSHA || actual.StderrSHA256 != expected.stderrSHA {
 			return fmt.Errorf("POSIX wrapper case %d stream evidence is invalid", index)
 		}
-		if _, duplicate := bundleDigests[actual.BundleDigest]; duplicate {
-			return fmt.Errorf("POSIX wrapper bundle identity is duplicated")
-		}
 		if _, duplicate := planDigests[actual.PlanDigest]; duplicate {
 			return fmt.Errorf("POSIX wrapper plan identity is duplicated")
 		}
-		if _, duplicate := wrapperDigests[actual.WrapperSourceSHA256]; duplicate {
-			return fmt.Errorf("POSIX rendered wrapper identity is duplicated")
-		}
-		bundleDigests[actual.BundleDigest] = struct{}{}
 		planDigests[actual.PlanDigest] = struct{}{}
-		wrapperDigests[actual.WrapperSourceSHA256] = struct{}{}
+	}
+	sharedWrapperDigest := cases[0].WrapperSourceSHA256
+	if cases[1].WrapperSourceSHA256 != sharedWrapperDigest ||
+		cases[2].BundleDigest == transformedBundleDigest || cases[2].BundleDigest == directIssueBundleDigest ||
+		cases[2].PlanDigest == directIssuePlanDigest || cases[2].WrapperSourceSHA256 == sharedWrapperDigest {
+		return fmt.Errorf("POSIX wrapper material relationship is invalid")
 	}
 	return nil
 }

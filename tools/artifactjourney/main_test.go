@@ -5,13 +5,18 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
+	"github.com/tasuku43/atsura/internal/infra/specyaml"
 )
 
 var errEvidenceWriter = errors.New("write failed")
@@ -68,113 +73,64 @@ func TestParseOptionsRequiresExactSupportedIdentity(t *testing.T) {
 func TestTransformDraftProducesOneTypedTransform(t *testing.T) {
 	for _, command := range []string{"pr", "issue"} {
 		t.Run(command, func(t *testing.T) {
-			draft := []byte(`schema_version: 4
-catalog_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-surface:
-    default: exclude
-commands:
-    - command:
-        - ` + command + `
-        - list
-      presence: include
-      reason: Include this verified command without transformation.
-      options:
-        default: inherit
-        include: []
-        exclude: []
-      wrapper:
-        kind: identity
-        before: []
-        invoke:
-            append_args: []
-        after: []
-`)
+			draft := identityDraftSpecification(command)
 			result, err := transformDraft(draft, []string{command, "list"})
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, required := range []string{
-				"kind: transform", `append_args: ["--json=number,title,state"]`,
-				"default: exclude", "include: [--limit]", "kind: projection", "projection:", "select: [number, title, state]", "from: number", "to: id", "render: compact_json",
-			} {
-				if !bytes.Contains(result, []byte(required)) {
-					t.Fatalf("transform missing %q:\n%s", required, result)
-				}
+			if len(result.Commands) != 1 || !reflect.DeepEqual(result.Commands[0], projectionCommandEntry([]string{command, "list"})) {
+				t.Fatalf("typed projection entry = %+v", result.Commands)
 			}
-			if bytes.Contains(result, []byte("kind: identity")) {
-				t.Fatalf("identity wrapper remains:\n%s", result)
+			first, err := specyaml.Encode(result)
+			if err != nil {
+				t.Fatal(err)
 			}
-			for _, invalid := range [][]byte{[]byte("kind: identity\n"), append(append([]byte{}, draft...), draft...)} {
-				if _, err := transformDraft(invalid, []string{command, "list"}); err == nil {
-					t.Fatalf("transformDraft accepted invalid draft")
-				}
+			second, err := specyaml.Encode(result)
+			if err != nil || !bytes.Equal(first, second) || bytes.Contains(first, []byte("kind: identity")) {
+				t.Fatalf("canonical projection encoding = %q, %v", first, err)
 			}
 		})
 	}
-	if _, err := transformDraft([]byte("irrelevant"), []string{"repo", "list"}); err == nil {
+	if _, err := transformDraft(identityDraftSpecification("pr"), []string{"repo", "list"}); err == nil {
 		t.Fatal("unsupported command was accepted")
 	}
-	if _, err := transformDraft([]byte("irrelevant"), []string{"pr"}); err == nil {
+	if _, err := transformDraft(identityDraftSpecification("pr"), []string{"pr"}); err == nil {
 		t.Fatal("incomplete command was accepted")
+	}
+	malformed := identityDraftSpecification("pr")
+	malformed.Commands = append(malformed.Commands, malformed.Commands[0])
+	if _, err := transformDraft(malformed, []string{"pr", "list"}); err == nil {
+		t.Fatal("multi-command identity draft was accepted as a single draft")
 	}
 }
 
 func TestTransformSourceStreamDraftProducesExactIdentityAndAppendOnlyCases(t *testing.T) {
-	draft := func(command string) []byte {
-		return []byte(`schema_version: 4
-catalog_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-surface:
-    default: exclude
-commands:
-    - command:
-        - ` + command + `
-        - list
-      presence: include
-      reason: Include this verified command without transformation.
-      options:
-        default: inherit
-        include: []
-        exclude: []
-      wrapper:
-        kind: identity
-        before: []
-        invoke:
-            append_args: []
-        after: []
-`)
-	}
 	tests := []struct {
-		name      string
-		command   []string
-		required  []string
-		forbidden []string
+		name    string
+		command []string
+		wanted  tailoringbundle.CommandEntry
 	}{
 		{
 			name: "identity", command: []string{"pr", "list"},
-			required:  []string{"kind: identity", "append_args: []", "include: [--label, --repo, --search]"},
-			forbidden: []string{"output:", "--limit=1"},
+			wanted: identityCommandEntry([]string{"pr", "list"}),
 		},
 		{
 			name: "append_only", command: []string{"issue", "list"},
-			required:  []string{"kind: transform", `append_args: ["--limit=1"]`, "include: [--label, --search]"},
-			forbidden: []string{"output:"},
+			wanted: appendOnlyCommandEntry([]string{"issue", "list"}),
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			result, err := transformSourceStreamDraft(draft(test.command[0]), test.name, test.command)
+			result, err := transformSourceStreamDraft(identityDraftSpecification(test.command[0]), test.name, test.command)
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, required := range test.required {
-				if !bytes.Contains(result, []byte(required)) {
-					t.Fatalf("source-stream draft missing %q:\n%s", required, result)
-				}
+			if len(result.Commands) != 1 || !reflect.DeepEqual(result.Commands[0], test.wanted) {
+				t.Fatalf("source-stream entry = %+v", result.Commands)
 			}
-			for _, forbidden := range test.forbidden {
-				if bytes.Contains(result, []byte(forbidden)) {
-					t.Fatalf("source-stream draft contains %q:\n%s", forbidden, result)
-				}
+			encoded, err := specyaml.Encode(result)
+			if err != nil || bytes.Contains(encoded, []byte("output:")) {
+				t.Fatalf("source-stream encoding = %q, %v", encoded, err)
 			}
 		})
 	}
@@ -186,9 +142,75 @@ commands:
 		{name: "append_only", command: []string{"pr", "list"}},
 		{name: "unknown", command: []string{"pr", "list"}},
 	} {
-		if _, err := transformSourceStreamDraft(draft(invalid.command[0]), invalid.name, invalid.command); err == nil {
+		if _, err := transformSourceStreamDraft(identityDraftSpecification(invalid.command[0]), invalid.name, invalid.command); err == nil {
 			t.Fatalf("invalid source-stream case succeeded: %+v", invalid)
 		}
+	}
+}
+
+func TestCombineCommandSpecificationsProducesOneCanonicalMixedSurface(t *testing.T) {
+	pr, err := transformDraft(identityDraftSpecification("pr"), []string{"pr", "list"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	issue, err := transformSourceStreamDraft(identityDraftSpecification("issue"), "append_only", []string{"issue", "list"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	combined, err := combineCommandSpecifications(pr, issue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(combined.Commands) != 2 || !reflect.DeepEqual(combined.Commands[0], appendOnlyCommandEntry([]string{"issue", "list"})) ||
+		!reflect.DeepEqual(combined.Commands[1], projectionCommandEntry([]string{"pr", "list"})) {
+		t.Fatalf("combined commands = %+v", combined.Commands)
+	}
+	first, err := specyaml.Encode(combined)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := specyaml.Encode(combined)
+	if err != nil || !bytes.Equal(first, second) {
+		t.Fatalf("multi-command encoding is not deterministic: %v", err)
+	}
+	changed := issue
+	changed.CatalogDigest = strings.Repeat("b", 64)
+	if _, err := combineCommandSpecifications(pr, changed); err == nil {
+		t.Fatal("cross-catalog specifications were combined")
+	}
+}
+
+func TestLoadSpecificationDraftUsesStrictSchemaFourCodec(t *testing.T) {
+	wanted := identityDraftSpecification("pr")
+	encoded, err := specyaml.Encode(wanted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadSpecificationDraft(context.Background(), t.TempDir(), "pr", encoded)
+	if err != nil || !reflect.DeepEqual(got, wanted) {
+		t.Fatalf("loaded draft = %+v, %v", got, err)
+	}
+	if _, err := loadSpecificationDraft(context.Background(), t.TempDir(), "invalid", append(encoded, []byte("unknown: true\n")...)); err == nil {
+		t.Fatal("unknown draft field was accepted")
+	}
+}
+
+func identityDraftSpecification(command string) tailoringbundle.Specification {
+	return tailoringbundle.Specification{
+		SchemaVersion: tailoringbundle.SpecificationSchemaVersion,
+		CatalogDigest: strings.Repeat("a", 64),
+		Surface:       tailoringbundle.Surface{Default: tailoringbundle.SurfaceDefaultExclude},
+		Commands: []tailoringbundle.CommandEntry{{
+			Command: []string{command, "list"}, Presence: tailoringbundle.PresenceInclude,
+			Reason: "Include this verified command without transformation.",
+			Options: &tailoringbundle.OptionSurface{
+				Default: tailoringbundle.SurfaceDefaultInherit, Include: []string{}, Exclude: []string{},
+			},
+			Wrapper: &tailoringbundle.Wrapper{
+				Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{},
+				Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{},
+			},
+		}},
 	}
 }
 
@@ -456,10 +478,10 @@ func TestAttemptsFaultsAndCanariesAreStrict(t *testing.T) {
 	wrapperRecords := []fixtureAttemptRecord{
 		{SchemaVersion: 1, Kind: "runtime", Mode: "success", Argv: []string{"pr", "list", "--limit=1", "--json=number,title,state"}},
 		{SchemaVersion: 1, Kind: "runtime", Mode: "success", Argv: []string{
-			"pr", "list", "--search=space value;$(touch atsura-artifact-injection)", "--label=first", "--label=Unicode 雪", "--repo=-dash",
+			"issue", "list", "--search=append value", "--label=one", "--label=two", "--limit=1",
 		}},
 		{SchemaVersion: 1, Kind: "runtime", Mode: "success", Argv: []string{
-			"issue", "list", "--search=append value", "--label=one", "--label=two", "--limit=1",
+			"pr", "list", "--search=space value;$(touch atsura-artifact-injection)", "--label=first", "--label=Unicode 雪", "--repo=-dash",
 		}},
 	}
 	posixRecords := append(append([]fixtureAttemptRecord{}, baseRecords...), wrapperRecords...)
@@ -715,16 +737,16 @@ func TestWrapperResultDigestsMatchOrderedEvidenceContract(t *testing.T) {
 			stderrHash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 		},
 		{
-			name:   "identity",
-			stdout: []byte{'I', 'D', ':', 0x00, 0xff, '\n'}, stderr: []byte{'I', 'D', 'E', 'R', 'R', ':', 0xfe},
-			stdoutHash: "211630ed346fee12b3e2c5135f3239dc7ce64e10eb149e8ef032bc04ff115b7b",
-			stderrHash: "cfc159919dad8548c6e2ed887297e77aed35d6f2d20d42c08b29d7caa4f8faa0",
-		},
-		{
 			name:   "append_only",
 			stdout: []byte{'A', 'P', 'P', ':', 0xff, 0x00}, stderr: []byte("APPERR:\n"),
 			stdoutHash: "162a8a6b49c40255d3d0d2e5ed86f5d4ca88b3963d8c667bd7b79e768bd26d29",
 			stderrHash: "b8f249840842aad27390cfb637be1e2456a9d873ab1141d01d2cdccff1699c4a",
+		},
+		{
+			name:   "identity",
+			stdout: []byte{'I', 'D', ':', 0x00, 0xff, '\n'}, stderr: []byte{'I', 'D', 'E', 'R', 'R', ':', 0xfe},
+			stdoutHash: "211630ed346fee12b3e2c5135f3239dc7ce64e10eb149e8ef032bc04ff115b7b",
+			stderrHash: "cfc159919dad8548c6e2ed887297e77aed35d6f2d20d42c08b29d7caa4f8faa0",
 		},
 	}
 	for _, test := range tests {
@@ -746,9 +768,13 @@ func TestExpectedTailoredHelpViewsAreExact(t *testing.T) {
 		name string
 		want string
 	}{
-		{name: "root", want: header + "Commands:\n  pr list\n"},
-		{name: "namespace", want: header + "Commands:\n  pr list\n"},
-		{name: "exact_command", want: header + "Command: pr list\nSource summary: List pull requests\n" +
+		{name: "root", want: header + "Commands:\n  issue list\n  pr list\n"},
+		{name: "issue_namespace", want: header + "Commands:\n  issue list\n"},
+		{name: "issue_exact_command", want: header + "Command: issue list\nSource summary: List issues\n" +
+			"Tailoring reason: Append one fixed reviewed source argument and preserve its streams.\nOptions:\n" +
+			"  --label=<value> (value required)\n  --search=<value> (value required)\n"},
+		{name: "pr_namespace", want: header + "Commands:\n  pr list\n"},
+		{name: "pr_exact_command", want: header + "Command: pr list\nSource summary: List pull requests\n" +
 			"Tailoring reason: Return one reviewed compact result.\nOptions:\n  --limit=<value> (value required)\n"},
 	}
 	for _, test := range tests {

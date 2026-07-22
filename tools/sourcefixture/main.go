@@ -281,6 +281,12 @@ const versionFixture = "gh version 2.72.0 (Atsura synthetic source fixture)\n"
 
 const referenceFixture = `# gh reference
 
+## gh api <endpoint> [flags]
+
+Make an API request
+
+  -X, --method string  HTTP method
+
 ## gh issue <command>
 
 Work with issues

@@ -23,8 +23,10 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/bundletrust"
 	"github.com/tasuku43/atsura/internal/domain/processorprocess"
 	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
+	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
 	"github.com/tasuku43/atsura/internal/domain/tailoringplan"
 	"github.com/tasuku43/atsura/internal/domain/wrapperbinding"
+	"github.com/tasuku43/atsura/internal/infra/specyaml"
 	"github.com/tasuku43/atsura/internal/infra/trustfile"
 	"github.com/tasuku43/atsura/tools/internal/processormanifest"
 )
@@ -203,16 +205,17 @@ type preparedProcessor struct {
 // wrapperCaseEvidence retains only identities, digests, conventional status,
 // and attempt counts. Source bytes remain confined to the native replay.
 type wrapperCaseEvidence struct {
-	Name                  string `json:"name"`
-	WrapperKind           string `json:"wrapper_kind"`
-	ResultMode            string `json:"result_mode"`
-	BundleDigest          string `json:"bundle_digest"`
-	PlanDigest            string `json:"plan_digest"`
-	WrapperSourceSHA256   string `json:"wrapper_source_sha256"`
-	StdoutSHA256          string `json:"stdout_sha256"`
-	StderrSHA256          string `json:"stderr_sha256"`
-	SourceExitCode        int    `json:"source_exit_code"`
-	SourceProcessAttempts int    `json:"source_process_attempts"`
+	Name                  string   `json:"name"`
+	WrapperKind           string   `json:"wrapper_kind"`
+	ResultMode            string   `json:"result_mode"`
+	CallerArgv            []string `json:"caller_argv"`
+	BundleDigest          string   `json:"bundle_digest"`
+	PlanDigest            string   `json:"plan_digest"`
+	WrapperSourceSHA256   string   `json:"wrapper_source_sha256"`
+	StdoutSHA256          string   `json:"stdout_sha256"`
+	StderrSHA256          string   `json:"stderr_sha256"`
+	SourceExitCode        int      `json:"source_exit_code"`
+	SourceProcessAttempts int      `json:"source_process_attempts"`
 }
 
 type commandOutcome struct {
@@ -347,9 +350,12 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 		return evidenceDocument{}, fmt.Errorf("source inspection attempt evidence is invalid")
 	}
 
-	prJourney, err := prepareCommandJourney(ctx, runner, helpEvidence, workRoot, catalogPath, inspectionPayload.CatalogDigest, "gh", trustPath, attemptLog, 4, []string{"pr", "list"})
+	prJourney, multiIssueJourney, multiCommandBoundaries, err := prepareMultiCommandWrapperJourneys(
+		ctx, runner, helpEvidence, workRoot, catalogPath, inspectionPayload.CatalogDigest,
+		trustPath, attemptLog, 4,
+	)
 	if err != nil {
-		return evidenceDocument{}, fmt.Errorf("pull-request journey preparation failed: %w", err)
+		return evidenceDocument{}, fmt.Errorf("multi-command pull-request journey preparation failed: %w", err)
 	}
 	zeroAttemptRejections := prJourney.zeroAttemptRejections
 
@@ -446,6 +452,9 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 		return evidenceDocument{}, fmt.Errorf("command-specific bundle or plan identity was not distinct")
 	}
 
+	if multiIssueJourney.bundleDigest == issueJourney.bundleDigest || multiIssueJourney.planDigest == issueJourney.planDigest {
+		return evidenceDocument{}, fmt.Errorf("multi-command issue evidence is not distinct from direct issue evidence")
+	}
 	wrapperInputs := []packagedWrapperInput{{
 		name: "transformed_json", journey: prJourney,
 		callerArgs: []string{"pr", "list", "--limit=1"},
@@ -467,29 +476,17 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 		if prepareErr != nil {
 			return evidenceDocument{}, fmt.Errorf("identity wrapper journey preparation failed: %w", prepareErr)
 		}
-		appendArgs := []string{
-			"issue", "list",
-			"--search=append value",
-			"--label=one",
-			"--label=two",
-		}
-		appendJourney, prepareErr := prepareSourceStreamJourney(
-			ctx, runner, workRoot, catalogPath, inspectionPayload.CatalogDigest,
-			trustPath, attemptLog, wantedAttempts, "append_only", []string{"issue", "list"}, appendArgs,
-		)
-		if prepareErr != nil {
-			return evidenceDocument{}, fmt.Errorf("append-only wrapper journey preparation failed: %w", prepareErr)
-		}
+		appendArgs := []string{"issue", "list", "--search=append value", "--label=one", "--label=two"}
 		wrapperInputs = append(wrapperInputs,
+			packagedWrapperInput{
+				name: "append_only", journey: multiIssueJourney, callerArgs: appendArgs,
+				wantStdout: []byte{'A', 'P', 'P', ':', 0xff, 0x00},
+				wantStderr: []byte("APPERR:\n"), wantExitCode: 23,
+			},
 			packagedWrapperInput{
 				name: "identity", journey: identityJourney, callerArgs: identityArgs,
 				wantStdout: []byte{'I', 'D', ':', 0x00, 0xff, '\n'},
 				wantStderr: []byte{'I', 'D', 'E', 'R', 'R', ':', 0xfe}, wantExitCode: 0,
-			},
-			packagedWrapperInput{
-				name: "append_only", journey: appendJourney, callerArgs: appendArgs,
-				wantStdout: []byte{'A', 'P', 'P', ':', 0xff, 0x00},
-				wantStderr: []byte("APPERR:\n"), wantExitCode: 23,
 			},
 		)
 	}
@@ -521,6 +518,7 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 	canaryBoundaries = append(canaryBoundaries, goBoundaries...)
 	canaryBoundaries = append(canaryBoundaries, prJourney.boundaries...)
 	canaryBoundaries = append(canaryBoundaries, issueJourney.boundaries...)
+	canaryBoundaries = append(canaryBoundaries, multiCommandBoundaries...)
 	canaryBoundaries = append(canaryBoundaries, helpEvidence.outputs...)
 	if err := scanCanaries(canaryBoundaries...); err != nil {
 		return evidenceDocument{}, err
@@ -529,7 +527,7 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 		return evidenceDocument{}, fmt.Errorf("fixture attempt sequence is invalid")
 	}
 
-	return evidenceDocument{SchemaVersion: 6, ArtifactJourney: artifactJourneyEvidence{
+	return evidenceDocument{SchemaVersion: 7, ArtifactJourney: artifactJourneyEvidence{
 		Target: configuration.goos + "/" + configuration.goarch, ObservedHost: runtime.GOOS + "/" + runtime.GOARCH,
 		ArchiveName: filepath.Base(archivePath), ArchiveSHA256: digest,
 		Version: strings.TrimPrefix(configuration.tag, "v"), Revision: configuration.revision, HelpContractsVerified: len(helpEvidence.outputs),
@@ -639,8 +637,26 @@ func verifyPackagedWrappers(
 	if goos != "linux" && goos != "darwin" {
 		return packagedWrapperEvidence{}, fmt.Errorf("wrapper journey target is unsupported")
 	}
-	if len(inputs) != 3 || inputs[1].name != "identity" || inputs[2].name != "append_only" {
+	if len(inputs) != 3 || inputs[1].name != "append_only" || inputs[2].name != "identity" {
 		return packagedWrapperEvidence{}, fmt.Errorf("POSIX wrapper case inventory is invalid")
+	}
+	for index, input := range inputs {
+		if input.journey.wrapperKind == "" || input.journey.resultMode == "" || input.callerArgs == nil || input.wantStdout == nil || input.wantStderr == nil || input.wantExitCode < 0 {
+			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d is incomplete", index)
+		}
+	}
+	if inputs[0].journey.bundleDigest != inputs[1].journey.bundleDigest ||
+		inputs[0].journey.bundlePath() != inputs[1].journey.bundlePath() ||
+		inputs[0].journey.planDigest == inputs[1].journey.planDigest ||
+		inputs[0].journey.wrapperKind != "transform" || inputs[0].journey.resultMode != "transformed_json" ||
+		inputs[1].journey.wrapperKind != "transform" || inputs[1].journey.resultMode != "source_stream_passthrough" {
+		return packagedWrapperEvidence{}, fmt.Errorf("multi-command wrapper binding is invalid")
+	}
+	if inputs[2].journey.bundleDigest == inputs[0].journey.bundleDigest ||
+		inputs[2].journey.planDigest == inputs[0].journey.planDigest ||
+		inputs[2].journey.planDigest == inputs[1].journey.planDigest ||
+		inputs[2].journey.wrapperKind != "identity" || inputs[2].journey.resultMode != "source_stream_passthrough" {
+		return packagedWrapperEvidence{}, fmt.Errorf("identity wrapper evidence is not independent")
 	}
 	runtimeDigest, runtimeSize, err := regularFileIdentity(executablePath)
 	if err != nil {
@@ -649,97 +665,126 @@ func verifyPackagedWrappers(
 
 	result := packagedWrapperEvidence{
 		outcome: "ordinary_command_verified", cases: make([]wrapperCaseEvidence, 0, len(inputs)),
-		zeroAttemptRejections: 1, boundaries: make([][]byte, 0, len(inputs)*6),
+		zeroAttemptRejections: 1, boundaries: make([][]byte, 0, len(inputs)*8),
 	}
-	for index, input := range inputs {
-		if input.journey.wrapperKind == "" || input.journey.resultMode == "" || input.callerArgs == nil || input.wantStdout == nil || input.wantStderr == nil || input.wantExitCode < 0 {
-			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d is incomplete", index)
-		}
+	for _, input := range inputs {
 		result.boundaries = append(result.boundaries, input.journey.boundaries...)
+	}
+	render := func(input packagedWrapperInput, wantedAttempts int) (wrapperRenderDocument, []byte, string, error) {
 		jsonRender, renderErr := runner.success(ctx, "success", "wrapper", "render", "--bundle", input.journey.bundlePath(), "--format", "json")
 		if renderErr != nil {
-			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d JSON rendering failed", index)
+			return wrapperRenderDocument{}, nil, "", fmt.Errorf("wrapper %s JSON rendering failed", input.name)
 		}
 		document, decodeErr := decodeWrapperRender(jsonRender.stdout)
 		if decodeErr != nil {
-			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d JSON evidence is invalid", index)
+			return wrapperRenderDocument{}, nil, "", fmt.Errorf("wrapper %s JSON evidence is invalid", input.name)
 		}
 		textRender, renderErr := runner.success(ctx, "success", "wrapper", "render", "--bundle", input.journey.bundlePath())
 		if renderErr != nil {
-			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d text rendering failed", index)
+			return wrapperRenderDocument{}, nil, "", fmt.Errorf("wrapper %s text rendering failed", input.name)
 		}
 		if string(textRender.stdout) != document.Wrapper.Source {
-			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d text and JSON source differ", index)
+			return wrapperRenderDocument{}, nil, "", fmt.Errorf("wrapper %s text and JSON source differ", input.name)
 		}
 		sourceDigest := digestBytes(textRender.stdout)
 		if err := validateWrapperRenderEvidence(document, input.journey, "gh", executablePath, runtimeDigest, runtimeSize, sourceDigest); err != nil {
-			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d render binding evidence is invalid: %w", index, err)
+			return wrapperRenderDocument{}, nil, "", fmt.Errorf("wrapper %s render binding evidence is invalid: %w", input.name, err)
 		}
-		if err := requireAttempts(attemptLog, existingAttempts+index); err != nil {
-			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d rendering started the source fixture", index)
+		if err := requireAttempts(attemptLog, wantedAttempts); err != nil {
+			return wrapperRenderDocument{}, nil, "", fmt.Errorf("wrapper %s rendering started the source fixture", input.name)
 		}
 		result.boundaries = append(result.boundaries, jsonRender.stdout, textRender.stdout)
+		return document, textRender.stdout, sourceDigest, nil
+	}
 
-		if index == 0 {
-			declaration, declarationErr := help.fault("wrapper run", "bundle_binding_mismatch")
-			if declarationErr != nil || declaration.Kind != "rejected" || declaration.Retryable {
-				return packagedWrapperEvidence{}, fmt.Errorf("wrapper binding help contract is invalid")
-			}
-			badDigest := differentDigest(document.Wrapper.Bundle.Digest)
-			rejectionArgs := []string{
-				"--error-format=json", "wrapper", "run",
-				fmt.Sprintf("--contract-version=%d", wrapperbinding.ContractVersion),
-				"--bundle=" + document.Wrapper.Bundle.Locator,
-				"--bundle-digest=" + badDigest,
-				"--runtime-path=" + document.Wrapper.Runtime.ResolvedPath,
-				"--runtime-sha256=" + document.Wrapper.Runtime.SHA256,
-				fmt.Sprintf("--runtime-size=%d", document.Wrapper.Runtime.Size),
-				"--",
-			}
-			rejectionArgs = append(rejectionArgs, input.callerArgs...)
-			rejected, rejectionErr := runner.failure(ctx, "success", 10, declaration, rejectionArgs...)
-			if rejectionErr != nil {
-				return packagedWrapperEvidence{}, fmt.Errorf("wrapper binding rejection evidence is invalid")
-			}
-			if err := requireAttempts(attemptLog, existingAttempts); err != nil {
-				return packagedWrapperEvidence{}, fmt.Errorf("wrapper binding rejection started the source fixture")
-			}
-			result.boundaries = append(result.boundaries, rejected.stdout, rejected.stderr)
-		}
+	sharedDocument, sharedSource, sharedDigest, err := render(inputs[0], existingAttempts)
+	if err != nil {
+		return packagedWrapperEvidence{}, err
+	}
+	if err := validateWrapperRenderEvidence(sharedDocument, inputs[1].journey, "gh", executablePath, runtimeDigest, runtimeSize, sharedDigest); err != nil {
+		return packagedWrapperEvidence{}, fmt.Errorf("shared wrapper does not bind the issue plan bundle: %w", err)
+	}
+	declaration, declarationErr := help.fault("wrapper run", "bundle_binding_mismatch")
+	if declarationErr != nil || declaration.Kind != "rejected" || declaration.Retryable {
+		return packagedWrapperEvidence{}, fmt.Errorf("wrapper binding help contract is invalid")
+	}
+	badDigest := differentDigest(sharedDocument.Wrapper.Bundle.Digest)
+	rejectionArgs := []string{
+		"--error-format=json", "wrapper", "run",
+		fmt.Sprintf("--contract-version=%d", wrapperbinding.ContractVersion),
+		"--bundle=" + sharedDocument.Wrapper.Bundle.Locator,
+		"--bundle-digest=" + badDigest,
+		"--runtime-path=" + sharedDocument.Wrapper.Runtime.ResolvedPath,
+		"--runtime-sha256=" + sharedDocument.Wrapper.Runtime.SHA256,
+		fmt.Sprintf("--runtime-size=%d", sharedDocument.Wrapper.Runtime.Size),
+		"--",
+	}
+	rejectionArgs = append(rejectionArgs, inputs[0].callerArgs...)
+	rejected, rejectionErr := runner.failure(ctx, "success", 10, declaration, rejectionArgs...)
+	if rejectionErr != nil {
+		return packagedWrapperEvidence{}, fmt.Errorf("wrapper binding rejection evidence is invalid")
+	}
+	if err := requireAttempts(attemptLog, existingAttempts); err != nil {
+		return packagedWrapperEvidence{}, fmt.Errorf("wrapper binding rejection started the source fixture")
+	}
+	result.boundaries = append(result.boundaries, rejected.stdout, rejected.stderr)
 
-		wrapperPath := filepath.Join(workRoot, "caller-owned-"+input.name+"-wrapper.sh")
-		if err := writePrivate(wrapperPath, textRender.stdout); err != nil {
-			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d caller-owned fixture write failed", index)
-		}
-		if index == 0 {
-			tailoredHelp, boundaries, helpErr := verifyPackagedTailoredHelp(
-				ctx, runner, help, executablePath, wrapperPath, input.journey.bundleDigest,
-				sourceDigest, attemptLog, existingAttempts,
-			)
-			if helpErr != nil {
-				return packagedWrapperEvidence{}, helpErr
-			}
-			result.tailoredHelp = tailoredHelp
-			result.boundaries = append(result.boundaries, boundaries...)
-		}
+	sharedWrapperPath := filepath.Join(workRoot, "caller-owned-multi-command-wrapper.sh")
+	if err := writePrivate(sharedWrapperPath, sharedSource); err != nil {
+		return packagedWrapperEvidence{}, fmt.Errorf("multi-command caller-owned fixture write failed")
+	}
+	tailoredHelp, boundaries, helpErr := verifyPackagedTailoredHelp(
+		ctx, runner, help, executablePath, sharedWrapperPath, inputs[0].journey.bundleDigest,
+		sharedDigest, attemptLog, existingAttempts,
+	)
+	if helpErr != nil {
+		return packagedWrapperEvidence{}, helpErr
+	}
+	result.tailoredHelp = tailoredHelp
+	result.boundaries = append(result.boundaries, boundaries...)
+
+	invoke := func(input packagedWrapperInput, wrapperPath, sourceDigest string, wantedAttempts int) error {
 		invocation, invokeErr := runPOSIXCaller(ctx, runner, "gh", wrapperPath, input.callerArgs, input.wantExitCode)
 		if invokeErr != nil {
-			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d caller-owned invocation failed", index)
+			return fmt.Errorf("wrapper %s caller-owned invocation failed", input.name)
 		}
 		if !bytes.Equal(invocation.stdout, input.wantStdout) || !bytes.Equal(invocation.stderr, input.wantStderr) || invocation.exitCode != input.wantExitCode {
-			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d caller-owned result is invalid", index)
+			return fmt.Errorf("wrapper %s caller-owned result is invalid", input.name)
 		}
-		if err := requireAttempts(attemptLog, existingAttempts+index+1); err != nil {
-			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d attempt evidence is invalid", index)
+		if err := requireAttempts(attemptLog, wantedAttempts); err != nil {
+			return fmt.Errorf("wrapper %s attempt evidence is invalid", input.name)
 		}
 		result.cases = append(result.cases, wrapperCaseEvidence{
 			Name: input.name, WrapperKind: input.journey.wrapperKind, ResultMode: input.journey.resultMode,
+			CallerArgv:   append([]string{}, input.callerArgs...),
 			BundleDigest: input.journey.bundleDigest, PlanDigest: input.journey.planDigest,
 			WrapperSourceSHA256: sourceDigest, StdoutSHA256: digestBytes(invocation.stdout), StderrSHA256: digestBytes(invocation.stderr),
 			SourceExitCode: invocation.exitCode, SourceProcessAttempts: 1,
 		})
 		result.sourceProcessAttempts++
 		result.boundaries = append(result.boundaries, invocation.stdout, invocation.stderr)
+		return nil
+	}
+	if err := invoke(inputs[0], sharedWrapperPath, sharedDigest, existingAttempts+1); err != nil {
+		return packagedWrapperEvidence{}, err
+	}
+	if err := invoke(inputs[1], sharedWrapperPath, sharedDigest, existingAttempts+2); err != nil {
+		return packagedWrapperEvidence{}, err
+	}
+
+	_, identitySource, identityDigest, err := render(inputs[2], existingAttempts+2)
+	if err != nil {
+		return packagedWrapperEvidence{}, err
+	}
+	if identityDigest == sharedDigest {
+		return packagedWrapperEvidence{}, fmt.Errorf("identity wrapper source digest is not independent")
+	}
+	identityWrapperPath := filepath.Join(workRoot, "caller-owned-identity-wrapper.sh")
+	if err := writePrivate(identityWrapperPath, identitySource); err != nil {
+		return packagedWrapperEvidence{}, fmt.Errorf("identity caller-owned fixture write failed")
+	}
+	if err := invoke(inputs[2], identityWrapperPath, identityDigest, existingAttempts+3); err != nil {
+		return packagedWrapperEvidence{}, err
 	}
 	return result, nil
 }
@@ -759,8 +804,10 @@ func verifyPackagedTailoredHelp(
 		argv []string
 	}{
 		{name: "root", argv: []string{"--help"}},
-		{name: "namespace", argv: []string{"pr", "--help"}},
-		{name: "exact_command", argv: []string{"pr", "list", "--help"}},
+		{name: "issue_namespace", argv: []string{"issue", "--help"}},
+		{name: "issue_exact_command", argv: []string{"issue", "list", "--help"}},
+		{name: "pr_namespace", argv: []string{"pr", "--help"}},
+		{name: "pr_exact_command", argv: []string{"pr", "list", "--help"}},
 	}
 	views := make([]tailoredHelpViewEvidence, 0, len(tests))
 	boundaries := make([][]byte, 0, len(tests)*2+4)
@@ -794,7 +841,7 @@ func verifyPackagedTailoredHelp(
 		argv             []string
 		exit             int
 	}{
-		{name: "hidden_command", code: "command_not_in_surface", kind: "not_found", argv: []string{"issue", "list", "--help"}, exit: 6},
+		{name: "hidden_command", code: "command_not_in_surface", kind: "not_found", argv: []string{"api", "--help"}, exit: 6},
 		{name: "unknown_selector", code: "invalid_invocation", kind: "invalid_input", argv: []string{"unknown", "--help"}, exit: 2},
 	}
 	faults := make([]tailoredHelpFaultEvidence, 0, len(faultTests))
@@ -833,9 +880,22 @@ func expectedTailoredHelp(bundleDigest, view string) ([]byte, error) {
 		"Bundle digest: " + bundleDigest,
 	}
 	switch view {
-	case "root", "namespace":
+	case "root":
+		lines = append(lines, "Commands:", "  issue list", "  pr list")
+	case "issue_namespace":
+		lines = append(lines, "Commands:", "  issue list")
+	case "pr_namespace":
 		lines = append(lines, "Commands:", "  pr list")
-	case "exact_command":
+	case "issue_exact_command":
+		lines = append(lines,
+			"Command: issue list",
+			"Source summary: List issues",
+			"Tailoring reason: Append one fixed reviewed source argument and preserve its streams.",
+			"Options:",
+			"  --label=<value> (value required)",
+			"  --search=<value> (value required)",
+		)
+	case "pr_exact_command":
 		lines = append(lines,
 			"Command: pr list",
 			"Source summary: List pull requests",
@@ -1118,6 +1178,7 @@ func verifyGoSourceJourney(
 	evidence.WrapperOutcome = "ordinary_command_verified"
 	evidence.WrapperCases = []wrapperCaseEvidence{{
 		Name: "go_test_identity", WrapperKind: journey.wrapperKind, ResultMode: journey.resultMode,
+		CallerArgv:   []string{"test"},
 		BundleDigest: journey.bundleDigest, PlanDigest: journey.planDigest, WrapperSourceSHA256: identitySourceDigest,
 		StdoutSHA256: digestBytes(identityInvocation.stdout), StderrSHA256: digestBytes(identityInvocation.stderr),
 		SourceExitCode: identityInvocation.exitCode, SourceProcessAttempts: 1,
@@ -1601,6 +1662,153 @@ func runPOSIXCaller(ctx context.Context, runner journeyRunner, ordinaryCommand, 
 	return outcome, nil
 }
 
+func prepareMultiCommandWrapperJourneys(
+	ctx context.Context,
+	runner journeyRunner,
+	help packagedHelpEvidence,
+	workRoot, catalogPath, catalogDigest, trustPath, attemptLog string,
+	existingAttempts int,
+) (preparedCommandJourney, preparedCommandJourney, [][]byte, error) {
+	if ctx == nil || !digestValue(catalogDigest) {
+		return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("multi-command journey input is invalid")
+	}
+	prDraft, err := runner.success(ctx, "success", "spec", "init", "--catalog", catalogPath, "--", "pr", "list")
+	if err != nil {
+		return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("pull-request specification draft failed")
+	}
+	issueDraft, err := runner.success(ctx, "success", "spec", "init", "--catalog", catalogPath, "--", "issue", "list")
+	if err != nil {
+		return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("issue specification draft failed")
+	}
+	prDraftSpecification, err := loadSpecificationDraft(ctx, workRoot, "multi-pr", prDraft.stdout)
+	if err != nil || prDraftSpecification.CatalogDigest != catalogDigest {
+		return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("pull-request specification draft is invalid")
+	}
+	issueDraftSpecification, err := loadSpecificationDraft(ctx, workRoot, "multi-issue", issueDraft.stdout)
+	if err != nil || issueDraftSpecification.CatalogDigest != catalogDigest {
+		return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("issue specification draft is invalid")
+	}
+	prSpecification, err := transformDraft(prDraftSpecification, []string{"pr", "list"})
+	if err != nil {
+		return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("pull-request specification edit failed")
+	}
+	issueSpecification, err := transformSourceStreamDraft(issueDraftSpecification, "append_only", []string{"issue", "list"})
+	if err != nil {
+		return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("issue specification edit failed")
+	}
+	combined, err := combineCommandSpecifications(prSpecification, issueSpecification)
+	if err != nil {
+		return preparedCommandJourney{}, preparedCommandJourney{}, nil, err
+	}
+	encodedSpecification, err := specyaml.Encode(combined)
+	if err != nil {
+		return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("multi-command specification encoding failed")
+	}
+	specificationPath := filepath.Join(workRoot, "multi-command-specification.yaml")
+	if err := writePrivate(specificationPath, encodedSpecification); err != nil {
+		return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("multi-command specification write failed")
+	}
+	validation, err := runner.success(ctx, "success", "spec", "validate", "--catalog", catalogPath, "--spec", specificationPath)
+	if err != nil || validateSpecificationEvidenceCounts(validation.stdout, catalogDigest, 2, 0, 2) != nil {
+		return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("multi-command specification validation evidence is invalid")
+	}
+	built, err := runner.success(ctx, "success", "bundle", "build", "--catalog", catalogPath, "--spec", specificationPath)
+	if err != nil {
+		return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("multi-command bundle build failed")
+	}
+	bundleDigest, err := decodeBundleDigest(built.stdout)
+	if err != nil {
+		return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("multi-command bundle evidence is invalid")
+	}
+	bundlePath := filepath.Join(workRoot, "multi-command-bundle.json")
+	if err := writePrivate(bundlePath, built.stdout); err != nil {
+		return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("multi-command bundle write failed")
+	}
+	preAdoptionStatus, err := runner.success(ctx, "success", "bundle", "status", "--bundle", bundlePath)
+	if err != nil || validateStatus(preAdoptionStatus.stdout, bundleDigest, bundletrust.StateNotAdopted) != nil {
+		return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("multi-command pre-adoption status evidence is invalid")
+	}
+	prBaseInvocation := []string{"--bundle", bundlePath, "--", "gh", "pr", "list", "--limit=1"}
+	issueBaseInvocation := []string{
+		"--bundle", bundlePath, "--", "gh", "issue", "list",
+		"--search=append value", "--label=one", "--label=two",
+	}
+	preAdoptionBoundaries := make([][]byte, 0, 4)
+	zeroAttemptRejections := 0
+	for _, bundleCommand := range []string{"preview", "execute"} {
+		declaration, declarationErr := help.fault("bundle "+bundleCommand, "bundle_not_adopted")
+		if declarationErr != nil || declaration.Kind != "rejected" || declaration.Retryable {
+			return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("multi-command pre-adoption help contract is invalid")
+		}
+		arguments := append([]string{"--error-format=json", "bundle", bundleCommand}, prBaseInvocation...)
+		failure, failureErr := runner.failure(ctx, "success", 10, declaration, arguments...)
+		if failureErr != nil {
+			return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("multi-command pre-adoption rejection evidence is invalid")
+		}
+		if err := scanCanaries(failure.stdout, failure.stderr); err != nil {
+			return preparedCommandJourney{}, preparedCommandJourney{}, nil, err
+		}
+		preAdoptionBoundaries = append(preAdoptionBoundaries, failure.stdout, failure.stderr)
+		zeroAttemptRejections++
+	}
+	if err := requireAttempts(attemptLog, existingAttempts); err != nil {
+		return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("multi-command pre-adoption rejection started the source fixture")
+	}
+	store := trustfile.New(trustPath)
+	changed, err := store.Add(ctx, bundleDigest)
+	if err != nil || !changed || store.Inspect(ctx, bundleDigest) != bundletrust.StateAdopted {
+		return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("multi-command exact receipt seeding failed")
+	}
+	adoptedStatus, err := runner.success(ctx, "success", "bundle", "status", "--bundle", bundlePath)
+	if err != nil || validateStatus(adoptedStatus.stdout, bundleDigest, bundletrust.StateAdopted) != nil {
+		return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("multi-command adopted status evidence is invalid")
+	}
+	prPreview, err := runner.success(ctx, "success", append([]string{"bundle", "preview"}, prBaseInvocation...)...)
+	if err != nil {
+		return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("multi-command pull-request preview failed")
+	}
+	prEvidence, err := decodePreview(prPreview.stdout)
+	if err != nil || prEvidence.SourceProcessAttempts != 0 || !digestValue(prEvidence.PlanDigest) ||
+		prEvidence.Plan.SchemaVersion != tailoringplan.SchemaVersion || prEvidence.Plan.BundleDigest != bundleDigest ||
+		prEvidence.Plan.WrapperKind != tailoringbundle.WrapperTransform || prEvidence.Plan.ResultMode != tailoringplan.ResultModeTransformedJSON ||
+		!reflect.DeepEqual(prEvidence.Plan.MatchedCommand, []string{"pr", "list"}) ||
+		!reflect.DeepEqual(prEvidence.Plan.Stages.Invoke.Args, []string{"pr", "list", "--limit=1", "--json=number,title,state"}) {
+		return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("multi-command pull-request preview evidence is invalid")
+	}
+	issuePreview, err := runner.success(ctx, "success", append([]string{"bundle", "preview"}, issueBaseInvocation...)...)
+	if err != nil {
+		return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("multi-command issue preview failed")
+	}
+	issueEvidence, err := decodePreview(issuePreview.stdout)
+	if err != nil || issueEvidence.SourceProcessAttempts != 0 || !digestValue(issueEvidence.PlanDigest) ||
+		issueEvidence.Plan.SchemaVersion != tailoringplan.SchemaVersion || issueEvidence.Plan.BundleDigest != bundleDigest ||
+		issueEvidence.Plan.WrapperKind != tailoringbundle.WrapperTransform || issueEvidence.Plan.ResultMode != tailoringplan.ResultModeSourceStreamPassthrough ||
+		!reflect.DeepEqual(issueEvidence.Plan.MatchedCommand, []string{"issue", "list"}) ||
+		!reflect.DeepEqual(issueEvidence.Plan.Stages.Invoke.Args, []string{"issue", "list", "--search=append value", "--label=one", "--label=two", "--limit=1"}) ||
+		issueEvidence.PlanDigest == prEvidence.PlanDigest {
+		return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("multi-command issue preview evidence is invalid")
+	}
+	if err := requireAttempts(attemptLog, existingAttempts); err != nil {
+		return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("multi-command previews started the source fixture")
+	}
+	boundaries := [][]byte{
+		prDraft.stdout, issueDraft.stdout, encodedSpecification, validation.stdout, built.stdout,
+		preAdoptionStatus.stdout, adoptedStatus.stdout, prPreview.stdout, issuePreview.stdout,
+	}
+	boundaries = append(boundaries, preAdoptionBoundaries...)
+	prJourney := preparedCommandJourney{
+		bundleDigest: bundleDigest, planDigest: prEvidence.PlanDigest,
+		wrapperKind: string(prEvidence.Plan.WrapperKind), resultMode: string(prEvidence.Plan.ResultMode),
+		baseInvocation: prBaseInvocation, zeroAttemptRejections: zeroAttemptRejections,
+	}
+	issueJourney := preparedCommandJourney{
+		bundleDigest: bundleDigest, planDigest: issueEvidence.PlanDigest,
+		wrapperKind: string(issueEvidence.Plan.WrapperKind), resultMode: string(issueEvidence.Plan.ResultMode),
+		baseInvocation: issueBaseInvocation,
+	}
+	return prJourney, issueJourney, boundaries, nil
+}
+
 func prepareCommandJourney(
 	ctx context.Context,
 	runner journeyRunner,
@@ -1619,9 +1827,17 @@ func prepareCommandJourney(
 	if err != nil {
 		return preparedCommandJourney{}, fmt.Errorf("specification draft failed")
 	}
-	transformedSpecification, err := transformDraft(draft.stdout, command)
+	draftSpecification, err := loadSpecificationDraft(ctx, workRoot, prefix+"-projection", draft.stdout)
+	if err != nil || draftSpecification.CatalogDigest != catalogDigest {
+		return preparedCommandJourney{}, fmt.Errorf("specification draft is invalid")
+	}
+	transformed, err := transformDraft(draftSpecification, command)
 	if err != nil {
 		return preparedCommandJourney{}, fmt.Errorf("specification transform edit failed")
+	}
+	transformedSpecification, err := specyaml.Encode(transformed)
+	if err != nil {
+		return preparedCommandJourney{}, fmt.Errorf("specification transform encoding failed")
 	}
 	specificationPath := filepath.Join(workRoot, prefix+"-specification.yaml")
 	if err := writePrivate(specificationPath, transformedSpecification); err != nil {
@@ -1719,9 +1935,17 @@ func prepareSourceStreamJourney(
 	if err != nil {
 		return preparedCommandJourney{}, fmt.Errorf("source-stream specification draft failed")
 	}
-	specification, err := transformSourceStreamDraft(draft.stdout, name, command)
+	draftSpecification, err := loadSpecificationDraft(ctx, workRoot, name, draft.stdout)
+	if err != nil || draftSpecification.CatalogDigest != catalogDigest {
+		return preparedCommandJourney{}, fmt.Errorf("source-stream specification draft is invalid")
+	}
+	transformed, err := transformSourceStreamDraft(draftSpecification, name, command)
 	if err != nil {
 		return preparedCommandJourney{}, fmt.Errorf("source-stream specification edit failed")
+	}
+	specification, err := specyaml.Encode(transformed)
+	if err != nil {
+		return preparedCommandJourney{}, fmt.Errorf("source-stream specification encoding failed")
 	}
 	specificationPath := filepath.Join(workRoot, name+"-specification.yaml")
 	if err := writePrivate(specificationPath, specification); err != nil {
@@ -2920,15 +3144,15 @@ func validateAttemptSequence(value []byte, goos string) error {
 			fixtureAttemptRecord{
 				SchemaVersion: 1, Kind: "runtime", Mode: "success",
 				Argv: []string{
-					"pr", "list",
-					"--search=space value;$(touch atsura-artifact-injection)",
-					"--label=first", "--label=Unicode 雪", "--repo=-dash",
+					"issue", "list", "--search=append value", "--label=one", "--label=two", "--limit=1",
 				},
 			},
 			fixtureAttemptRecord{
 				SchemaVersion: 1, Kind: "runtime", Mode: "success",
 				Argv: []string{
-					"issue", "list", "--search=append value", "--label=one", "--label=two", "--limit=1",
+					"pr", "list",
+					"--search=space value;$(touch atsura-artifact-injection)",
+					"--label=first", "--label=Unicode 雪", "--repo=-dash",
 				},
 			},
 		)
@@ -2973,103 +3197,151 @@ func scanCanaries(values ...[]byte) error {
 	return nil
 }
 
-func transformDraft(value []byte, command []string) ([]byte, error) {
-	if len(command) != 2 || command[1] != "list" || (command[0] != "issue" && command[0] != "pr") {
-		return nil, fmt.Errorf("draft command is unsupported")
+func loadSpecificationDraft(ctx context.Context, workRoot, name string, value []byte) (tailoringbundle.Specification, error) {
+	if ctx == nil || name == "" || len(value) == 0 {
+		return tailoringbundle.Specification{}, fmt.Errorf("specification draft input is incomplete")
 	}
-	text := string(value)
-	replacements := [][2]string{
-		{"reason: Include this verified command without transformation.", "reason: Return one reviewed compact result."},
-		{"default: inherit", "default: exclude"},
-		{"include: []", "include: [--limit]"},
-		{"kind: identity", "kind: transform"},
-		{"append_args: []", `append_args: ["--json=number,title,state"]`},
+	path := filepath.Join(workRoot, name+"-draft.yaml")
+	if err := writePrivate(path, value); err != nil {
+		return tailoringbundle.Specification{}, err
 	}
-	for _, replacement := range replacements {
-		if strings.Count(text, replacement[0]) != 1 {
-			return nil, fmt.Errorf("draft shape is not the expected single-command identity wrapper")
-		}
-		text = strings.Replace(text, replacement[0], replacement[1], 1)
-	}
-	if strings.Count(text, "- "+command[0]+"\n") != 1 || strings.Count(text, "- "+command[1]+"\n") != 1 || strings.Contains(text, "output:") {
-		return nil, fmt.Errorf("draft command shape is invalid")
-	}
-	lines := strings.Split(text, "\n")
-	inserted := false
-	for index, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed != "after: []" {
-			continue
-		}
-		if inserted {
-			return nil, fmt.Errorf("draft has multiple wrapper completion points")
-		}
-		indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
-		output := []string{
-			indent + "output:",
-			indent + "    kind: projection",
-			indent + "    projection:",
-			indent + "        input: json",
-			indent + "        select: [number, title, state]",
-			indent + "        rename:",
-			indent + "            - from: number",
-			indent + "              to: id",
-			indent + "        render: compact_json",
-		}
-		lines = append(lines[:index], append(output, lines[index:]...)...)
-		inserted = true
-		break
-	}
-	if !inserted {
-		return nil, fmt.Errorf("draft wrapper completion point is missing")
-	}
-	return []byte(strings.Join(lines, "\n")), nil
+	return specyaml.New().Load(ctx, path)
 }
 
-func transformSourceStreamDraft(value []byte, name string, command []string) ([]byte, error) {
-	if len(command) != 2 || command[1] != "list" {
-		return nil, fmt.Errorf("source-stream draft command is unsupported")
+func transformDraft(value tailoringbundle.Specification, command []string) (tailoringbundle.Specification, error) {
+	if len(command) != 2 || command[1] != "list" || (command[0] != "issue" && command[0] != "pr") {
+		return tailoringbundle.Specification{}, fmt.Errorf("draft command is unsupported")
 	}
-	wantedPrefix := ""
-	wantedInclude := ""
-	wantedKind := "identity"
-	wantedAppend := "[]"
+	if err := validateIdentityDraft(value, command); err != nil {
+		return tailoringbundle.Specification{}, err
+	}
+	value.Commands = []tailoringbundle.CommandEntry{projectionCommandEntry(command)}
+	return tailoringbundle.SortSpecification(value), nil
+}
+
+func transformSourceStreamDraft(value tailoringbundle.Specification, name string, command []string) (tailoringbundle.Specification, error) {
+	if len(command) != 2 || command[1] != "list" {
+		return tailoringbundle.Specification{}, fmt.Errorf("source-stream draft command is unsupported")
+	}
+	if err := validateIdentityDraft(value, command); err != nil {
+		return tailoringbundle.Specification{}, err
+	}
+	var entry tailoringbundle.CommandEntry
 	switch name {
 	case "identity":
 		if command[0] != "pr" {
-			return nil, fmt.Errorf("identity draft command is unsupported")
+			return tailoringbundle.Specification{}, fmt.Errorf("identity draft command is unsupported")
 		}
-		wantedPrefix = "Preserve the exact reviewed source streams."
-		wantedInclude = "[--label, --repo, --search]"
+		entry = identityCommandEntry(command)
 	case "append_only":
 		if command[0] != "issue" {
-			return nil, fmt.Errorf("append-only draft command is unsupported")
+			return tailoringbundle.Specification{}, fmt.Errorf("append-only draft command is unsupported")
 		}
-		wantedPrefix = "Append one fixed reviewed source argument and preserve its streams."
-		wantedInclude = "[--label, --search]"
-		wantedKind = "transform"
-		wantedAppend = `["--limit=1"]`
+		entry = appendOnlyCommandEntry(command)
 	default:
-		return nil, fmt.Errorf("source-stream draft case is unsupported")
+		return tailoringbundle.Specification{}, fmt.Errorf("source-stream draft case is unsupported")
 	}
-	text := string(value)
-	replacements := [][2]string{
-		{"reason: Include this verified command without transformation.", "reason: " + wantedPrefix},
-		{"default: inherit", "default: exclude"},
-		{"include: []", "include: " + wantedInclude},
-		{"kind: identity", "kind: " + wantedKind},
-		{"append_args: []", "append_args: " + wantedAppend},
+	value.Commands = []tailoringbundle.CommandEntry{entry}
+	return tailoringbundle.SortSpecification(value), nil
+}
+
+func combineCommandSpecifications(prSpecification, issueSpecification tailoringbundle.Specification) (tailoringbundle.Specification, error) {
+	if prSpecification.SchemaVersion != tailoringbundle.SpecificationSchemaVersion ||
+		prSpecification.SchemaVersion != issueSpecification.SchemaVersion ||
+		prSpecification.CatalogDigest != issueSpecification.CatalogDigest ||
+		!digestValue(prSpecification.CatalogDigest) ||
+		!reflect.DeepEqual(prSpecification.Surface, issueSpecification.Surface) ||
+		len(prSpecification.Commands) != 1 || len(issueSpecification.Commands) != 1 ||
+		!reflect.DeepEqual(prSpecification.Commands[0], projectionCommandEntry([]string{"pr", "list"})) ||
+		!reflect.DeepEqual(issueSpecification.Commands[0], appendOnlyCommandEntry([]string{"issue", "list"})) {
+		return tailoringbundle.Specification{}, fmt.Errorf("command specifications cannot share one bundle")
 	}
-	for _, replacement := range replacements {
-		if strings.Count(text, replacement[0]) != 1 {
-			return nil, fmt.Errorf("source-stream draft shape is not the expected single-command identity wrapper")
-		}
-		text = strings.Replace(text, replacement[0], replacement[1], 1)
+	return tailoringbundle.SortSpecification(tailoringbundle.Specification{
+		SchemaVersion: prSpecification.SchemaVersion,
+		CatalogDigest: prSpecification.CatalogDigest,
+		Surface:       prSpecification.Surface,
+		Commands: []tailoringbundle.CommandEntry{
+			issueSpecification.Commands[0],
+			prSpecification.Commands[0],
+		},
+	}), nil
+}
+
+func validateIdentityDraft(value tailoringbundle.Specification, command []string) error {
+	if !digestValue(value.CatalogDigest) {
+		return fmt.Errorf("draft catalog digest is invalid")
 	}
-	if strings.Count(text, "- "+command[0]+"\n") != 1 || strings.Count(text, "- "+command[1]+"\n") != 1 || strings.Contains(text, "output:") {
-		return nil, fmt.Errorf("source-stream draft command shape is invalid")
+	wanted := tailoringbundle.Specification{
+		SchemaVersion: tailoringbundle.SpecificationSchemaVersion,
+		CatalogDigest: value.CatalogDigest,
+		Surface:       tailoringbundle.Surface{Default: tailoringbundle.SurfaceDefaultExclude},
+		Commands: []tailoringbundle.CommandEntry{{
+			Command: append([]string{}, command...), Presence: tailoringbundle.PresenceInclude,
+			Reason: "Include this verified command without transformation.",
+			Options: &tailoringbundle.OptionSurface{
+				Default: tailoringbundle.SurfaceDefaultInherit, Include: []string{}, Exclude: []string{},
+			},
+			Wrapper: &tailoringbundle.Wrapper{
+				Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{},
+				Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{},
+			},
+		}},
 	}
-	return []byte(text), nil
+	if !reflect.DeepEqual(value, wanted) {
+		return fmt.Errorf("draft shape is not the expected single-command identity wrapper")
+	}
+	return nil
+}
+
+func projectionCommandEntry(command []string) tailoringbundle.CommandEntry {
+	return tailoringbundle.CommandEntry{
+		Command: append([]string{}, command...), Presence: tailoringbundle.PresenceInclude,
+		Reason: "Return one reviewed compact result.",
+		Options: &tailoringbundle.OptionSurface{
+			Default: tailoringbundle.SurfaceDefaultExclude, Include: []string{"--limit"}, Exclude: []string{},
+		},
+		Wrapper: &tailoringbundle.Wrapper{
+			Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{},
+			Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--json=number,title,state"}},
+			Output: &tailoringbundle.Output{
+				Kind: tailoringbundle.OutputKindProjection,
+				Projection: &tailoringbundle.Projection{
+					Input: "json", Select: []string{"number", "title", "state"},
+					Rename: []tailoringbundle.Rename{{From: "number", To: "id"}}, Render: "compact_json",
+				},
+			},
+			After: []tailoringbundle.StageAction{},
+		},
+	}
+}
+
+func appendOnlyCommandEntry(command []string) tailoringbundle.CommandEntry {
+	return tailoringbundle.CommandEntry{
+		Command: append([]string{}, command...), Presence: tailoringbundle.PresenceInclude,
+		Reason: "Append one fixed reviewed source argument and preserve its streams.",
+		Options: &tailoringbundle.OptionSurface{
+			Default: tailoringbundle.SurfaceDefaultExclude, Include: []string{"--label", "--search"}, Exclude: []string{},
+		},
+		Wrapper: &tailoringbundle.Wrapper{
+			Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{},
+			Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--limit=1"}}, After: []tailoringbundle.StageAction{},
+		},
+	}
+}
+
+func identityCommandEntry(command []string) tailoringbundle.CommandEntry {
+	return tailoringbundle.CommandEntry{
+		Command: append([]string{}, command...), Presence: tailoringbundle.PresenceInclude,
+		Reason: "Preserve the exact reviewed source streams.",
+		Options: &tailoringbundle.OptionSurface{
+			Default: tailoringbundle.SurfaceDefaultExclude,
+			Include: []string{"--label", "--repo", "--search"}, Exclude: []string{},
+		},
+		Wrapper: &tailoringbundle.Wrapper{
+			Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{},
+			Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{},
+		},
+	}
 }
 
 type inspectionEvidence struct {
@@ -3156,6 +3428,10 @@ func decodeInspection(value []byte) (inspectionEvidence, error) {
 }
 
 func validateSpecificationEvidence(value []byte, catalogDigest string, wantedIdentity, wantedTransform int) error {
+	return validateSpecificationEvidenceCounts(value, catalogDigest, 1, wantedIdentity, wantedTransform)
+}
+
+func validateSpecificationEvidenceCounts(value []byte, catalogDigest string, wantedCommands, wantedIdentity, wantedTransform int) error {
 	var document struct {
 		SchemaVersion int `json:"schema_version"`
 		Validation    struct {
@@ -3176,7 +3452,10 @@ func validateSpecificationEvidence(value []byte, catalogDigest string, wantedIde
 		return fmt.Errorf("invalid validation document")
 	}
 	result := document.Validation
-	if !result.Valid || result.CatalogDigest != catalogDigest || !digestValue(result.SpecificationDigest) || result.Specification.SchemaVersion != 4 || result.CommandCount != 1 || result.IncludedCount != 1 || result.ExcludedCount != 0 || result.IdentityWrapperCount != wantedIdentity || result.TransformWrapperCount != wantedTransform || wantedIdentity+wantedTransform != 1 {
+	if wantedCommands <= 0 || !result.Valid || result.CatalogDigest != catalogDigest || !digestValue(result.SpecificationDigest) ||
+		result.Specification.SchemaVersion != tailoringbundle.SpecificationSchemaVersion || result.CommandCount != wantedCommands ||
+		result.IncludedCount != wantedCommands || result.ExcludedCount != 0 || result.IdentityWrapperCount != wantedIdentity ||
+		result.TransformWrapperCount != wantedTransform || wantedIdentity+wantedTransform != wantedCommands {
 		return fmt.Errorf("unexpected validation evidence")
 	}
 	return nil

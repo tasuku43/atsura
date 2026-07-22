@@ -24,7 +24,7 @@ func TestExactFourProbeArgv(t *testing.T) {
 		contains string
 	}{
 		{name: "version", args: []string{"version"}, contains: "gh version 2.72.0"},
-		{name: "reference", args: []string{"help", "reference"}, contains: "### gh pr list [flags]"},
+		{name: "reference", args: []string{"help", "reference"}, contains: "## gh api <endpoint> [flags]"},
 		{name: "issue help", args: []string{"issue", "list", "--help"}, contains: "gh issue list [flags]"},
 		{name: "pr help", args: []string{"pr", "list", "--help"}, contains: "gh pr list [flags]"},
 	}
@@ -38,7 +38,7 @@ func TestExactFourProbeArgv(t *testing.T) {
 	}
 	for _, args := range [][]string{
 		{}, {"--version"}, {"help"}, {"help", "reference", "extra"},
-		{"issue", "list", "-h"}, {"pr", "list", "--help", "extra"},
+		{"issue", "list", "-h"}, {"pr", "list", "--help", "extra"}, {"api", "--help"},
 	} {
 		exit, stdout, stderr := fixtureRun(args, map[string]string{})
 		if exit != exitUsage || stdout != "" || !strings.Contains(stderr, "unsupported argv") {

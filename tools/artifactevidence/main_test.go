@@ -38,15 +38,15 @@ func TestRunAggregatesCanonicalNativeEvidence(t *testing.T) {
 	}
 	if strings.Contains(output.String(), directory) || strings.Contains(output.String(), archives) ||
 		strings.Contains(output.String(), "bundle_digest") || strings.Contains(output.String(), "plan_digest") ||
-		strings.Contains(output.String(), "commands_verified") {
+		strings.Contains(output.String(), "commands_verified") || strings.Contains(output.String(), "caller_argv") {
 		t.Fatalf("aggregate leaked non-contract evidence: %s", output.String())
 	}
 }
 
-func TestSchemaSixEvidenceRemainsWithinJourneyBound(t *testing.T) {
+func TestSchemaSevenEvidenceRemainsWithinJourneyBound(t *testing.T) {
 	value := marshalEvidence(t, validEvidence("linux/amd64", targetContracts[0].archiveName(testTag), strings.Repeat("0", digestLength)))
 	if len(value)+1 > maxEvidenceFileBytes {
-		t.Fatalf("schema-6 evidence bytes=%d, limit=%d", len(value)+1, maxEvidenceFileBytes)
+		t.Fatalf("schema-7 evidence bytes=%d, limit=%d", len(value)+1, maxEvidenceFileBytes)
 	}
 }
 
@@ -223,7 +223,7 @@ func TestDecodeEvidenceRejectsUnknownDuplicateAndTrailingJSON(t *testing.T) {
 		unknown,
 		duplicate,
 		append(append([]byte{}, valid...), []byte(` {}`)...),
-		[]byte(`{"schema_version":6,"artifact_journey":`),
+		[]byte(`{"schema_version":7,"artifact_journey":`),
 	} {
 		if _, err := decodeEvidence(value); err == nil {
 			t.Fatalf("invalid JSON was accepted: %s", value)
@@ -238,7 +238,7 @@ func TestValidateEvidenceRejectsInvalidContracts(t *testing.T) {
 		name   string
 		mutate func(*evidenceDocument)
 	}{
-		{"schema", func(value *evidenceDocument) { value.SchemaVersion = 5 }},
+		{"schema 6", func(value *evidenceDocument) { value.SchemaVersion = 6 }},
 		{"target", func(value *evidenceDocument) { value.ArtifactJourney.Target = "linux/arm64" }},
 		{"observed host", func(value *evidenceDocument) { value.ArtifactJourney.ObservedHost = "linux/arm64" }},
 		{"archive name", func(value *evidenceDocument) { value.ArtifactJourney.ArchiveName = "other.tar.gz" }},
@@ -250,7 +250,13 @@ func TestValidateEvidenceRejectsInvalidContracts(t *testing.T) {
 		{"issue bundle digest", func(value *evidenceDocument) {
 			value.ArtifactJourney.IssueBundleDigest = strings.Repeat("X", digestLength)
 		}},
+		{"direct issue bundle reuses multi bundle", func(value *evidenceDocument) {
+			value.ArtifactJourney.IssueBundleDigest = value.ArtifactJourney.BundleDigest
+		}},
 		{"issue plan digest", func(value *evidenceDocument) { value.ArtifactJourney.IssuePlanDigest = "abc" }},
+		{"distinct plan relationship", func(value *evidenceDocument) {
+			value.ArtifactJourney.IssuePlanDigest = value.ArtifactJourney.PlanDigest
+		}},
 		{"wrapper outcome", func(value *evidenceDocument) { value.ArtifactJourney.WrapperOutcome = "other" }},
 		{"wrapper cases absent", func(value *evidenceDocument) { value.ArtifactJourney.WrapperCases = nil }},
 		{"wrapper case missing", func(value *evidenceDocument) {
@@ -260,11 +266,50 @@ func TestValidateEvidenceRejectsInvalidContracts(t *testing.T) {
 			value.ArtifactJourney.WrapperCases[0], value.ArtifactJourney.WrapperCases[1] = value.ArtifactJourney.WrapperCases[1], value.ArtifactJourney.WrapperCases[0]
 		}},
 		{"wrapper case name", func(value *evidenceDocument) { value.ArtifactJourney.WrapperCases[1].Name = "other" }},
-		{"wrapper case kind", func(value *evidenceDocument) { value.ArtifactJourney.WrapperCases[1].WrapperKind = "transform" }},
+		{"wrapper case kind", func(value *evidenceDocument) { value.ArtifactJourney.WrapperCases[1].WrapperKind = "identity" }},
 		{"wrapper case mode", func(value *evidenceDocument) { value.ArtifactJourney.WrapperCases[2].ResultMode = "transformed_json" }},
+		{"transformed caller argv", func(value *evidenceDocument) {
+			value.ArtifactJourney.WrapperCases[0].CallerArgv = []string{"pr", "list"}
+		}},
+		{"append caller argv", func(value *evidenceDocument) {
+			value.ArtifactJourney.WrapperCases[1].CallerArgv = append(value.ArtifactJourney.WrapperCases[1].CallerArgv, "--limit=1")
+		}},
+		{"identity caller argv", func(value *evidenceDocument) {
+			value.ArtifactJourney.WrapperCases[2].CallerArgv = nil
+		}},
 		{"wrapper bundle digest", func(value *evidenceDocument) { value.ArtifactJourney.WrapperCases[0].BundleDigest = "abc" }},
 		{"wrapper plan digest", func(value *evidenceDocument) { value.ArtifactJourney.WrapperCases[0].PlanDigest = "abc" }},
 		{"wrapper source digest", func(value *evidenceDocument) { value.ArtifactJourney.WrapperCases[0].WrapperSourceSHA256 = "abc" }},
+		{"shared case bundle binding", func(value *evidenceDocument) {
+			value.ArtifactJourney.WrapperCases[1].BundleDigest = strings.Repeat("f", digestLength)
+		}},
+		{"append plan reuses direct issue plan", func(value *evidenceDocument) {
+			value.ArtifactJourney.WrapperCases[1].PlanDigest = value.ArtifactJourney.IssuePlanDigest
+		}},
+		{"shared wrapper source", func(value *evidenceDocument) {
+			value.ArtifactJourney.WrapperCases[1].WrapperSourceSHA256 = strings.Repeat("f", digestLength)
+		}},
+		{"duplicate shared plans", func(value *evidenceDocument) {
+			value.ArtifactJourney.WrapperCases[1].PlanDigest = value.ArtifactJourney.WrapperCases[0].PlanDigest
+		}},
+		{"identity reuses shared bundle", func(value *evidenceDocument) {
+			value.ArtifactJourney.WrapperCases[2].BundleDigest = value.ArtifactJourney.WrapperCases[0].BundleDigest
+		}},
+		{"identity reuses direct issue bundle", func(value *evidenceDocument) {
+			value.ArtifactJourney.WrapperCases[2].BundleDigest = value.ArtifactJourney.IssueBundleDigest
+		}},
+		{"identity reuses transformed plan", func(value *evidenceDocument) {
+			value.ArtifactJourney.WrapperCases[2].PlanDigest = value.ArtifactJourney.WrapperCases[0].PlanDigest
+		}},
+		{"identity reuses append plan", func(value *evidenceDocument) {
+			value.ArtifactJourney.WrapperCases[2].PlanDigest = value.ArtifactJourney.WrapperCases[1].PlanDigest
+		}},
+		{"identity reuses direct issue plan", func(value *evidenceDocument) {
+			value.ArtifactJourney.WrapperCases[2].PlanDigest = value.ArtifactJourney.IssuePlanDigest
+		}},
+		{"identity reuses shared wrapper", func(value *evidenceDocument) {
+			value.ArtifactJourney.WrapperCases[2].WrapperSourceSHA256 = value.ArtifactJourney.WrapperCases[0].WrapperSourceSHA256
+		}},
 		{"wrapper stdout digest", func(value *evidenceDocument) {
 			value.ArtifactJourney.WrapperCases[1].StdoutSHA256 = strings.Repeat("f", digestLength)
 		}},
@@ -274,7 +319,7 @@ func TestValidateEvidenceRejectsInvalidContracts(t *testing.T) {
 		{"wrapper stderr digest", func(value *evidenceDocument) {
 			value.ArtifactJourney.WrapperCases[2].StderrSHA256 = strings.Repeat("f", digestLength)
 		}},
-		{"wrapper source status", func(value *evidenceDocument) { value.ArtifactJourney.WrapperCases[2].SourceExitCode = 0 }},
+		{"wrapper source status", func(value *evidenceDocument) { value.ArtifactJourney.WrapperCases[2].SourceExitCode = 1 }},
 		{"wrapper case attempts", func(value *evidenceDocument) { value.ArtifactJourney.WrapperCases[0].SourceProcessAttempts++ }},
 		{"wrapper source attempts", func(value *evidenceDocument) { value.ArtifactJourney.WrapperSourceAttempts++ }},
 		{"tailored help outcome", func(value *evidenceDocument) { value.ArtifactJourney.TailoredHelp.Outcome = "other" }},
@@ -300,6 +345,9 @@ func TestValidateEvidenceRejectsInvalidContracts(t *testing.T) {
 		{"tailored help view argv", func(value *evidenceDocument) {
 			value.ArtifactJourney.TailoredHelp.Views[1].Argv = []string{"pr", "list", "--help"}
 		}},
+		{"tailored help view name", func(value *evidenceDocument) {
+			value.ArtifactJourney.TailoredHelp.Views[2].Name = "exact_command"
+		}},
 		{"tailored help stdout digest", func(value *evidenceDocument) {
 			value.ArtifactJourney.TailoredHelp.Views[0].StdoutSHA256 = strings.Repeat("f", digestLength)
 		}},
@@ -317,6 +365,16 @@ func TestValidateEvidenceRejectsInvalidContracts(t *testing.T) {
 		}},
 		{"tailored help fault code", func(value *evidenceDocument) {
 			value.ArtifactJourney.TailoredHelp.FallthroughFaults[0].Code = "invalid_invocation"
+		}},
+		{"tailored help fault order", func(value *evidenceDocument) {
+			value.ArtifactJourney.TailoredHelp.FallthroughFaults[0], value.ArtifactJourney.TailoredHelp.FallthroughFaults[1] =
+				value.ArtifactJourney.TailoredHelp.FallthroughFaults[1], value.ArtifactJourney.TailoredHelp.FallthroughFaults[0]
+		}},
+		{"tailored help hidden fault argv", func(value *evidenceDocument) {
+			value.ArtifactJourney.TailoredHelp.FallthroughFaults[0].Argv = []string{"issue", "list", "--help"}
+		}},
+		{"tailored help unknown fault argv", func(value *evidenceDocument) {
+			value.ArtifactJourney.TailoredHelp.FallthroughFaults[1].Argv = []string{"api", "--help"}
 		}},
 		{"tailored help fault source attempts", func(value *evidenceDocument) {
 			value.ArtifactJourney.TailoredHelp.FallthroughFaults[0].SourceProcessAttempts++
@@ -351,6 +409,9 @@ func TestValidateEvidenceRejectsInvalidContracts(t *testing.T) {
 		}},
 		{"Go wrapper result mode", func(value *evidenceDocument) {
 			value.ArtifactJourney.GoSource.WrapperCases[0].ResultMode = "original_preserving_optimizer"
+		}},
+		{"Go wrapper caller argv", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.WrapperCases[0].CallerArgv = []string{"test", "extra"}
 		}},
 		{"Go wrapper bundle binding", func(value *evidenceDocument) {
 			value.ArtifactJourney.GoSource.WrapperCases[0].BundleDigest = strings.Repeat("f", digestLength)
@@ -537,9 +598,11 @@ func TestExpectedTailoredHelpOutputDigestsAreExact(t *testing.T) {
 		name string
 		want string
 	}{
-		{name: "root", want: "48b1a4ba341fe7c3830bb8aa97bebd89f2ff76d0a90265074bd9ab220d33d998"},
-		{name: "namespace", want: "48b1a4ba341fe7c3830bb8aa97bebd89f2ff76d0a90265074bd9ab220d33d998"},
-		{name: "exact_command", want: "71991e9c7e08dc14e35499fe8f1d52d4446a956abe3b4c8410ba19e0e0646c09"},
+		{name: "root", want: "da2d149caceb26edd5e22b6e1a2697e8a72f7fd815855a7ead20d81ece012bf6"},
+		{name: "issue_namespace", want: "f47dd2952fd2bef65ef1c197e54366bfe9625979e3daeea1a7d35a318e12f76a"},
+		{name: "issue_exact_command", want: "9faf4dca4089df3330aae6ab5b348115a8bd9eb8b423f0fcd685cde18282cab5"},
+		{name: "pr_namespace", want: "48b1a4ba341fe7c3830bb8aa97bebd89f2ff76d0a90265074bd9ab220d33d998"},
+		{name: "pr_exact_command", want: "71991e9c7e08dc14e35499fe8f1d52d4446a956abe3b4c8410ba19e0e0646c09"},
 	}
 	for _, test := range tests {
 		output, err := expectedTailoredHelpOutput(digest, test.name)
@@ -648,7 +711,7 @@ func writeValidEvidenceSet(t *testing.T, directory, archives string) []string {
 
 func validEvidence(target, archiveName, archiveDigest string) evidenceDocument {
 	result := evidenceDocument{
-		SchemaVersion: 6,
+		SchemaVersion: 7,
 		ArtifactJourney: artifactJourneyEvidence{
 			Target: target, ObservedHost: target, ArchiveName: archiveName, ArchiveSHA256: archiveDigest,
 			Version: testVersion, Revision: testRevision,
@@ -689,21 +752,24 @@ func validEvidence(target, archiveName, archiveDigest string) evidenceDocument {
 		result.ArtifactJourney.WrapperCases = []wrapperCaseEvidence{
 			{
 				Name: "transformed_json", WrapperKind: "transform", ResultMode: "transformed_json",
+				CallerArgv:   append([]string{}, wantedTransformedCallerArgv...),
 				BundleDigest: strings.Repeat("a", digestLength), PlanDigest: strings.Repeat("b", digestLength),
 				WrapperSourceSHA256: strings.Repeat("e", digestLength), StdoutSHA256: transformedStdoutSHA256, StderrSHA256: emptySHA256,
 				SourceExitCode: 0, SourceProcessAttempts: 1,
 			},
 			{
+				Name: "append_only", WrapperKind: "transform", ResultMode: "source_stream_passthrough",
+				CallerArgv:   append([]string{}, wantedAppendOnlyCallerArgv...),
+				BundleDigest: strings.Repeat("a", digestLength), PlanDigest: strings.Repeat("6", digestLength),
+				WrapperSourceSHA256: strings.Repeat("e", digestLength), StdoutSHA256: appendStdoutSHA256, StderrSHA256: appendStderrSHA256,
+				SourceExitCode: 23, SourceProcessAttempts: 1,
+			},
+			{
 				Name: "identity", WrapperKind: "identity", ResultMode: "source_stream_passthrough",
+				CallerArgv:   append([]string{}, wantedIdentityCallerArgv...),
 				BundleDigest: strings.Repeat("2", digestLength), PlanDigest: strings.Repeat("3", digestLength),
 				WrapperSourceSHA256: strings.Repeat("4", digestLength), StdoutSHA256: identityStdoutSHA256, StderrSHA256: identityStderrSHA256,
 				SourceExitCode: 0, SourceProcessAttempts: 1,
-			},
-			{
-				Name: "append_only", WrapperKind: "transform", ResultMode: "source_stream_passthrough",
-				BundleDigest: strings.Repeat("5", digestLength), PlanDigest: strings.Repeat("6", digestLength),
-				WrapperSourceSHA256: strings.Repeat("7", digestLength), StdoutSHA256: appendStdoutSHA256, StderrSHA256: appendStderrSHA256,
-				SourceExitCode: 23, SourceProcessAttempts: 1,
 			},
 		}
 		result.ArtifactJourney.WrapperSourceAttempts = wantedPOSIXWrappers
@@ -724,6 +790,7 @@ func validEvidence(target, archiveName, archiveDigest string) evidenceDocument {
 		result.ArtifactJourney.GoSource.WrapperOutcome = "ordinary_command_verified"
 		result.ArtifactJourney.GoSource.WrapperCases = []wrapperCaseEvidence{{
 			Name: "go_test_identity", WrapperKind: "identity", ResultMode: "source_stream_passthrough",
+			CallerArgv:   append([]string{}, wantedGoCallerArgv...),
 			BundleDigest: identityBundleDigest, PlanDigest: identityPlanDigest, WrapperSourceSHA256: identityWrapperDigest,
 			StdoutSHA256: strings.Repeat("f", digestLength), StderrSHA256: emptySHA256,
 			SourceExitCode: 0, SourceProcessAttempts: 1,
@@ -748,8 +815,10 @@ func validEvidence(target, archiveName, archiveDigest string) evidenceDocument {
 func validTailoredHelpEvidence(journey artifactJourneyEvidence) tailoredHelpEvidence {
 	views := []tailoredHelpViewEvidence{
 		{Name: "root", Argv: []string{"--help"}},
-		{Name: "namespace", Argv: []string{"pr", "--help"}},
-		{Name: "exact_command", Argv: []string{"pr", "list", "--help"}},
+		{Name: "issue_namespace", Argv: []string{"issue", "--help"}},
+		{Name: "issue_exact_command", Argv: []string{"issue", "list", "--help"}},
+		{Name: "pr_namespace", Argv: []string{"pr", "--help"}},
+		{Name: "pr_exact_command", Argv: []string{"pr", "list", "--help"}},
 	}
 	for index := range views {
 		output, err := expectedTailoredHelpOutput(journey.BundleDigest, views[index].Name)
@@ -765,7 +834,7 @@ func validTailoredHelpEvidence(journey artifactJourneyEvidence) tailoredHelpEvid
 		WrapperContractVersion: wrapperbinding.ContractVersion,
 		Views:                  views,
 		FallthroughFaults: []tailoredHelpFaultEvidence{
-			{Name: "hidden_command", Argv: []string{"issue", "list", "--help"}, Code: "command_not_in_surface"},
+			{Name: "hidden_command", Argv: []string{"api", "--help"}, Code: "command_not_in_surface"},
 			{Name: "unknown_selector", Argv: []string{"unknown", "--help"}, Code: "invalid_invocation"},
 		},
 		RuntimeNonExecutableDuringSuccess: true,
