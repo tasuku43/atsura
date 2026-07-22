@@ -46,6 +46,17 @@ func (l *Loader) Load(ctx context.Context, path string) (tailoringbundle.Bundle,
 	if header.SchemaVersion != 2 {
 		return tailoringbundle.Bundle{}, "", fault.New(fault.KindInvalidInput, "invalid_bundle_file", "The bundle build JSON must use schema version 2.", false, helpAction())
 	}
+	var embeddedHeader struct {
+		Bundle struct {
+			SchemaVersion int `json:"schema_version"`
+		} `json:"bundle"`
+	}
+	if err := json.Unmarshal(header.Build, &embeddedHeader); err != nil {
+		return tailoringbundle.Bundle{}, "", fault.Wrap(fault.KindInvalidInput, "invalid_bundle_file", "The bundle build JSON is invalid.", false, err, helpAction())
+	}
+	if embeddedHeader.Bundle.SchemaVersion >= 1 && embeddedHeader.Bundle.SchemaVersion < tailoringbundle.BundleSchemaVersion {
+		return tailoringbundle.Bundle{}, "", fault.New(fault.KindInvalidInput, "legacy_tailoring_schema", "Embedded tailoring bundle schemas 1 through 3 are retired and cannot be adopted as schema 4.", false, helpAction())
+	}
 	var value document
 	if err := strictjson.Decode(raw, &value, 96); err != nil {
 		return tailoringbundle.Bundle{}, "", fault.Wrap(fault.KindInvalidInput, "invalid_bundle_file", "The bundle build JSON is invalid.", false, err, helpAction())

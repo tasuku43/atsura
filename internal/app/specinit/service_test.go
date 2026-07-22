@@ -71,7 +71,7 @@ func TestInitCreatesIncludedIdentityWrapperDraft(t *testing.T) {
 	if entry.Presence != tailoringbundle.PresenceInclude || entry.Options == nil || entry.Options.Default != tailoringbundle.SurfaceDefaultInherit || entry.Wrapper == nil || entry.Wrapper.Kind != tailoringbundle.WrapperIdentity {
 		t.Fatalf("entry = %+v", entry)
 	}
-	if entry.Options.Include == nil || entry.Options.Exclude == nil || entry.Wrapper.Before == nil || entry.Wrapper.After == nil || entry.Wrapper.Invoke.AppendArgs == nil {
+	if entry.Options.Include == nil || entry.Options.Exclude == nil || entry.Wrapper.Before == nil || entry.Wrapper.After == nil || entry.Wrapper.Invoke.OptionDefaults == nil || entry.Wrapper.Invoke.AppendArgs == nil {
 		t.Fatalf("explicit empty lists were lost: %+v", entry)
 	}
 	if err := specification.Validate(fake.value); err != nil {

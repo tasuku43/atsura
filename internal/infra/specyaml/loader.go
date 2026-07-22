@@ -1,4 +1,4 @@
-// Package specyaml decodes one bounded strict schema-4 tailoring
+// Package specyaml decodes one bounded strict schema-5 tailoring
 // specification file.
 package specyaml
 
@@ -65,7 +65,30 @@ type stageAction struct {
 }
 
 type invocation struct {
-	AppendArgs []string `yaml:"append_args"`
+	OptionDefaults []optionDefault `yaml:"option_defaults"`
+	AppendArgs     []string        `yaml:"append_args"`
+}
+
+type optionDefault struct {
+	Option strictString `yaml:"option"`
+	Value  strictString `yaml:"value"`
+}
+
+// strictString prevents yaml.v3 from coercing booleans or numbers into the
+// public string schema. A missing value remains empty and is rejected by the
+// explicit option-default validation after decoding.
+type strictString string
+
+func (s *strictString) UnmarshalYAML(node *yaml.Node) error {
+	if node == nil || node.Kind != yaml.ScalarNode || node.Tag != "!!str" {
+		return fmt.Errorf("option default fields must be YAML strings")
+	}
+	*s = strictString(node.Value)
+	return nil
+}
+
+func (s strictString) MarshalYAML() (any, error) {
+	return string(s), nil
 }
 
 type output struct {
@@ -103,18 +126,18 @@ func (l *Loader) Load(ctx context.Context, path string) (tailoringbundle.Specifi
 			return tailoringbundle.Specification{}, fault.Wrap(
 				fault.KindInvalidInput,
 				"legacy_tailoring_schema",
-				"Earlier tailoring schemas 1 through 3 are retired and cannot be converted automatically.",
+				"Earlier tailoring schemas 1 through 4 are retired and cannot be converted automatically.",
 				false,
 				err,
-				fault.NextAction{Command: "help spec init", Reason: "Create a schema-4 surface and wrapper specification from the catalog."},
+				fault.NextAction{Command: "help spec init", Reason: "Create a schema-5 surface and wrapper specification from the catalog."},
 			)
 		}
-		return tailoringbundle.Specification{}, fault.Wrap(fault.KindInvalidInput, "invalid_specification_yaml", "The schema-4 tailoring specification YAML is invalid.", false, err, helpAction())
+		return tailoringbundle.Specification{}, fault.Wrap(fault.KindInvalidInput, "invalid_specification_yaml", "The schema-5 tailoring specification YAML is invalid.", false, err, helpAction())
 	}
 	return parsed, nil
 }
 
-// Encode renders one normalized specification as deterministic schema-4 YAML.
+// Encode renders one normalized specification as deterministic schema-5 YAML.
 func Encode(specification tailoringbundle.Specification) ([]byte, error) {
 	value := document{
 		SchemaVersion: specification.SchemaVersion,
@@ -134,13 +157,16 @@ func Encode(specification tailoringbundle.Specification) ([]byte, error) {
 			}
 		}
 		if source.Wrapper != nil {
+			if source.Wrapper.Invoke.OptionDefaults == nil {
+				return nil, fmt.Errorf("encode schema-5 tailoring specification YAML: invoke option_defaults must be an explicit list")
+			}
 			converted.Wrapper = encodeWrapper(*source.Wrapper)
 		}
 		value.Commands[index] = converted
 	}
 	encoded, err := yaml.Marshal(value)
 	if err != nil {
-		return nil, fmt.Errorf("encode schema-4 tailoring specification YAML: %w", err)
+		return nil, fmt.Errorf("encode schema-5 tailoring specification YAML: %w", err)
 	}
 	return encoded, nil
 }
@@ -148,8 +174,14 @@ func Encode(specification tailoringbundle.Specification) ([]byte, error) {
 func encodeWrapper(source tailoringbundle.Wrapper) *wrapper {
 	converted := &wrapper{
 		Kind: string(source.Kind), Before: make([]stageAction, len(source.Before)),
-		Invoke: invocation{AppendArgs: append(make([]string, 0, len(source.Invoke.AppendArgs)), source.Invoke.AppendArgs...)},
-		After:  make([]stageAction, len(source.After)),
+		Invoke: invocation{
+			OptionDefaults: make([]optionDefault, len(source.Invoke.OptionDefaults)),
+			AppendArgs:     append(make([]string, 0, len(source.Invoke.AppendArgs)), source.Invoke.AppendArgs...),
+		},
+		After: make([]stageAction, len(source.After)),
+	}
+	for index, item := range source.Invoke.OptionDefaults {
+		converted.Invoke.OptionDefaults[index] = optionDefault{Option: strictString(item.Option), Value: strictString(item.Value)}
 	}
 	for index, action := range source.Before {
 		converted.Before[index] = stageAction{Kind: action.Kind}
@@ -211,6 +243,18 @@ func decode(raw []byte) (tailoringbundle.Specification, error) {
 	if err := decoder.Decode(&document{}); !errors.Is(err, io.EOF) {
 		return tailoringbundle.Specification{}, fmt.Errorf("exactly one YAML document is required")
 	}
+	for index, entry := range value.Commands {
+		if entry.Wrapper != nil && entry.Wrapper.Invoke.OptionDefaults == nil {
+			return tailoringbundle.Specification{}, fmt.Errorf("commands[%d].wrapper.invoke.option_defaults must be an explicit list", index)
+		}
+		if entry.Wrapper != nil {
+			for defaultIndex, item := range entry.Wrapper.Invoke.OptionDefaults {
+				if item.Option == "" || item.Value == "" {
+					return tailoringbundle.Specification{}, fmt.Errorf("commands[%d].wrapper.invoke.option_defaults[%d] requires non-empty option and value strings", index, defaultIndex)
+				}
+			}
+		}
+	}
 	result := tailoringbundle.Specification{
 		SchemaVersion: value.SchemaVersion,
 		CatalogDigest: value.CatalogDigest,
@@ -245,8 +289,14 @@ func convertCommand(source command) tailoringbundle.CommandEntry {
 		}
 		converted := tailoringbundle.Wrapper{
 			Kind: tailoringbundle.WrapperKind(source.Wrapper.Kind), Before: before,
-			Invoke: tailoringbundle.Invocation{AppendArgs: append(make([]string, 0, len(source.Wrapper.Invoke.AppendArgs)), source.Wrapper.Invoke.AppendArgs...)},
-			After:  after,
+			Invoke: tailoringbundle.Invocation{
+				OptionDefaults: make([]tailoringbundle.OptionDefault, len(source.Wrapper.Invoke.OptionDefaults)),
+				AppendArgs:     append(make([]string, 0, len(source.Wrapper.Invoke.AppendArgs)), source.Wrapper.Invoke.AppendArgs...),
+			},
+			After: after,
+		}
+		for index, item := range source.Wrapper.Invoke.OptionDefaults {
+			converted.Invoke.OptionDefaults[index] = tailoringbundle.OptionDefault{Option: string(item.Option), Value: string(item.Value)}
 		}
 		if source.Wrapper.Output != nil {
 			output := &tailoringbundle.Output{Kind: tailoringbundle.OutputKind(source.Wrapper.Output.Kind)}
@@ -297,18 +347,18 @@ func validateNode(node *yaml.Node, depth int, count *int) error {
 func fileFault(err error) error {
 	switch {
 	case errors.Is(err, localfile.ErrNotFound):
-		return fault.Wrap(fault.KindNotFound, "specification_file_not_found", "The schema-4 tailoring specification file was not found.", false, err, helpAction())
+		return fault.Wrap(fault.KindNotFound, "specification_file_not_found", "The schema-5 tailoring specification file was not found.", false, err, helpAction())
 	case errors.Is(err, localfile.ErrPermission):
-		return fault.Wrap(fault.KindPermission, "specification_file_permission_denied", "The schema-4 tailoring specification file cannot be read.", false, err, helpAction())
+		return fault.Wrap(fault.KindPermission, "specification_file_permission_denied", "The schema-5 tailoring specification file cannot be read.", false, err, helpAction())
 	case errors.Is(err, localfile.ErrUnsafe):
-		return fault.Wrap(fault.KindInvalidInput, "unsafe_specification_file", "The schema-4 tailoring specification must be a stable regular file, not a symbolic link.", false, err, helpAction())
+		return fault.Wrap(fault.KindInvalidInput, "unsafe_specification_file", "The schema-5 tailoring specification must be a stable regular file, not a symbolic link.", false, err, helpAction())
 	case errors.Is(err, localfile.ErrTooLarge):
-		return fault.Wrap(fault.KindInvalidInput, "specification_file_too_large", "The schema-4 tailoring specification exceeds 256 KiB.", false, err, helpAction())
+		return fault.Wrap(fault.KindInvalidInput, "specification_file_too_large", "The schema-5 tailoring specification exceeds 256 KiB.", false, err, helpAction())
 	default:
-		return fault.Wrap(fault.KindUnavailable, "specification_file_read_failed", "The schema-4 tailoring specification could not be read.", true, err, helpAction())
+		return fault.Wrap(fault.KindUnavailable, "specification_file_read_failed", "The schema-5 tailoring specification could not be read.", true, err, helpAction())
 	}
 }
 
 func helpAction() fault.NextAction {
-	return fault.NextAction{Command: "help spec validate", Reason: "Review the schema-4 tailoring specification contract and file path."}
+	return fault.NextAction{Command: "help spec validate", Reason: "Review the schema-5 tailoring specification contract and file path."}
 }

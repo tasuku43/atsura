@@ -23,7 +23,7 @@ func testBundle(t *testing.T) (tailoringbundle.Bundle, string) {
 		Commands: []sourcecatalog.Command{{Path: []string{"item", "list"}, Summary: "List items", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin, Options: []sourcecatalog.Option{}, StructuredOutput: []sourcecatalog.StructuredOutput{{Format: "json", SelectorFlag: "--json", Fields: []string{"id"}}}}},
 	}
 	catalogDigest, _ := catalog.Digest()
-	specification := tailoringbundle.Specification{SchemaVersion: tailoringbundle.SpecificationSchemaVersion, CatalogDigest: catalogDigest, Surface: tailoringbundle.Surface{Default: tailoringbundle.SurfaceDefaultExclude}, Commands: []tailoringbundle.CommandEntry{{Command: []string{"item", "list"}, Presence: tailoringbundle.PresenceInclude, Reason: "needed", Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultInherit, Include: []string{}, Exclude: []string{}}, Wrapper: &tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--json=id"}}, Output: &tailoringbundle.Output{Kind: tailoringbundle.OutputKindProjection, Projection: &tailoringbundle.Projection{Input: "json", Select: []string{"id"}, Rename: []tailoringbundle.Rename{}, Render: "compact_json"}}, After: []tailoringbundle.StageAction{}}}}}
+	specification := tailoringbundle.Specification{SchemaVersion: tailoringbundle.SpecificationSchemaVersion, CatalogDigest: catalogDigest, Surface: tailoringbundle.Surface{Default: tailoringbundle.SurfaceDefaultExclude}, Commands: []tailoringbundle.CommandEntry{{Command: []string{"item", "list"}, Presence: tailoringbundle.PresenceInclude, Reason: "needed", Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultInherit, Include: []string{}, Exclude: []string{}}, Wrapper: &tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{"--json=id"}}, Output: &tailoringbundle.Output{Kind: tailoringbundle.OutputKindProjection, Projection: &tailoringbundle.Projection{Input: "json", Select: []string{"id"}, Rename: []tailoringbundle.Rename{}, Render: "compact_json"}}, After: []tailoringbundle.StageAction{}}}}}
 	bundle, err := tailoringbundle.Compile(catalog, specification)
 	if err != nil {
 		t.Fatal(err)
@@ -72,6 +72,22 @@ func TestLoaderRejectsLegacyBundleSchemaWithMigrationDiagnostic(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, _, err := New().Load(context.Background(), path)
+	assertExactBundleFault(t, err, fault.KindInvalidInput, "legacy_tailoring_schema", false)
+}
+
+func TestLoaderRejectsEmbeddedBundleSchema3WithoutAutomaticAdoption(t *testing.T) {
+	bundle, digest := testBundle(t)
+	bundle.SchemaVersion = 3
+	document := map[string]any{"schema_version": 2, "build": map[string]any{"bundle_digest": digest, "bundle": bundle}}
+	data, err := json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "legacy-embedded-bundle.json")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = New().Load(context.Background(), path)
 	assertExactBundleFault(t, err, fault.KindInvalidInput, "legacy_tailoring_schema", false)
 }
 

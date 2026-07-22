@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -12,7 +13,7 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
 )
 
-const specificationFixture = `schema_version: 4
+const specificationFixture = `schema_version: 5
 catalog_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 surface:
   default: exclude
@@ -26,11 +27,16 @@ commands:
     options:
       default: inherit
       include: []
-      exclude: [--format]
+      exclude: []
     wrapper:
       kind: transform
       before: []
       invoke:
+        option_defaults:
+          - option: --limit
+            value: "30"
+          - option: --format
+            value: compact
         append_args: [--json=id,name]
       output:
         kind: projection
@@ -51,7 +57,7 @@ func writeFixture(t *testing.T, value string) string {
 	return path
 }
 
-func TestLoadStrictSchema4Specification(t *testing.T) {
+func TestLoadStrictSchema5Specification(t *testing.T) {
 	specification, err := New().Load(context.Background(), writeFixture(t, specificationFixture))
 	if err != nil {
 		t.Fatal(err)
@@ -63,8 +69,12 @@ func TestLoadStrictSchema4Specification(t *testing.T) {
 	if entry.Presence != tailoringbundle.PresenceInclude || entry.Options == nil || entry.Wrapper == nil || entry.Wrapper.Kind != tailoringbundle.WrapperTransform {
 		t.Fatalf("entry = %+v", entry)
 	}
-	if entry.Wrapper.Before == nil || entry.Wrapper.After == nil || entry.Wrapper.Invoke.AppendArgs == nil {
+	if entry.Wrapper.Before == nil || entry.Wrapper.After == nil || entry.Wrapper.Invoke.OptionDefaults == nil || entry.Wrapper.Invoke.AppendArgs == nil {
 		t.Fatalf("explicit wrapper lists were lost: %+v", entry.Wrapper)
+	}
+	wantDefaults := []tailoringbundle.OptionDefault{{Option: "--limit", Value: "30"}, {Option: "--format", Value: "compact"}}
+	if !reflect.DeepEqual(entry.Wrapper.Invoke.OptionDefaults, wantDefaults) {
+		t.Fatalf("option defaults = %+v, want %+v", entry.Wrapper.Invoke.OptionDefaults, wantDefaults)
 	}
 }
 
@@ -74,7 +84,7 @@ func TestEncodeIdentitySpecificationRoundTrips(t *testing.T) {
 		Commands: []tailoringbundle.CommandEntry{{
 			Command: []string{"item", "list"}, Presence: tailoringbundle.PresenceInclude, Reason: "Include without transformation.",
 			Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultInherit, Include: []string{}, Exclude: []string{}},
-			Wrapper: &tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{}},
+			Wrapper: &tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{}}, After: []tailoringbundle.StageAction{}},
 		}},
 	}
 	raw, err := Encode(specification)
@@ -82,7 +92,7 @@ func TestEncodeIdentitySpecificationRoundTrips(t *testing.T) {
 		t.Fatal(err)
 	}
 	encoded := string(raw)
-	for _, expected := range []string{"surface:", "default: exclude", "before: []", "append_args: []", "after: []"} {
+	for _, expected := range []string{"surface:", "default: exclude", "before: []", "option_defaults: []", "append_args: []", "after: []"} {
 		if !strings.Contains(encoded, expected) {
 			t.Fatalf("encoded specification missing %q: %s", expected, encoded)
 		}
@@ -99,8 +109,8 @@ func TestEncodeIdentitySpecificationRoundTrips(t *testing.T) {
 }
 
 func TestLoadRejectsLegacySchemasWithMigrationDiagnostic(t *testing.T) {
-	for _, version := range []int{1, 2, 3} {
-		legacy := strings.Replace(specificationFixture, "schema_version: 4", "schema_version: "+string(rune('0'+version)), 1)
+	for _, version := range []int{1, 2, 3, 4} {
+		legacy := strings.Replace(specificationFixture, "schema_version: 5", "schema_version: "+string(rune('0'+version)), 1)
 		_, err := New().Load(context.Background(), writeFixture(t, legacy))
 		public, ok := fault.PublicCopy(err)
 		if !ok || public.Code != "legacy_tailoring_schema" || public.Retryable {
@@ -109,6 +119,66 @@ func TestLoadRejectsLegacySchemasWithMigrationDiagnostic(t *testing.T) {
 		if !errors.Is(err, ErrLegacyTailoringSchema) {
 			t.Fatalf("schema %d did not retain migration cause: %v", version, err)
 		}
+	}
+}
+
+func TestLoadRejectsMissingNullScalarAndUnknownOptionDefaults(t *testing.T) {
+	const defaults = "        option_defaults:\n          - option: --limit\n            value: \"30\"\n          - option: --format\n            value: compact\n"
+	tests := []struct {
+		name        string
+		replacement string
+	}{
+		{name: "missing", replacement: ""},
+		{name: "null", replacement: "        option_defaults: null\n"},
+		{name: "wrong scalar", replacement: "        option_defaults: default\n"},
+		{name: "unknown entry field", replacement: "        option_defaults:\n          - option: --limit\n            value: \"30\"\n            unknown: true\n"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			input := strings.Replace(specificationFixture, defaults, test.replacement, 1)
+			if input == specificationFixture {
+				t.Fatal("test did not replace the option_defaults block")
+			}
+			_, err := New().Load(context.Background(), writeFixture(t, input))
+			public, ok := fault.PublicCopy(err)
+			if !ok || public.Code != "invalid_specification_yaml" || public.Retryable {
+				t.Fatalf("error = %v", err)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsMissingNullNonStringAndEmptyOptionDefaultFields(t *testing.T) {
+	const defaults = "        option_defaults:\n          - option: --limit\n            value: \"30\"\n          - option: --format\n            value: compact\n"
+	tests := []struct {
+		name  string
+		entry string
+	}{
+		{name: "option missing", entry: "          - value: \"30\"\n"},
+		{name: "option null", entry: "          - option: null\n            value: \"30\"\n"},
+		{name: "option boolean", entry: "          - option: true\n            value: \"30\"\n"},
+		{name: "option number", entry: "          - option: 30\n            value: \"30\"\n"},
+		{name: "option empty", entry: "          - option: \"\"\n            value: \"30\"\n"},
+		{name: "value missing", entry: "          - option: --limit\n"},
+		{name: "value null", entry: "          - option: --limit\n            value: null\n"},
+		{name: "value boolean", entry: "          - option: --limit\n            value: false\n"},
+		{name: "value number", entry: "          - option: --limit\n            value: 30\n"},
+		{name: "value empty", entry: "          - option: --limit\n            value: \"\"\n"},
+		{name: "unknown field", entry: "          - option: --limit\n            value: \"30\"\n            unknown: true\n"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			replacement := "        option_defaults:\n" + test.entry
+			input := strings.Replace(specificationFixture, defaults, replacement, 1)
+			if input == specificationFixture {
+				t.Fatal("test did not replace the option_defaults block")
+			}
+			_, err := New().Load(context.Background(), writeFixture(t, input))
+			public, ok := fault.PublicCopy(err)
+			if !ok || public.Code != "invalid_specification_yaml" || public.Retryable {
+				t.Fatalf("error = %v", err)
+			}
+		})
 	}
 }
 

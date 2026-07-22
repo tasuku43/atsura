@@ -1,4 +1,4 @@
-// Package specinit creates one schema-4 tailoring specification draft from
+// Package specinit creates one schema-5 tailoring specification draft from
 // exact verified catalog evidence.
 package specinit
 
@@ -113,7 +113,7 @@ func (s *Service) Init(ctx context.Context, intent operation.Intent, catalogPath
 		Commands:      []tailoringbundle.CommandEntry{entry},
 	}
 	if err := specification.Validate(catalog); err != nil {
-		return tailoringbundle.Specification{}, fault.Wrap(fault.KindContract, "invalid_specification_draft", "The schema-4 tailoring specification draft is invalid.", false, err, helpAction())
+		return tailoringbundle.Specification{}, fault.Wrap(fault.KindContract, "invalid_specification_draft", "The schema-5 tailoring specification draft is invalid.", false, err, helpAction())
 	}
 	return specification, nil
 }
@@ -132,7 +132,7 @@ func identityEntry(command []string) tailoringbundle.CommandEntry {
 		Options:  &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultInherit, Include: []string{}, Exclude: []string{}},
 		Wrapper: &tailoringbundle.Wrapper{
 			Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{},
-			Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{},
+			Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{}}, After: []tailoringbundle.StageAction{},
 		},
 	}
 }

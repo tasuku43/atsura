@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	SpecificationSchemaVersion = 4
-	BundleSchemaVersion        = 3
+	SpecificationSchemaVersion = 5
+	BundleSchemaVersion        = 4
 	MaxCommandEntries          = 256
 	MaxWrapperArguments        = 64
 	MaxProcessorBindings       = 8
@@ -71,15 +71,23 @@ type OptionSurface struct {
 	Exclude []string       `json:"exclude"`
 }
 
-// StageAction reserves a typed stage boundary. Schema 4 requires before and
+// StageAction reserves a typed stage boundary. Schema 5 requires before and
 // after to be explicit empty lists until a built-in action is accepted.
 type StageAction struct {
 	Kind string `json:"kind"`
 }
 
+// OptionDefault inserts one exact catalog-observed value option only when the
+// caller omitted that option before the positional-only marker.
+type OptionDefault struct {
+	Option string `json:"option"`
+	Value  string `json:"value"`
+}
+
 // Invocation is the normalized source-argv transformation vocabulary.
 type Invocation struct {
-	AppendArgs []string `json:"append_args"`
+	OptionDefaults []OptionDefault `json:"option_defaults"`
+	AppendArgs     []string        `json:"append_args"`
 }
 
 // Rename changes one selected source field in the agent-facing result.
@@ -138,7 +146,7 @@ type CommandEntry struct {
 	Wrapper  *Wrapper       `json:"wrapper,omitempty"`
 }
 
-// Specification is normalized schema-4 content bound to one exact catalog.
+// Specification is normalized schema-5 content bound to one exact catalog.
 type Specification struct {
 	SchemaVersion int            `json:"schema_version"`
 	CatalogDigest string         `json:"catalog_digest"`
@@ -336,7 +344,7 @@ func (e CommandEntry) validate(commands map[string]sourcecatalog.Command) error 
 		if err := e.Options.validate(command); err != nil {
 			return err
 		}
-		if err := e.Wrapper.validate(command); err != nil {
+		if err := e.Wrapper.validate(command, *e.Options); err != nil {
 			return err
 		}
 	default:
@@ -422,28 +430,31 @@ func (o OptionSurface) IncludedOptions(command sourcecatalog.Command) ([]sourcec
 	return result, nil
 }
 
-func (w Wrapper) validate(command sourcecatalog.Command) error {
-	if w.Before == nil || w.After == nil || w.Invoke.AppendArgs == nil {
-		return fmt.Errorf("wrapper before, invoke append_args, and after must be explicit lists")
+func (w Wrapper) validate(command sourcecatalog.Command, surface OptionSurface) error {
+	if w.Before == nil || w.After == nil || w.Invoke.OptionDefaults == nil || w.Invoke.AppendArgs == nil {
+		return fmt.Errorf("wrapper before, invoke option_defaults, invoke append_args, and after must be explicit lists")
 	}
 	if len(w.Before) != 0 || len(w.After) != 0 {
-		return fmt.Errorf("schema 4 does not support before or after actions")
+		return fmt.Errorf("schema 5 does not support before or after actions")
 	}
-	if len(w.Invoke.AppendArgs) > MaxWrapperArguments {
-		return fmt.Errorf("invoke append_args exceeds its bound")
+	if len(w.Invoke.OptionDefaults)+len(w.Invoke.AppendArgs) > MaxWrapperArguments {
+		return fmt.Errorf("combined invoke option_defaults and append_args exceed their bound")
 	}
 	for _, argument := range w.Invoke.AppendArgs {
 		if err := validateArgument(argument); err != nil {
 			return fmt.Errorf("append argument: %v", err)
 		}
 	}
+	if err := validateOptionDefaults(command, surface, w.Invoke.OptionDefaults, w.Invoke.AppendArgs); err != nil {
+		return err
+	}
 	switch w.Kind {
 	case WrapperIdentity:
-		if len(w.Invoke.AppendArgs) != 0 || w.Output != nil {
+		if len(w.Invoke.OptionDefaults) != 0 || len(w.Invoke.AppendArgs) != 0 || w.Output != nil {
 			return fmt.Errorf("identity wrapper must not transform invocation or output")
 		}
 	case WrapperTransform:
-		if len(w.Invoke.AppendArgs) == 0 && w.Output == nil {
+		if len(w.Invoke.OptionDefaults) == 0 && len(w.Invoke.AppendArgs) == 0 && w.Output == nil {
 			return fmt.Errorf("transform wrapper requires at least one supported transform")
 		}
 		if w.Output != nil {
@@ -455,6 +466,61 @@ func (w Wrapper) validate(command sourcecatalog.Command) error {
 		return fmt.Errorf("wrapper kind must be identity or transform")
 	}
 	return nil
+}
+
+func validateOptionDefaults(command sourcecatalog.Command, surface OptionSurface, defaults []OptionDefault, appendArgs []string) error {
+	includedOptions, err := surface.IncludedOptions(command)
+	if err != nil {
+		return fmt.Errorf("option defaults require a valid tailored option surface: %v", err)
+	}
+	included := make(map[string]sourcecatalog.Option, len(includedOptions))
+	for _, option := range includedOptions {
+		included[option.Name] = option
+	}
+	selectors := make(map[string]struct{}, len(command.StructuredOutput))
+	for _, output := range command.StructuredOutput {
+		selectors[output.SelectorFlag] = struct{}{}
+	}
+	appended := activeLongOptionNames(appendArgs)
+	seen := make(map[string]struct{}, len(defaults))
+	for index, optionDefault := range defaults {
+		option, exists := included[optionDefault.Option]
+		if !exists {
+			return fmt.Errorf("option default %d option %q is not an included catalog option", index, optionDefault.Option)
+		}
+		if !option.TakesValue {
+			return fmt.Errorf("option default %d option %q does not take a value", index, optionDefault.Option)
+		}
+		if _, selector := selectors[optionDefault.Option]; selector {
+			return fmt.Errorf("option default %d option %q is a structured-output selector", index, optionDefault.Option)
+		}
+		if err := validateText(optionDefault.Value, 4096); err != nil {
+			return fmt.Errorf("option default %d value: %v", index, err)
+		}
+		if _, duplicate := seen[optionDefault.Option]; duplicate {
+			return fmt.Errorf("option default %q is duplicated", optionDefault.Option)
+		}
+		seen[optionDefault.Option] = struct{}{}
+		if _, overlap := appended[optionDefault.Option]; overlap {
+			return fmt.Errorf("option default %q overlaps active append_args", optionDefault.Option)
+		}
+	}
+	return nil
+}
+
+func activeLongOptionNames(arguments []string) map[string]struct{} {
+	result := make(map[string]struct{})
+	for _, argument := range arguments {
+		if argument == "--" {
+			break
+		}
+		if !strings.HasPrefix(argument, "--") {
+			continue
+		}
+		name, _, _ := strings.Cut(argument, "=")
+		result[name] = struct{}{}
+	}
+	return result
 }
 
 func (o Output) validate(command sourcecatalog.Command) error {
@@ -679,7 +745,7 @@ func deriveSurface(catalog sourcecatalog.Catalog, specification Specification) [
 				Command: append([]string(nil), command.Path...),
 				Reason:  "Inherited from the source catalog by surface.default.",
 				Options: OptionSurface{Default: SurfaceDefaultInherit, Include: []string{}, Exclude: []string{}},
-				Wrapper: Wrapper{Kind: WrapperIdentity, Before: []StageAction{}, Invoke: Invocation{AppendArgs: []string{}}, After: []StageAction{}},
+				Wrapper: Wrapper{Kind: WrapperIdentity, Before: []StageAction{}, Invoke: Invocation{OptionDefaults: []OptionDefault{}, AppendArgs: []string{}}, After: []StageAction{}},
 			})
 		}
 	}
@@ -697,6 +763,7 @@ func cloneOptionSurface(value OptionSurface) OptionSurface {
 func cloneWrapper(value Wrapper) Wrapper {
 	result := value
 	result.Before = cloneStageActions(value.Before)
+	result.Invoke.OptionDefaults = cloneOptionDefaults(value.Invoke.OptionDefaults)
 	result.Invoke.AppendArgs = cloneStrings(value.Invoke.AppendArgs)
 	result.After = cloneStageActions(value.After)
 	if value.Output != nil {
@@ -714,6 +781,13 @@ func cloneWrapper(value Wrapper) Wrapper {
 		result.Output = &copy
 	}
 	return result
+}
+
+func cloneOptionDefaults(values []OptionDefault) []OptionDefault {
+	if values == nil {
+		return nil
+	}
+	return append([]OptionDefault{}, values...)
 }
 
 func cloneCommandEntries(values []CommandEntry) []CommandEntry {

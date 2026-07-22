@@ -17,20 +17,28 @@ func bundleCatalog() sourcecatalog.Catalog {
 		Probe:         sourcecatalog.Probe{IDs: []string{"help", "version"}, Attempts: 2},
 		Commands: []sourcecatalog.Command{
 			{Path: []string{"item", "delete"}, Summary: "Delete item", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin, Options: []sourcecatalog.Option{{Name: "--json", TakesValue: true}}, StructuredOutput: []sourcecatalog.StructuredOutput{{Format: "json", SelectorFlag: "--json", Fields: []string{"id"}}}},
-			{Path: []string{"item", "list"}, Summary: "List items", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin, Options: []sourcecatalog.Option{{Name: "--format", TakesValue: true}, {Name: "--json", TakesValue: true}}, StructuredOutput: []sourcecatalog.StructuredOutput{{Format: "json", SelectorFlag: "--json", Fields: []string{"id", "name"}}}},
+			{Path: []string{"item", "list"}, Summary: "List items", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin, Options: []sourcecatalog.Option{{Name: "--format", TakesValue: true}, {Name: "--json", TakesValue: true}, {Name: "--limit", TakesValue: true}, {Name: "--verbose", TakesValue: false}}, StructuredOutput: []sourcecatalog.StructuredOutput{{Format: "json", SelectorFlag: "--json", Fields: []string{"id", "name"}}}},
 			{Path: []string{"plugin", "run"}, Summary: "Dynamic plugin", Provenance: sourcecatalog.ProvenanceUnverifiedDynamic, Options: []sourcecatalog.Option{}, StructuredOutput: []sourcecatalog.StructuredOutput{}},
 		},
 	}
 }
 
 func identityWrapper() *Wrapper {
-	return &Wrapper{Kind: WrapperIdentity, Before: []StageAction{}, Invoke: Invocation{AppendArgs: []string{}}, After: []StageAction{}}
+	return &Wrapper{Kind: WrapperIdentity, Before: []StageAction{}, Invoke: Invocation{OptionDefaults: []OptionDefault{}, AppendArgs: []string{}}, After: []StageAction{}}
 }
 
 func transformingWrapper() *Wrapper {
 	return &Wrapper{
-		Kind: WrapperTransform, Before: []StageAction{}, Invoke: Invocation{AppendArgs: []string{"--json=id,name"}},
+		Kind: WrapperTransform, Before: []StageAction{}, Invoke: Invocation{OptionDefaults: []OptionDefault{}, AppendArgs: []string{"--json=id,name"}},
 		Output: &Output{Kind: OutputKindProjection, Projection: &Projection{Input: "json", Select: []string{"id", "name"}, Rename: []Rename{}, Render: "compact_json"}}, After: []StageAction{},
+	}
+}
+
+func defaultingWrapper(defaults ...OptionDefault) *Wrapper {
+	return &Wrapper{
+		Kind: WrapperTransform, Before: []StageAction{},
+		Invoke: Invocation{OptionDefaults: append([]OptionDefault{}, defaults...), AppendArgs: []string{}},
+		After:  []StageAction{},
 	}
 }
 
@@ -245,10 +253,14 @@ func TestSpecificationRejectsInvalidMembershipOptionsAndWrappers(t *testing.T) {
 		{name: "unknown option", mutate: func(s *Specification) { s.Commands[0].Options.Exclude = []string{"--unknown"} }},
 		{name: "unsorted options", mutate: func(s *Specification) { s.Commands[0].Options.Exclude = []string{"--json", "--format"} }},
 		{name: "identity transforms argv", mutate: func(s *Specification) { s.Commands[0].Wrapper.Invoke.AppendArgs = []string{"--json"} }},
+		{name: "identity inserts option default", mutate: func(s *Specification) {
+			s.Commands[0].Wrapper.Invoke.OptionDefaults = []OptionDefault{{Option: "--limit", Value: "30"}}
+		}},
 		{name: "identity transforms output", mutate: func(s *Specification) { s.Commands[0].Wrapper.Output = transformingWrapper().Output }},
 		{name: "empty transform", mutate: func(s *Specification) { s.Commands[0].Wrapper.Kind = WrapperTransform }},
 		{name: "before action", mutate: func(s *Specification) { s.Commands[0].Wrapper.Before = []StageAction{{Kind: "future"}} }},
 		{name: "missing explicit after", mutate: func(s *Specification) { s.Commands[0].Wrapper.After = nil }},
+		{name: "missing explicit option defaults", mutate: func(s *Specification) { s.Commands[0].Wrapper.Invoke.OptionDefaults = nil }},
 		{name: "missing explicit append args", mutate: func(s *Specification) { s.Commands[0].Wrapper.Invoke.AppendArgs = nil }},
 		{name: "unobserved output field", mutate: func(s *Specification) {
 			s.Commands[0].Wrapper = transformingWrapper()
@@ -263,6 +275,117 @@ func TestSpecificationRejectsInvalidMembershipOptionsAndWrappers(t *testing.T) {
 				t.Fatalf("Validate() error = %v", err)
 			}
 		})
+	}
+}
+
+func TestOptionDefaultsPreserveDeclarationOrderAndAffectCanonicalIdentity(t *testing.T) {
+	defaults := []OptionDefault{{Option: "--limit", Value: "30"}, {Option: "--format", Value: "table"}}
+	spec := specification(t, SurfaceDefaultExclude, CommandEntry{
+		Command: []string{"item", "list"}, Presence: PresenceInclude, Reason: "Apply stable defaults.",
+		Options: inheritedOptions(), Wrapper: defaultingWrapper(defaults...),
+	})
+	bundle, err := Compile(bundleCatalog(), spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(bundle.Specification.Commands[0].Wrapper.Invoke.OptionDefaults, defaults) ||
+		!reflect.DeepEqual(bundle.Surface[0].Wrapper.Invoke.OptionDefaults, defaults) {
+		t.Fatalf("option default order changed: %+v", bundle.Surface[0].Wrapper.Invoke.OptionDefaults)
+	}
+	raw, err := bundle.CanonicalJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantJSON := `"option_defaults":[{"option":"--limit","value":"30"},{"option":"--format","value":"table"}]`
+	if !strings.Contains(string(raw), wantJSON) {
+		t.Fatalf("canonical bundle did not retain declaration order: %s", raw)
+	}
+	resolved, err := bundle.Resolve([]string{"item", "list"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved.Wrapper.Invoke.OptionDefaults[0].Value = "changed"
+	if bundle.Surface[0].Wrapper.Invoke.OptionDefaults[0].Value != "30" {
+		t.Fatal("Resolve returned aliased option defaults")
+	}
+
+	reordered := specification(t, SurfaceDefaultExclude, CommandEntry{
+		Command: []string{"item", "list"}, Presence: PresenceInclude, Reason: "Apply stable defaults.",
+		Options: inheritedOptions(), Wrapper: defaultingWrapper(defaults[1], defaults[0]),
+	})
+	reorderedBundle, err := Compile(bundleCatalog(), reordered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstDigest, _ := bundle.Digest()
+	secondDigest, _ := reorderedBundle.Digest()
+	if firstDigest == secondDigest {
+		t.Fatal("declaration-order change did not affect bundle identity")
+	}
+}
+
+func TestOptionDefaultsValidateCatalogSurfaceValuesAndAppendOverlap(t *testing.T) {
+	valid := CommandEntry{
+		Command: []string{"item", "list"}, Presence: PresenceInclude, Reason: "Apply stable defaults.",
+		Options: inheritedOptions(), Wrapper: defaultingWrapper(OptionDefault{Option: "--limit", Value: "30"}),
+	}
+	tests := []struct {
+		name   string
+		mutate func(*CommandEntry)
+	}{
+		{name: "unknown", mutate: func(entry *CommandEntry) { entry.Wrapper.Invoke.OptionDefaults[0].Option = "--unknown" }},
+		{name: "excluded", mutate: func(entry *CommandEntry) { entry.Options.Exclude = []string{"--limit"} }},
+		{name: "flag without value", mutate: func(entry *CommandEntry) { entry.Wrapper.Invoke.OptionDefaults[0].Option = "--verbose" }},
+		{name: "structured output selector", mutate: func(entry *CommandEntry) { entry.Wrapper.Invoke.OptionDefaults[0].Option = "--json" }},
+		{name: "empty value", mutate: func(entry *CommandEntry) { entry.Wrapper.Invoke.OptionDefaults[0].Value = "" }},
+		{name: "oversize value", mutate: func(entry *CommandEntry) { entry.Wrapper.Invoke.OptionDefaults[0].Value = strings.Repeat("x", 4097) }},
+		{name: "unsafe control value", mutate: func(entry *CommandEntry) { entry.Wrapper.Invoke.OptionDefaults[0].Value = "unsafe\nvalue" }},
+		{name: "unsafe format value", mutate: func(entry *CommandEntry) { entry.Wrapper.Invoke.OptionDefaults[0].Value = "unsafe\u2060value" }},
+		{name: "unsafe line separator value", mutate: func(entry *CommandEntry) { entry.Wrapper.Invoke.OptionDefaults[0].Value = "unsafe\u2028value" }},
+		{name: "duplicate", mutate: func(entry *CommandEntry) {
+			entry.Wrapper.Invoke.OptionDefaults = append(entry.Wrapper.Invoke.OptionDefaults, OptionDefault{Option: "--limit", Value: "40"})
+		}},
+		{name: "inline append overlap", mutate: func(entry *CommandEntry) { entry.Wrapper.Invoke.AppendArgs = []string{"--limit=40"} }},
+		{name: "separated append overlap", mutate: func(entry *CommandEntry) { entry.Wrapper.Invoke.AppendArgs = []string{"--limit", "40"} }},
+		{name: "combined bound", mutate: func(entry *CommandEntry) {
+			entry.Wrapper.Invoke.AppendArgs = make([]string, MaxWrapperArguments)
+			for index := range entry.Wrapper.Invoke.AppendArgs {
+				entry.Wrapper.Invoke.AppendArgs[index] = "argument"
+			}
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			entry := valid
+			entry.Options = &OptionSurface{Default: valid.Options.Default, Include: []string{}, Exclude: []string{}}
+			entry.Wrapper = defaultingWrapper(valid.Wrapper.Invoke.OptionDefaults...)
+			test.mutate(&entry)
+			if err := specification(t, SurfaceDefaultExclude, entry).Validate(bundleCatalog()); !errors.Is(err, ErrInvalidSpecification) {
+				t.Fatalf("Validate() error = %v", err)
+			}
+		})
+	}
+
+	for _, appendArgs := range [][]string{
+		{"--", "--limit=40"},
+		{"--limitish=40"},
+	} {
+		entry := valid
+		entry.Wrapper = defaultingWrapper(valid.Wrapper.Invoke.OptionDefaults...)
+		entry.Wrapper.Invoke.AppendArgs = append([]string{}, appendArgs...)
+		if err := specification(t, SurfaceDefaultExclude, entry).Validate(bundleCatalog()); err != nil {
+			t.Fatalf("non-overlapping append args %q rejected: %v", appendArgs, err)
+		}
+	}
+
+	boundary := valid
+	boundary.Wrapper = defaultingWrapper(OptionDefault{Option: "--limit", Value: strings.Repeat("x", 4096)})
+	boundary.Wrapper.Invoke.AppendArgs = make([]string, MaxWrapperArguments-1)
+	for index := range boundary.Wrapper.Invoke.AppendArgs {
+		boundary.Wrapper.Invoke.AppendArgs[index] = "argument"
+	}
+	if err := specification(t, SurfaceDefaultExclude, boundary).Validate(bundleCatalog()); err != nil {
+		t.Fatalf("exact option-default and combined bounds rejected: %v", err)
 	}
 }
 
