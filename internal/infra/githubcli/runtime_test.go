@@ -71,6 +71,58 @@ func transformRuntimePlan(t *testing.T, path ...string) tailoringplan.Plan {
 	})
 }
 
+func runtimeSurfaceBundle(t *testing.T, path []string, options []sourcecatalog.Option, surface tailoringbundle.OptionSurface, wrapper tailoringbundle.Wrapper) tailoringbundle.Bundle {
+	t.Helper()
+	catalog := sourcecatalog.Sort(sourcecatalog.Catalog{
+		SchemaVersion: sourcecatalog.SchemaVersion,
+		Adapter:       sourcecatalog.Adapter{Kind: AdapterKind, ContractVersion: ContractVersion},
+		Source: sourcecatalog.Source{
+			RequestedExecutable: "gh", ResolvedPath: "/opt/bin/gh", SHA256: strings.Repeat("a", 64), Size: 2048, Version: "2.72.0",
+		},
+		Probe: sourcecatalog.Probe{IDs: []string{"help_reference", "issue_list_help", "pr_list_help", "version"}, Attempts: 4},
+		Commands: []sourcecatalog.Command{{
+			Path: path, Summary: "List records", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin,
+			Options: options,
+			StructuredOutput: []sourcecatalog.StructuredOutput{{
+				Format: "json", SelectorFlag: "--json", Fields: []string{"number", "title"},
+			}},
+		}},
+	})
+	return compileRuntimeSurface(t, catalog, []tailoringbundle.CommandEntry{{
+		Command: path, Presence: tailoringbundle.PresenceInclude, Reason: "Return a reviewed compact result.", Options: &surface, Wrapper: &wrapper,
+	}})
+}
+
+func compileRuntimeSurface(t *testing.T, catalog sourcecatalog.Catalog, entries []tailoringbundle.CommandEntry) tailoringbundle.Bundle {
+	t.Helper()
+	catalog = sourcecatalog.Sort(catalog)
+	digest, err := catalog.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	specification := tailoringbundle.SortSpecification(tailoringbundle.Specification{
+		SchemaVersion: tailoringbundle.SpecificationSchemaVersion,
+		CatalogDigest: digest,
+		Surface:       tailoringbundle.Surface{Default: tailoringbundle.SurfaceDefaultExclude},
+		Commands:      entries,
+	})
+	bundle, err := tailoringbundle.Compile(catalog, specification)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bundle
+}
+
+func admittedSurfaceWrapper() tailoringbundle.Wrapper {
+	return tailoringbundle.Wrapper{
+		Kind:   tailoringbundle.WrapperTransform,
+		Before: []tailoringbundle.StageAction{},
+		Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--json=number,title"}},
+		Output: &tailoringbundle.Output{Input: "json", Select: []string{"number", "title"}, Rename: []tailoringbundle.Rename{}, Render: "compact_json"},
+		After:  []tailoringbundle.StageAction{},
+	}
+}
+
 func replaceAppendedArgs(t *testing.T, plan tailoringplan.Plan, args []string) tailoringplan.Plan {
 	t.Helper()
 	plan.Stages.Invoke.AppendedArgs = append([]string{}, args...)
@@ -170,6 +222,108 @@ func TestVerifyRuntimeRejectsUnmodeledArgv(t *testing.T) {
 		})
 	}
 }
+
+func TestVerifySurfaceAdmitsOneCompleteTransformSurface(t *testing.T) {
+	verifier := NewRuntimeVerifier()
+	for _, test := range []struct {
+		name    string
+		path    []string
+		options []sourcecatalog.Option
+		surface tailoringbundle.OptionSurface
+	}{
+		{
+			name: "exclude by default with one admitted option", path: []string{"pr", "list"},
+			options: []sourcecatalog.Option{{Name: "--json", TakesValue: true}, {Name: "--limit", TakesValue: true}},
+			surface: tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultExclude, Include: []string{"--limit"}, Exclude: []string{}},
+		},
+		{
+			name: "inherit only admitted options", path: []string{"issue", "list"},
+			options: []sourcecatalog.Option{{Name: "--json", TakesValue: true}, {Name: "--limit", TakesValue: true}, {Name: "--state", TakesValue: true}},
+			surface: tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultInherit, Include: []string{}, Exclude: []string{"--json"}},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			bundle := runtimeSurfaceBundle(t, test.path, test.options, test.surface, admittedSurfaceWrapper())
+			if err := verifier.VerifySurface(bundle); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestVerifySurfaceRejectsMixedIdentityAndPartialSurfaces(t *testing.T) {
+	baseOptions := []sourcecatalog.Option{{Name: "--json", TakesValue: true}, {Name: "--limit", TakesValue: true}}
+	baseSurface := tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultExclude, Include: []string{"--limit"}, Exclude: []string{}}
+
+	t.Run("mixed commands", func(t *testing.T) {
+		bundle := runtimeSurfaceBundle(t, []string{"pr", "list"}, baseOptions, baseSurface, admittedSurfaceWrapper())
+		catalog := bundle.Catalog
+		catalog.Commands = append(catalog.Commands, sourcecatalog.Command{
+			Path: []string{"issue", "list"}, Summary: "List issues", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin,
+			Options:          baseOptions,
+			StructuredOutput: []sourcecatalog.StructuredOutput{{Format: "json", SelectorFlag: "--json", Fields: []string{"number", "title"}}},
+		})
+		secondSurface := baseSurface
+		secondWrapper := admittedSurfaceWrapper()
+		bundle = compileRuntimeSurface(t, catalog, []tailoringbundle.CommandEntry{
+			{Command: []string{"issue", "list"}, Presence: tailoringbundle.PresenceInclude, Reason: "Needed.", Options: &secondSurface, Wrapper: &secondWrapper},
+			{Command: []string{"pr", "list"}, Presence: tailoringbundle.PresenceInclude, Reason: "Needed.", Options: &baseSurface, Wrapper: ptrWrapper(admittedSurfaceWrapper())},
+		})
+		assertRuntimeAdmission(t, VerifySurface(bundle), ErrRuntimeUnsupported, ErrRuntimeWrapperOutput)
+	})
+
+	tests := []struct {
+		name     string
+		path     []string
+		options  []sourcecatalog.Option
+		surface  tailoringbundle.OptionSurface
+		wrapper  tailoringbundle.Wrapper
+		legacy   error
+		category error
+	}{
+		{
+			name: "identity wrapper", path: []string{"pr", "list"}, options: baseOptions, surface: baseSurface,
+			wrapper: tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{}},
+			legacy:  ErrRuntimeUnsupported, category: ErrRuntimeWrapperOutput,
+		},
+		{
+			name: "unsupported command", path: []string{"release", "list"}, options: baseOptions, surface: baseSurface,
+			wrapper: admittedSurfaceWrapper(), legacy: ErrRuntimeUnsupported, category: ErrRuntimeCommand,
+		},
+		{
+			name: "exposed selector", path: []string{"pr", "list"}, options: baseOptions,
+			surface: tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultExclude, Include: []string{"--json"}, Exclude: []string{}},
+			wrapper: admittedSurfaceWrapper(), legacy: ErrRuntimeSelector, category: ErrRuntimeSelectorConflict,
+		},
+		{
+			name: "partially admitted option", path: []string{"pr", "list"},
+			options: []sourcecatalog.Option{{Name: "--json", TakesValue: true}, {Name: "--unknown", TakesValue: true}},
+			surface: tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultExclude, Include: []string{"--unknown"}, Exclude: []string{}},
+			wrapper: admittedSurfaceWrapper(), legacy: ErrRuntimeUnsupported, category: ErrRuntimeArgvGrammar,
+		},
+		{
+			name: "wrong option cardinality", path: []string{"pr", "list"},
+			options: []sourcecatalog.Option{{Name: "--json", TakesValue: true}, {Name: "--limit", TakesValue: false}},
+			surface: baseSurface, wrapper: admittedSurfaceWrapper(), legacy: ErrRuntimeUnsupported, category: ErrRuntimeArgvGrammar,
+		},
+		{
+			name: "missing fixed selector", path: []string{"pr", "list"}, options: baseOptions, surface: baseSurface,
+			wrapper: tailoringbundle.Wrapper{
+				Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--limit=1"}},
+				Output: &tailoringbundle.Output{Input: "json", Select: []string{"number", "title"}, Rename: []tailoringbundle.Rename{}, Render: "compact_json"}, After: []tailoringbundle.StageAction{},
+			},
+			legacy: ErrRuntimeSelector, category: ErrRuntimeSelectorConflict,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			bundle := runtimeSurfaceBundle(t, test.path, test.options, test.surface, test.wrapper)
+			assertRuntimeAdmission(t, VerifySurface(bundle), test.legacy, test.category)
+		})
+	}
+}
+
+func ptrWrapper(value tailoringbundle.Wrapper) *tailoringbundle.Wrapper { return &value }
 
 func assertRuntimeAdmission(t *testing.T, err, legacy, category error) {
 	t.Helper()

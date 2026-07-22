@@ -6,7 +6,9 @@ import (
 	"strings"
 
 	"github.com/tasuku43/atsura/internal/domain/runtimeadmission"
+	"github.com/tasuku43/atsura/internal/domain/sourcecatalog"
 	"github.com/tasuku43/atsura/internal/domain/tailoring"
+	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
 	"github.com/tasuku43/atsura/internal/domain/tailoringplan"
 )
 
@@ -74,6 +76,14 @@ func NewRuntimeVerifier() *RuntimeVerifier { return &RuntimeVerifier{} }
 // VerifyRuntime proves the same contract as the package function.
 func (*RuntimeVerifier) VerifyRuntime(plan tailoringplan.Plan) error { return VerifyRuntime(plan) }
 
+// VerifySurface proves that every command and option exposed by one compiled
+// surface belongs to this finite runtime contract. It is stricter than
+// VerifyRuntime because rendering one ordinary-command wrapper would otherwise
+// advertise invocations that the runtime can only reject later.
+func (*RuntimeVerifier) VerifySurface(bundle tailoringbundle.Bundle) error {
+	return VerifySurface(bundle)
+}
+
 // VerifyRuntime proves that a plan produced from inspection contract 2 asks a
 // supported GitHub CLI command for the exact selected JSON fields. It performs
 // no I/O and grants no source-operation permission.
@@ -81,15 +91,11 @@ func VerifyRuntime(plan tailoringplan.Plan) error {
 	if err := plan.Validate(); err != nil {
 		return admissionError(ErrRuntimeUnsupported, ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
 	}
-	if plan.Source.AdapterKind != AdapterKind || plan.Source.AdapterContractVersion != ContractVersion {
-		return admissionError(ErrRuntimeUnsupported, ErrRuntimeAdapterContract, runtimeadmission.CategoryAdapterContract)
-	}
-	version := sourceVersionPattern.FindStringSubmatch(plan.Source.Version)
-	if len(version) != 2 || version[1] != "2" {
-		return admissionError(ErrRuntimeUnsupported, ErrRuntimeSourceVersion, runtimeadmission.CategorySourceVersion)
+	if err := verifySourceContract(plan.Source.AdapterKind, plan.Source.AdapterContractVersion, plan.Source.Version); err != nil {
+		return err
 	}
 	path := strings.Join(plan.MatchedCommand, " ")
-	if path != "issue list" && path != "pr list" {
+	if _, ok := runtimeArgContracts[path]; !ok {
 		return admissionError(ErrRuntimeUnsupported, ErrRuntimeCommand, runtimeadmission.CategoryCommand)
 	}
 	output, present, err := plan.OutputPlan()
@@ -106,6 +112,103 @@ func VerifyRuntime(plan tailoringplan.Plan) error {
 		return admissionError(ErrRuntimeSelector, ErrRuntimeSelectorConflict, runtimeadmission.CategorySelectorConflict)
 	}
 	return nil
+}
+
+// VerifySurface proves that the complete included bundle surface can enter the
+// maintained transform runtime. The initial materialization contract exposes
+// exactly one transforming command; mixed, identity, or partially admitted
+// surfaces are rejected before wrapper bytes are produced.
+func VerifySurface(bundle tailoringbundle.Bundle) error {
+	if err := bundle.Validate(); err != nil {
+		return admissionError(ErrRuntimeUnsupported, ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
+	}
+	if err := verifySourceContract(bundle.Catalog.Adapter.Kind, bundle.Catalog.Adapter.ContractVersion, bundle.Catalog.Source.Version); err != nil {
+		return err
+	}
+	if len(bundle.Surface) != 1 {
+		return admissionError(ErrRuntimeUnsupported, ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
+	}
+	entry := bundle.Surface[0]
+	path := strings.Join(entry.Command, " ")
+	contract, ok := runtimeArgContracts[path]
+	if !ok {
+		return admissionError(ErrRuntimeUnsupported, ErrRuntimeCommand, runtimeadmission.CategoryCommand)
+	}
+	if entry.Wrapper.Kind != tailoringbundle.WrapperTransform || entry.Wrapper.Output == nil || entry.Wrapper.Output.Input != string(tailoring.InputJSON) {
+		return admissionError(ErrRuntimeUnsupported, ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
+	}
+	wantedSelector := "--json=" + strings.Join(entry.Wrapper.Output.Select, ",")
+	matches, err := verifyRuntimeArgs(path, entry.Wrapper.Invoke.AppendArgs, wantedSelector)
+	if err != nil {
+		return err
+	}
+	if matches != 1 {
+		return admissionError(ErrRuntimeSelector, ErrRuntimeSelectorConflict, runtimeadmission.CategorySelectorConflict)
+	}
+
+	command, found := catalogCommand(bundle.Catalog, entry.Command)
+	if !found {
+		return admissionError(ErrRuntimeUnsupported, ErrRuntimeCommand, runtimeadmission.CategoryCommand)
+	}
+	for _, option := range command.Options {
+		if !surfaceOptionIncluded(entry.Options, option.Name) {
+			continue
+		}
+		switch option.Name {
+		case "--json", "--jq", "--template", "--web":
+			return admissionError(ErrRuntimeSelector, ErrRuntimeSelectorConflict, runtimeadmission.CategorySelectorConflict)
+		}
+		if _, allowed := contract.values[option.Name]; allowed {
+			if !option.TakesValue {
+				return admissionError(ErrRuntimeUnsupported, ErrRuntimeArgvGrammar, runtimeadmission.CategoryArgvGrammar)
+			}
+			continue
+		}
+		if _, allowed := contract.booleans[option.Name]; allowed {
+			if option.TakesValue {
+				return admissionError(ErrRuntimeUnsupported, ErrRuntimeArgvGrammar, runtimeadmission.CategoryArgvGrammar)
+			}
+			continue
+		}
+		return admissionError(ErrRuntimeUnsupported, ErrRuntimeArgvGrammar, runtimeadmission.CategoryArgvGrammar)
+	}
+	return nil
+}
+
+func verifySourceContract(adapterKind string, adapterContract int, sourceVersion string) error {
+	if adapterKind != AdapterKind || adapterContract != ContractVersion {
+		return admissionError(ErrRuntimeUnsupported, ErrRuntimeAdapterContract, runtimeadmission.CategoryAdapterContract)
+	}
+	version := sourceVersionPattern.FindStringSubmatch(sourceVersion)
+	if len(version) != 2 || version[1] != "2" {
+		return admissionError(ErrRuntimeUnsupported, ErrRuntimeSourceVersion, runtimeadmission.CategorySourceVersion)
+	}
+	return nil
+}
+
+func catalogCommand(catalog sourcecatalog.Catalog, path []string) (sourcecatalog.Command, bool) {
+	wanted := strings.Join(path, "\x00")
+	for _, command := range catalog.Commands {
+		if strings.Join(command.Path, "\x00") == wanted {
+			return command, true
+		}
+	}
+	return sourcecatalog.Command{}, false
+}
+
+func surfaceOptionIncluded(surface tailoringbundle.OptionSurface, name string) bool {
+	values := surface.Include
+	wantPresent := true
+	if surface.Default == tailoringbundle.SurfaceDefaultInherit {
+		values = surface.Exclude
+		wantPresent = false
+	}
+	for _, value := range values {
+		if value == name {
+			return wantPresent
+		}
+	}
+	return surface.Default == tailoringbundle.SurfaceDefaultInherit
 }
 
 type runtimeArgContract struct {
