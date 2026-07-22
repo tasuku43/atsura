@@ -80,6 +80,53 @@ func TestListRuntimeSuccessForPullRequestsAndIssues(t *testing.T) {
 	}
 }
 
+func TestOrdinarySourceStreamFixturesRequireExactReviewedArgv(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		wantExit   int
+		wantStdout string
+		wantStderr string
+	}{
+		{
+			name: "identity",
+			args: []string{
+				"pr", "list",
+				"--search=space value;$(touch atsura-artifact-injection)",
+				"--label=first",
+				"--label=Unicode 雪",
+				"--repo=-dash",
+			},
+			wantExit: exitOK, wantStdout: identityStreamStdout, wantStderr: identityStreamStderr,
+		},
+		{
+			name: "append only",
+			args: []string{
+				"issue", "list",
+				"--search=append value",
+				"--label=one",
+				"--label=two",
+				"--limit=1",
+			},
+			wantExit: exitAppendOnly, wantStdout: appendOnlyStreamStdout, wantStderr: appendOnlyStreamStderr,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			exit, stdout, stderr := fixtureRun(test.args, map[string]string{modeEnvironment: modeSuccess})
+			if exit != test.wantExit || stdout != test.wantStdout || stderr != test.wantStderr {
+				t.Fatalf("exit=%d stdout=%x stderr=%x", exit, []byte(stdout), []byte(stderr))
+			}
+			changed := append([]string{}, test.args...)
+			changed[len(changed)-1] += "-changed"
+			exit, stdout, stderr = fixtureRun(changed, map[string]string{modeEnvironment: modeSuccess})
+			if exit != exitUsage || stdout != "" || !strings.Contains(stderr, "unsupported argv") {
+				t.Fatalf("changed argv accepted: exit=%d stdout=%x stderr=%q", exit, []byte(stdout), stderr)
+			}
+		})
+	}
+}
+
 func TestRuntimeFailureModesDoNotChangeProbeBehavior(t *testing.T) {
 	args := []string{"pr", "list", "--limit=1", "--json=number,title,state"}
 	tests := []struct {

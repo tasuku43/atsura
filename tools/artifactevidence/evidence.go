@@ -22,8 +22,18 @@ const (
 	wantedHelpContracts   = 8
 	wantedInspections     = 4
 	wantedRejections      = 8
-	wantedPOSIXAttempts   = 11
+	wantedPOSIXAttempts   = 13
 	wantedWindowsAttempts = 10
+	wantedPOSIXWrappers   = 3
+)
+
+const (
+	emptySHA256             = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+	transformedStdoutSHA256 = "277258cb99075f67f56acb96a0d7a340644442f0147385cbfef6634897437ade"
+	identityStdoutSHA256    = "211630ed346fee12b3e2c5135f3239dc7ce64e10eb149e8ef032bc04ff115b7b"
+	identityStderrSHA256    = "cfc159919dad8548c6e2ed887297e77aed35d6f2d20d42c08b29d7caa4f8faa0"
+	appendStdoutSHA256      = "162a8a6b49c40255d3d0d2e5ed86f5d4ca88b3963d8c667bd7b79e768bd26d29"
+	appendStderrSHA256      = "b8f249840842aad27390cfb637be1e2456a9d873ab1141d01d2cdccff1699c4a"
 )
 
 var releaseTagPattern = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$`)
@@ -66,27 +76,40 @@ type evidenceDocument struct {
 }
 
 type artifactJourneyEvidence struct {
-	Target                      string   `json:"target"`
-	ObservedHost                string   `json:"observed_host"`
-	ArchiveName                 string   `json:"archive_name"`
-	ArchiveSHA256               string   `json:"archive_sha256"`
-	Version                     string   `json:"version"`
-	Revision                    string   `json:"revision"`
-	HelpContractsVerified       int      `json:"help_contracts_verified"`
-	CommandsVerified            []string `json:"commands_verified"`
-	BundleDigest                string   `json:"bundle_digest"`
-	PlanDigest                  string   `json:"plan_digest"`
-	IssueBundleDigest           string   `json:"issue_bundle_digest"`
-	IssuePlanDigest             string   `json:"issue_plan_digest"`
-	WrapperOutcome              string   `json:"wrapper_outcome"`
-	WrapperSourceSHA256         string   `json:"wrapper_source_sha256"`
-	WrapperSourceAttempts       int      `json:"wrapper_source_process_attempts"`
-	SourceInspectionAttempts    int      `json:"source_inspection_attempts"`
-	ZeroAttemptRejections       int      `json:"zero_attempt_rejections"`
-	PostStartFaults             []string `json:"post_start_faults"`
-	FixtureAttempts             int      `json:"fixture_attempts"`
-	CredentialEnvironmentAbsent bool     `json:"credential_environment_absent"`
-	SecretCanariesAbsent        bool     `json:"secret_canaries_absent"`
+	Target                      string                `json:"target"`
+	ObservedHost                string                `json:"observed_host"`
+	ArchiveName                 string                `json:"archive_name"`
+	ArchiveSHA256               string                `json:"archive_sha256"`
+	Version                     string                `json:"version"`
+	Revision                    string                `json:"revision"`
+	HelpContractsVerified       int                   `json:"help_contracts_verified"`
+	CommandsVerified            []string              `json:"commands_verified"`
+	BundleDigest                string                `json:"bundle_digest"`
+	PlanDigest                  string                `json:"plan_digest"`
+	IssueBundleDigest           string                `json:"issue_bundle_digest"`
+	IssuePlanDigest             string                `json:"issue_plan_digest"`
+	WrapperOutcome              string                `json:"wrapper_outcome"`
+	WrapperCases                []wrapperCaseEvidence `json:"wrapper_cases"`
+	WrapperSourceAttempts       int                   `json:"wrapper_source_process_attempts"`
+	SourceInspectionAttempts    int                   `json:"source_inspection_attempts"`
+	ZeroAttemptRejections       int                   `json:"zero_attempt_rejections"`
+	PostStartFaults             []string              `json:"post_start_faults"`
+	FixtureAttempts             int                   `json:"fixture_attempts"`
+	CredentialEnvironmentAbsent bool                  `json:"credential_environment_absent"`
+	SecretCanariesAbsent        bool                  `json:"secret_canaries_absent"`
+}
+
+type wrapperCaseEvidence struct {
+	Name                  string `json:"name"`
+	WrapperKind           string `json:"wrapper_kind"`
+	ResultMode            string `json:"result_mode"`
+	BundleDigest          string `json:"bundle_digest"`
+	PlanDigest            string `json:"plan_digest"`
+	WrapperSourceSHA256   string `json:"wrapper_source_sha256"`
+	StdoutSHA256          string `json:"stdout_sha256"`
+	StderrSHA256          string `json:"stderr_sha256"`
+	SourceExitCode        int    `json:"source_exit_code"`
+	SourceProcessAttempts int    `json:"source_process_attempts"`
 }
 
 type aggregateDocument struct {
@@ -362,7 +385,7 @@ func requireJSONEOF(decoder *json.Decoder) error {
 
 func validateEvidence(document evidenceDocument, target, archiveName, version, revision string) error {
 	journey := document.ArtifactJourney
-	if document.SchemaVersion != 2 {
+	if document.SchemaVersion != 3 {
 		return fmt.Errorf("evidence schema version is invalid")
 	}
 	if journey.Target != target || journey.ObservedHost != target || journey.ArchiveName != archiveName || journey.Version != version || journey.Revision != revision {
@@ -379,11 +402,16 @@ func validateEvidence(document evidenceDocument, target, archiveName, version, r
 		return fmt.Errorf("evidence counters are invalid")
 	}
 	if target == "windows/amd64" {
-		if journey.WrapperOutcome != "platform_not_supported" || journey.WrapperSourceSHA256 != "" || journey.WrapperSourceAttempts != 0 || journey.FixtureAttempts != wantedWindowsAttempts {
+		if journey.WrapperOutcome != "platform_not_supported" || journey.WrapperCases == nil || len(journey.WrapperCases) != 0 || journey.WrapperSourceAttempts != 0 || journey.FixtureAttempts != wantedWindowsAttempts {
 			return fmt.Errorf("Windows wrapper evidence is invalid")
 		}
-	} else if journey.WrapperOutcome != "ordinary_command_verified" || !lowercaseHex(journey.WrapperSourceSHA256, digestLength) || journey.WrapperSourceAttempts != 1 || journey.FixtureAttempts != wantedPOSIXAttempts {
-		return fmt.Errorf("POSIX wrapper evidence is invalid")
+	} else {
+		if journey.WrapperOutcome != "ordinary_command_verified" || journey.WrapperSourceAttempts != wantedPOSIXWrappers || journey.FixtureAttempts != wantedPOSIXAttempts {
+			return fmt.Errorf("POSIX wrapper evidence is invalid")
+		}
+		if err := validateWrapperCases(journey.WrapperCases, journey.BundleDigest, journey.PlanDigest); err != nil {
+			return err
+		}
 	}
 	if !equalStrings(journey.PostStartFaults, wantedFaults) {
 		return fmt.Errorf("evidence fault sequence is invalid")
@@ -393,6 +421,51 @@ func validateEvidence(document evidenceDocument, target, archiveName, version, r
 	}
 	if !journey.CredentialEnvironmentAbsent || !journey.SecretCanariesAbsent {
 		return fmt.Errorf("evidence safety assertions are invalid")
+	}
+	return nil
+}
+
+func validateWrapperCases(cases []wrapperCaseEvidence, transformedBundleDigest, transformedPlanDigest string) error {
+	if len(cases) != wantedPOSIXWrappers {
+		return fmt.Errorf("POSIX wrapper case inventory is invalid")
+	}
+	if cases[0].BundleDigest != transformedBundleDigest || cases[0].PlanDigest != transformedPlanDigest {
+		return fmt.Errorf("POSIX transformed wrapper identity is invalid")
+	}
+	wanted := []struct {
+		name, kind, mode     string
+		stdoutSHA, stderrSHA string
+		exitCode             int
+	}{
+		{name: "transformed_json", kind: "transform", mode: "transformed_json", stdoutSHA: transformedStdoutSHA256, stderrSHA: emptySHA256, exitCode: 0},
+		{name: "identity", kind: "identity", mode: "source_stream_passthrough", stdoutSHA: identityStdoutSHA256, stderrSHA: identityStderrSHA256, exitCode: 0},
+		{name: "append_only", kind: "transform", mode: "source_stream_passthrough", stdoutSHA: appendStdoutSHA256, stderrSHA: appendStderrSHA256, exitCode: 23},
+	}
+	bundleDigests := make(map[string]struct{}, len(cases))
+	planDigests := make(map[string]struct{}, len(cases))
+	wrapperDigests := make(map[string]struct{}, len(cases))
+	for index, expected := range wanted {
+		actual := cases[index]
+		if actual.Name != expected.name || actual.WrapperKind != expected.kind || actual.ResultMode != expected.mode || actual.SourceExitCode != expected.exitCode || actual.SourceProcessAttempts != 1 ||
+			!lowercaseHex(actual.BundleDigest, digestLength) || !lowercaseHex(actual.PlanDigest, digestLength) || !lowercaseHex(actual.WrapperSourceSHA256, digestLength) ||
+			!lowercaseHex(actual.StdoutSHA256, digestLength) || !lowercaseHex(actual.StderrSHA256, digestLength) {
+			return fmt.Errorf("POSIX wrapper case %d is invalid", index)
+		}
+		if actual.StdoutSHA256 != expected.stdoutSHA || actual.StderrSHA256 != expected.stderrSHA {
+			return fmt.Errorf("POSIX wrapper case %d stream evidence is invalid", index)
+		}
+		if _, duplicate := bundleDigests[actual.BundleDigest]; duplicate {
+			return fmt.Errorf("POSIX wrapper bundle identity is duplicated")
+		}
+		if _, duplicate := planDigests[actual.PlanDigest]; duplicate {
+			return fmt.Errorf("POSIX wrapper plan identity is duplicated")
+		}
+		if _, duplicate := wrapperDigests[actual.WrapperSourceSHA256]; duplicate {
+			return fmt.Errorf("POSIX rendered wrapper identity is duplicated")
+		}
+		bundleDigests[actual.BundleDigest] = struct{}{}
+		planDigests[actual.PlanDigest] = struct{}{}
+		wrapperDigests[actual.WrapperSourceSHA256] = struct{}{}
 	}
 	return nil
 }

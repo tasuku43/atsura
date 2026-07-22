@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Replay the bounded transform journey against one exact native release archive.
+# Replay the bounded source and ordinary-wrapper journey against one exact
+# native release archive.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export GO111MODULE=on

@@ -211,7 +211,7 @@ func TestDecodeEvidenceRejectsUnknownDuplicateAndTrailingJSON(t *testing.T) {
 		unknown,
 		duplicate,
 		append(append([]byte{}, valid...), []byte(` {}`)...),
-		[]byte(`{"schema_version":2,"artifact_journey":`),
+		[]byte(`{"schema_version":3,"artifact_journey":`),
 	} {
 		if _, err := decodeEvidence(value); err == nil {
 			t.Fatalf("invalid JSON was accepted: %s", value)
@@ -226,7 +226,7 @@ func TestValidateEvidenceRejectsInvalidContracts(t *testing.T) {
 		name   string
 		mutate func(*evidenceDocument)
 	}{
-		{"schema", func(value *evidenceDocument) { value.SchemaVersion = 3 }},
+		{"schema", func(value *evidenceDocument) { value.SchemaVersion = 2 }},
 		{"target", func(value *evidenceDocument) { value.ArtifactJourney.Target = "linux/arm64" }},
 		{"observed host", func(value *evidenceDocument) { value.ArtifactJourney.ObservedHost = "linux/arm64" }},
 		{"archive name", func(value *evidenceDocument) { value.ArtifactJourney.ArchiveName = "other.tar.gz" }},
@@ -240,7 +240,30 @@ func TestValidateEvidenceRejectsInvalidContracts(t *testing.T) {
 		}},
 		{"issue plan digest", func(value *evidenceDocument) { value.ArtifactJourney.IssuePlanDigest = "abc" }},
 		{"wrapper outcome", func(value *evidenceDocument) { value.ArtifactJourney.WrapperOutcome = "other" }},
-		{"wrapper source digest", func(value *evidenceDocument) { value.ArtifactJourney.WrapperSourceSHA256 = "abc" }},
+		{"wrapper cases absent", func(value *evidenceDocument) { value.ArtifactJourney.WrapperCases = nil }},
+		{"wrapper case missing", func(value *evidenceDocument) {
+			value.ArtifactJourney.WrapperCases = value.ArtifactJourney.WrapperCases[:2]
+		}},
+		{"wrapper case order", func(value *evidenceDocument) {
+			value.ArtifactJourney.WrapperCases[0], value.ArtifactJourney.WrapperCases[1] = value.ArtifactJourney.WrapperCases[1], value.ArtifactJourney.WrapperCases[0]
+		}},
+		{"wrapper case name", func(value *evidenceDocument) { value.ArtifactJourney.WrapperCases[1].Name = "other" }},
+		{"wrapper case kind", func(value *evidenceDocument) { value.ArtifactJourney.WrapperCases[1].WrapperKind = "transform" }},
+		{"wrapper case mode", func(value *evidenceDocument) { value.ArtifactJourney.WrapperCases[2].ResultMode = "transformed_json" }},
+		{"wrapper bundle digest", func(value *evidenceDocument) { value.ArtifactJourney.WrapperCases[0].BundleDigest = "abc" }},
+		{"wrapper plan digest", func(value *evidenceDocument) { value.ArtifactJourney.WrapperCases[0].PlanDigest = "abc" }},
+		{"wrapper source digest", func(value *evidenceDocument) { value.ArtifactJourney.WrapperCases[0].WrapperSourceSHA256 = "abc" }},
+		{"wrapper stdout digest", func(value *evidenceDocument) {
+			value.ArtifactJourney.WrapperCases[1].StdoutSHA256 = strings.Repeat("f", digestLength)
+		}},
+		{"transformed wrapper stdout digest", func(value *evidenceDocument) {
+			value.ArtifactJourney.WrapperCases[0].StdoutSHA256 = strings.Repeat("f", digestLength)
+		}},
+		{"wrapper stderr digest", func(value *evidenceDocument) {
+			value.ArtifactJourney.WrapperCases[2].StderrSHA256 = strings.Repeat("f", digestLength)
+		}},
+		{"wrapper source status", func(value *evidenceDocument) { value.ArtifactJourney.WrapperCases[2].SourceExitCode = 0 }},
+		{"wrapper case attempts", func(value *evidenceDocument) { value.ArtifactJourney.WrapperCases[0].SourceProcessAttempts++ }},
 		{"wrapper source attempts", func(value *evidenceDocument) { value.ArtifactJourney.WrapperSourceAttempts++ }},
 		{"help count", func(value *evidenceDocument) { value.ArtifactJourney.HelpContractsVerified-- }},
 		{"inspection count", func(value *evidenceDocument) { value.ArtifactJourney.SourceInspectionAttempts-- }},
@@ -263,6 +286,31 @@ func TestValidateEvidenceRejectsInvalidContracts(t *testing.T) {
 				t.Fatal("invalid evidence was accepted")
 			}
 		})
+	}
+}
+
+func TestValidateEvidenceRequiresStructuredUnsupportedWindowsWrapperCases(t *testing.T) {
+	contract := targetContracts[len(targetContracts)-1]
+	archiveName := contract.archiveName(testTag)
+	base := validEvidence(contract.target, archiveName, strings.Repeat("0", digestLength))
+	if err := validateEvidence(base, contract.target, archiveName, testVersion, testRevision); err != nil {
+		t.Fatal(err)
+	}
+	mutations := []func(*evidenceDocument){
+		func(value *evidenceDocument) { value.ArtifactJourney.WrapperCases = nil },
+		func(value *evidenceDocument) {
+			value.ArtifactJourney.WrapperCases = []wrapperCaseEvidence{{Name: "identity"}}
+		},
+		func(value *evidenceDocument) { value.ArtifactJourney.WrapperOutcome = "ordinary_command_verified" },
+		func(value *evidenceDocument) { value.ArtifactJourney.WrapperSourceAttempts = 1 },
+		func(value *evidenceDocument) { value.ArtifactJourney.FixtureAttempts = wantedPOSIXAttempts },
+	}
+	for index, mutate := range mutations {
+		value := cloneEvidence(t, base)
+		mutate(&value)
+		if err := validateEvidence(value, contract.target, archiveName, testVersion, testRevision); err == nil {
+			t.Fatalf("invalid Windows wrapper evidence %d was accepted", index)
+		}
 	}
 }
 
@@ -298,7 +346,7 @@ func writeValidEvidenceSet(t *testing.T, directory, archives string) []string {
 
 func validEvidence(target, archiveName, archiveDigest string) evidenceDocument {
 	result := evidenceDocument{
-		SchemaVersion: 2,
+		SchemaVersion: 3,
 		ArtifactJourney: artifactJourneyEvidence{
 			Target: target, ObservedHost: target, ArchiveName: archiveName, ArchiveSHA256: archiveDigest,
 			Version: testVersion, Revision: testRevision,
@@ -313,13 +361,32 @@ func validEvidence(target, archiveName, archiveDigest string) evidenceDocument {
 	}
 	if target == "windows/amd64" {
 		result.ArtifactJourney.WrapperOutcome = "platform_not_supported"
-		result.ArtifactJourney.WrapperSourceSHA256 = ""
+		result.ArtifactJourney.WrapperCases = []wrapperCaseEvidence{}
 		result.ArtifactJourney.WrapperSourceAttempts = 0
 		result.ArtifactJourney.FixtureAttempts = wantedWindowsAttempts
 	} else {
 		result.ArtifactJourney.WrapperOutcome = "ordinary_command_verified"
-		result.ArtifactJourney.WrapperSourceSHA256 = strings.Repeat("e", digestLength)
-		result.ArtifactJourney.WrapperSourceAttempts = 1
+		result.ArtifactJourney.WrapperCases = []wrapperCaseEvidence{
+			{
+				Name: "transformed_json", WrapperKind: "transform", ResultMode: "transformed_json",
+				BundleDigest: strings.Repeat("a", digestLength), PlanDigest: strings.Repeat("b", digestLength),
+				WrapperSourceSHA256: strings.Repeat("e", digestLength), StdoutSHA256: transformedStdoutSHA256, StderrSHA256: emptySHA256,
+				SourceExitCode: 0, SourceProcessAttempts: 1,
+			},
+			{
+				Name: "identity", WrapperKind: "identity", ResultMode: "source_stream_passthrough",
+				BundleDigest: strings.Repeat("2", digestLength), PlanDigest: strings.Repeat("3", digestLength),
+				WrapperSourceSHA256: strings.Repeat("4", digestLength), StdoutSHA256: identityStdoutSHA256, StderrSHA256: identityStderrSHA256,
+				SourceExitCode: 0, SourceProcessAttempts: 1,
+			},
+			{
+				Name: "append_only", WrapperKind: "transform", ResultMode: "source_stream_passthrough",
+				BundleDigest: strings.Repeat("5", digestLength), PlanDigest: strings.Repeat("6", digestLength),
+				WrapperSourceSHA256: strings.Repeat("7", digestLength), StdoutSHA256: appendStdoutSHA256, StderrSHA256: appendStderrSHA256,
+				SourceExitCode: 23, SourceProcessAttempts: 1,
+			},
+		}
+		result.ArtifactJourney.WrapperSourceAttempts = wantedPOSIXWrappers
 		result.ArtifactJourney.FixtureAttempts = wantedPOSIXAttempts
 	}
 	return result

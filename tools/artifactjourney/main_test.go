@@ -88,6 +88,79 @@ commands:
 	}
 }
 
+func TestTransformSourceStreamDraftProducesExactIdentityAndAppendOnlyCases(t *testing.T) {
+	draft := func(command string) []byte {
+		return []byte(`schema_version: 3
+catalog_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+surface:
+    default: exclude
+commands:
+    - command:
+        - ` + command + `
+        - list
+      presence: include
+      reason: Include this verified command without transformation.
+      options:
+        default: inherit
+        include: []
+        exclude: []
+      wrapper:
+        kind: identity
+        before: []
+        invoke:
+            append_args: []
+        after: []
+`)
+	}
+	tests := []struct {
+		name      string
+		command   []string
+		required  []string
+		forbidden []string
+	}{
+		{
+			name: "identity", command: []string{"pr", "list"},
+			required:  []string{"kind: identity", "append_args: []", "include: [--label, --repo, --search]"},
+			forbidden: []string{"output:", "--limit=1"},
+		},
+		{
+			name: "append_only", command: []string{"issue", "list"},
+			required:  []string{"kind: transform", `append_args: ["--limit=1"]`, "include: [--label, --search]"},
+			forbidden: []string{"output:"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := transformSourceStreamDraft(draft(test.command[0]), test.name, test.command)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, required := range test.required {
+				if !bytes.Contains(result, []byte(required)) {
+					t.Fatalf("source-stream draft missing %q:\n%s", required, result)
+				}
+			}
+			for _, forbidden := range test.forbidden {
+				if bytes.Contains(result, []byte(forbidden)) {
+					t.Fatalf("source-stream draft contains %q:\n%s", forbidden, result)
+				}
+			}
+		})
+	}
+	for _, invalid := range []struct {
+		name    string
+		command []string
+	}{
+		{name: "identity", command: []string{"issue", "list"}},
+		{name: "append_only", command: []string{"pr", "list"}},
+		{name: "unknown", command: []string{"pr", "list"}},
+	} {
+		if _, err := transformSourceStreamDraft(draft(invalid.command[0]), invalid.name, invalid.command); err == nil {
+			t.Fatalf("invalid source-stream case succeeded: %+v", invalid)
+		}
+	}
+}
+
 func TestExtractReleaseArchiveAcceptsExactTarAndZIPMembers(t *testing.T) {
 	for _, format := range []string{"tar", "zip"} {
 		t.Run(format, func(t *testing.T) {
@@ -179,8 +252,7 @@ func TestAttemptsFaultsAndCanariesAreStrict(t *testing.T) {
 		t.Fatal("invalid JSONL was accepted")
 	}
 
-	var sequence bytes.Buffer
-	for _, record := range []fixtureAttemptRecord{
+	baseRecords := []fixtureAttemptRecord{
 		{SchemaVersion: 1, Kind: "probe", Mode: "success", Argv: []string{"version"}},
 		{SchemaVersion: 1, Kind: "probe", Mode: "success", Argv: []string{"help", "reference"}},
 		{SchemaVersion: 1, Kind: "probe", Mode: "success", Argv: []string{"issue", "list", "--help"}},
@@ -191,25 +263,43 @@ func TestAttemptsFaultsAndCanariesAreStrict(t *testing.T) {
 		{SchemaVersion: 1, Kind: "runtime", Mode: "missing_field", Argv: []string{"pr", "list", "--limit=1", "--json=number,title,state"}},
 		{SchemaVersion: 1, Kind: "runtime", Mode: "success", Argv: []string{"pr", "list", "--limit=1", "--json=number,title,state"}},
 		{SchemaVersion: 1, Kind: "runtime", Mode: "success", Argv: []string{"issue", "list", "--limit=1", "--json=number,title,state"}},
-		{SchemaVersion: 1, Kind: "runtime", Mode: "success", Argv: []string{"pr", "list", "--limit=1", "--json=number,title,state"}},
-	} {
-		if err := json.NewEncoder(&sequence).Encode(record); err != nil {
-			t.Fatal(err)
-		}
 	}
-	if err := validateAttemptSequence(sequence.Bytes(), "linux"); err != nil {
+	wrapperRecords := []fixtureAttemptRecord{
+		{SchemaVersion: 1, Kind: "runtime", Mode: "success", Argv: []string{"pr", "list", "--limit=1", "--json=number,title,state"}},
+		{SchemaVersion: 1, Kind: "runtime", Mode: "success", Argv: []string{
+			"pr", "list", "--search=space value;$(touch atsura-artifact-injection)", "--label=first", "--label=Unicode 雪", "--repo=-dash",
+		}},
+		{SchemaVersion: 1, Kind: "runtime", Mode: "success", Argv: []string{
+			"issue", "list", "--search=append value", "--label=one", "--label=two", "--limit=1",
+		}},
+	}
+	posixRecords := append(append([]fixtureAttemptRecord{}, baseRecords...), wrapperRecords...)
+	encodeRecords := func(records []fixtureAttemptRecord) []byte {
+		var sequence bytes.Buffer
+		for _, record := range records {
+			if err := json.NewEncoder(&sequence).Encode(record); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return sequence.Bytes()
+	}
+	sequence := encodeRecords(posixRecords)
+	windowsSequence := encodeRecords(baseRecords)
+	if err := validateAttemptSequence(sequence, "linux"); err != nil {
 		t.Fatal(err)
 	}
-	windowsSequence := bytes.TrimSuffix(sequence.Bytes(), []byte(`{"schema_version":1,"kind":"runtime","mode":"success","argv":["pr","list","--limit=1","--json=number,title,state"]}`+"\n"))
 	if err := validateAttemptSequence(windowsSequence, "windows"); err != nil {
 		t.Fatal(err)
 	}
-	changed := bytes.Replace(sequence.Bytes(), []byte(`"mode":"stderr"`), []byte(`"mode":"success"`), 1)
+	changed := bytes.Replace(sequence, []byte(`"mode":"stderr"`), []byte(`"mode":"success"`), 1)
 	if err := validateAttemptSequence(changed, "linux"); err == nil {
 		t.Fatal("changed attempt sequence was accepted")
 	}
 	if err := validateAttemptSequence(windowsSequence, "plan9"); err == nil {
 		t.Fatal("unsupported attempt platform was accepted")
+	}
+	if !bytes.Contains(sequence, []byte("atsura-artifact-injection")) {
+		t.Fatal("hostile argv evidence is missing")
 	}
 
 	declaration := helpFaultDeclaration{Code: "source_command_failed", Kind: "rejected", Retryable: false, NextActions: []helpNextAction{{Command: "help bundle execute", Reason: "Inspect independently."}}}
@@ -417,6 +507,45 @@ func TestSelectedOutputRequiresOnlyRenamedFields(t *testing.T) {
 		if err := validateSelectedOutput(value, test.command); err == nil {
 			t.Fatal("unselected field was accepted")
 		}
+	}
+}
+
+func TestWrapperResultDigestsMatchOrderedEvidenceContract(t *testing.T) {
+	tests := []struct {
+		name       string
+		stdout     []byte
+		stderr     []byte
+		stdoutHash string
+		stderrHash string
+	}{
+		{
+			name:   "transformed_json",
+			stdout: []byte("[{\"id\":101,\"title\":\"Review policy\",\"state\":\"OPEN\"}]\n"), stderr: []byte{},
+			stdoutHash: "277258cb99075f67f56acb96a0d7a340644442f0147385cbfef6634897437ade",
+			stderrHash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+		},
+		{
+			name:   "identity",
+			stdout: []byte{'I', 'D', ':', 0x00, 0xff, '\n'}, stderr: []byte{'I', 'D', 'E', 'R', 'R', ':', 0xfe},
+			stdoutHash: "211630ed346fee12b3e2c5135f3239dc7ce64e10eb149e8ef032bc04ff115b7b",
+			stderrHash: "cfc159919dad8548c6e2ed887297e77aed35d6f2d20d42c08b29d7caa4f8faa0",
+		},
+		{
+			name:   "append_only",
+			stdout: []byte{'A', 'P', 'P', ':', 0xff, 0x00}, stderr: []byte("APPERR:\n"),
+			stdoutHash: "162a8a6b49c40255d3d0d2e5ed86f5d4ca88b3963d8c667bd7b79e768bd26d29",
+			stderrHash: "b8f249840842aad27390cfb637be1e2456a9d873ab1141d01d2cdccff1699c4a",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := digestBytes(test.stdout); got != test.stdoutHash {
+				t.Fatalf("stdout digest=%s want=%s", got, test.stdoutHash)
+			}
+			if got := digestBytes(test.stderr); got != test.stderrHash {
+				t.Fatalf("stderr digest=%s want=%s", got, test.stderrHash)
+			}
+		})
 	}
 }
 

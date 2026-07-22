@@ -25,6 +25,7 @@ const (
 	maxCommandOutputBytes = 4 * 1024 * 1024
 	maxEvidenceBytes      = 8 * 1024
 	maxAttemptLogBytes    = 1024 * 1024
+	maxSourceStderrBytes  = 256 * 1024
 	commandTimeout        = 40 * time.Second
 	fixtureAttemptEnv     = "ATSURA_SOURCE_FIXTURE_ATTEMPT_LOG"
 	fixtureModeEnv        = "ATSURA_SOURCE_FIXTURE_MODE"
@@ -42,27 +43,42 @@ type evidenceDocument struct {
 }
 
 type artifactJourneyEvidence struct {
-	Target                      string   `json:"target"`
-	ObservedHost                string   `json:"observed_host"`
-	ArchiveName                 string   `json:"archive_name"`
-	ArchiveSHA256               string   `json:"archive_sha256"`
-	Version                     string   `json:"version"`
-	Revision                    string   `json:"revision"`
-	HelpContractsVerified       int      `json:"help_contracts_verified"`
-	BundleDigest                string   `json:"bundle_digest"`
-	PlanDigest                  string   `json:"plan_digest"`
-	IssueBundleDigest           string   `json:"issue_bundle_digest"`
-	IssuePlanDigest             string   `json:"issue_plan_digest"`
-	WrapperOutcome              string   `json:"wrapper_outcome"`
-	WrapperSourceSHA256         string   `json:"wrapper_source_sha256"`
-	WrapperSourceAttempts       int      `json:"wrapper_source_process_attempts"`
-	CommandsVerified            []string `json:"commands_verified"`
-	SourceInspectionAttempts    int      `json:"source_inspection_attempts"`
-	ZeroAttemptRejections       int      `json:"zero_attempt_rejections"`
-	PostStartFaults             []string `json:"post_start_faults"`
-	FixtureAttempts             int      `json:"fixture_attempts"`
-	CredentialEnvironmentAbsent bool     `json:"credential_environment_absent"`
-	SecretCanariesAbsent        bool     `json:"secret_canaries_absent"`
+	Target                      string                `json:"target"`
+	ObservedHost                string                `json:"observed_host"`
+	ArchiveName                 string                `json:"archive_name"`
+	ArchiveSHA256               string                `json:"archive_sha256"`
+	Version                     string                `json:"version"`
+	Revision                    string                `json:"revision"`
+	HelpContractsVerified       int                   `json:"help_contracts_verified"`
+	BundleDigest                string                `json:"bundle_digest"`
+	PlanDigest                  string                `json:"plan_digest"`
+	IssueBundleDigest           string                `json:"issue_bundle_digest"`
+	IssuePlanDigest             string                `json:"issue_plan_digest"`
+	WrapperOutcome              string                `json:"wrapper_outcome"`
+	WrapperCases                []wrapperCaseEvidence `json:"wrapper_cases"`
+	WrapperSourceAttempts       int                   `json:"wrapper_source_process_attempts"`
+	CommandsVerified            []string              `json:"commands_verified"`
+	SourceInspectionAttempts    int                   `json:"source_inspection_attempts"`
+	ZeroAttemptRejections       int                   `json:"zero_attempt_rejections"`
+	PostStartFaults             []string              `json:"post_start_faults"`
+	FixtureAttempts             int                   `json:"fixture_attempts"`
+	CredentialEnvironmentAbsent bool                  `json:"credential_environment_absent"`
+	SecretCanariesAbsent        bool                  `json:"secret_canaries_absent"`
+}
+
+// wrapperCaseEvidence retains only identities, digests, conventional status,
+// and attempt counts. Source bytes remain confined to the native replay.
+type wrapperCaseEvidence struct {
+	Name                  string `json:"name"`
+	WrapperKind           string `json:"wrapper_kind"`
+	ResultMode            string `json:"result_mode"`
+	BundleDigest          string `json:"bundle_digest"`
+	PlanDigest            string `json:"plan_digest"`
+	WrapperSourceSHA256   string `json:"wrapper_source_sha256"`
+	StdoutSHA256          string `json:"stdout_sha256"`
+	StderrSHA256          string `json:"stderr_sha256"`
+	SourceExitCode        int    `json:"source_exit_code"`
+	SourceProcessAttempts int    `json:"source_process_attempts"`
 }
 
 type commandOutcome struct {
@@ -271,7 +287,55 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 		return evidenceDocument{}, fmt.Errorf("command-specific bundle or plan identity was not distinct")
 	}
 
-	wrapperEvidence, err := verifyPackagedWrapper(ctx, runner, helpEvidence, configuration.goos, executablePath, prJourney, attemptLog, wantedAttempts, workRoot)
+	wrapperInputs := []packagedWrapperInput{{
+		name: "transformed_json", journey: prJourney,
+		callerArgs: []string{"pr", "list", "--limit=1"},
+		wantStdout: []byte("[{\"id\":101,\"title\":\"Review policy\",\"state\":\"OPEN\"}]\n"),
+		wantStderr: []byte{}, wantExitCode: 0,
+	}}
+	if configuration.goos == "linux" || configuration.goos == "darwin" {
+		identityArgs := []string{
+			"pr", "list",
+			"--search=space value;$(touch atsura-artifact-injection)",
+			"--label=first",
+			"--label=Unicode 雪",
+			"--repo=-dash",
+		}
+		identityJourney, prepareErr := prepareSourceStreamJourney(
+			ctx, runner, workRoot, catalogPath, inspectionPayload.CatalogDigest,
+			trustPath, attemptLog, wantedAttempts, "identity", []string{"pr", "list"}, identityArgs,
+		)
+		if prepareErr != nil {
+			return evidenceDocument{}, fmt.Errorf("identity wrapper journey preparation failed: %w", prepareErr)
+		}
+		appendArgs := []string{
+			"issue", "list",
+			"--search=append value",
+			"--label=one",
+			"--label=two",
+		}
+		appendJourney, prepareErr := prepareSourceStreamJourney(
+			ctx, runner, workRoot, catalogPath, inspectionPayload.CatalogDigest,
+			trustPath, attemptLog, wantedAttempts, "append_only", []string{"issue", "list"}, appendArgs,
+		)
+		if prepareErr != nil {
+			return evidenceDocument{}, fmt.Errorf("append-only wrapper journey preparation failed: %w", prepareErr)
+		}
+		wrapperInputs = append(wrapperInputs,
+			packagedWrapperInput{
+				name: "identity", journey: identityJourney, callerArgs: identityArgs,
+				wantStdout: []byte{'I', 'D', ':', 0x00, 0xff, '\n'},
+				wantStderr: []byte{'I', 'D', 'E', 'R', 'R', ':', 0xfe}, wantExitCode: 0,
+			},
+			packagedWrapperInput{
+				name: "append_only", journey: appendJourney, callerArgs: appendArgs,
+				wantStdout: []byte{'A', 'P', 'P', ':', 0xff, 0x00},
+				wantStderr: []byte("APPERR:\n"), wantExitCode: 23,
+			},
+		)
+	}
+
+	wrapperEvidence, err := verifyPackagedWrappers(ctx, runner, helpEvidence, configuration.goos, executablePath, wrapperInputs, attemptLog, wantedAttempts, workRoot)
 	if err != nil {
 		return evidenceDocument{}, err
 	}
@@ -298,13 +362,13 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 		return evidenceDocument{}, fmt.Errorf("fixture attempt sequence is invalid")
 	}
 
-	return evidenceDocument{SchemaVersion: 2, ArtifactJourney: artifactJourneyEvidence{
+	return evidenceDocument{SchemaVersion: 3, ArtifactJourney: artifactJourneyEvidence{
 		Target: configuration.goos + "/" + configuration.goarch, ObservedHost: runtime.GOOS + "/" + runtime.GOARCH,
 		ArchiveName: filepath.Base(archivePath), ArchiveSHA256: digest,
 		Version: strings.TrimPrefix(configuration.tag, "v"), Revision: configuration.revision, HelpContractsVerified: len(helpEvidence.outputs),
 		BundleDigest: prJourney.bundleDigest, PlanDigest: prJourney.planDigest,
 		IssueBundleDigest: issueJourney.bundleDigest, IssuePlanDigest: issueJourney.planDigest,
-		WrapperOutcome: wrapperEvidence.outcome, WrapperSourceSHA256: wrapperEvidence.sourceSHA256,
+		WrapperOutcome: wrapperEvidence.outcome, WrapperCases: wrapperEvidence.cases,
 		WrapperSourceAttempts:    wrapperEvidence.sourceProcessAttempts,
 		CommandsVerified:         []string{"issue list", "pr list"},
 		SourceInspectionAttempts: 4, ZeroAttemptRejections: zeroAttemptRejections,
@@ -316,6 +380,8 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 type preparedCommandJourney struct {
 	bundleDigest          string
 	planDigest            string
+	wrapperKind           string
+	resultMode            string
 	baseInvocation        []string
 	zeroAttemptRejections int
 	boundaries            [][]byte
@@ -323,10 +389,19 @@ type preparedCommandJourney struct {
 
 type packagedWrapperEvidence struct {
 	outcome               string
-	sourceSHA256          string
+	cases                 []wrapperCaseEvidence
 	sourceProcessAttempts int
 	zeroAttemptRejections int
 	boundaries            [][]byte
+}
+
+type packagedWrapperInput struct {
+	name         string
+	journey      preparedCommandJourney
+	callerArgs   []string
+	wantStdout   []byte
+	wantStderr   []byte
+	wantExitCode int
 }
 
 type wrapperRenderDocument struct {
@@ -352,23 +427,29 @@ type wrapperRenderDocument struct {
 	} `json:"wrapper"`
 }
 
-func verifyPackagedWrapper(
+func verifyPackagedWrappers(
 	ctx context.Context,
 	runner journeyRunner,
 	help packagedHelpEvidence,
 	goos, executablePath string,
-	journey preparedCommandJourney,
+	inputs []packagedWrapperInput,
 	attemptLog string,
 	existingAttempts int,
 	workRoot string,
 ) (packagedWrapperEvidence, error) {
+	if len(inputs) == 0 || inputs[0].name != "transformed_json" {
+		return packagedWrapperEvidence{}, fmt.Errorf("wrapper case inventory is invalid")
+	}
 	if goos == "windows" {
+		if len(inputs) != 1 {
+			return packagedWrapperEvidence{}, fmt.Errorf("Windows wrapper case inventory is invalid")
+		}
 		declaration, err := help.fault("wrapper render", "wrapper_platform_not_supported")
 		if err != nil || declaration.Kind != "unsupported" || declaration.Retryable {
 			return packagedWrapperEvidence{}, fmt.Errorf("wrapper platform help contract is invalid")
 		}
 		failure, err := runner.failure(ctx, "success", 12, declaration,
-			"--error-format=json", "wrapper", "render", "--bundle", journey.bundlePath(), "--format", "json")
+			"--error-format=json", "wrapper", "render", "--bundle", inputs[0].journey.bundlePath(), "--format", "json")
 		if err != nil {
 			return packagedWrapperEvidence{}, fmt.Errorf("unsupported wrapper platform evidence is invalid")
 		}
@@ -376,84 +457,105 @@ func verifyPackagedWrapper(
 			return packagedWrapperEvidence{}, fmt.Errorf("unsupported wrapper platform started the source fixture")
 		}
 		return packagedWrapperEvidence{
-			outcome: "platform_not_supported", zeroAttemptRejections: 1,
+			outcome: "platform_not_supported", cases: []wrapperCaseEvidence{}, zeroAttemptRejections: 1,
 			boundaries: [][]byte{failure.stdout, failure.stderr},
 		}, nil
 	}
 	if goos != "linux" && goos != "darwin" {
 		return packagedWrapperEvidence{}, fmt.Errorf("wrapper journey target is unsupported")
 	}
-
-	jsonRender, err := runner.success(ctx, "success", "wrapper", "render", "--bundle", journey.bundlePath(), "--format", "json")
-	if err != nil {
-		return packagedWrapperEvidence{}, fmt.Errorf("wrapper JSON rendering failed")
+	if len(inputs) != 3 || inputs[1].name != "identity" || inputs[2].name != "append_only" {
+		return packagedWrapperEvidence{}, fmt.Errorf("POSIX wrapper case inventory is invalid")
 	}
-	document, err := decodeWrapperRender(jsonRender.stdout)
-	if err != nil {
-		return packagedWrapperEvidence{}, fmt.Errorf("wrapper JSON evidence is invalid")
-	}
-	textRender, err := runner.success(ctx, "success", "wrapper", "render", "--bundle", journey.bundlePath())
-	if err != nil {
-		return packagedWrapperEvidence{}, fmt.Errorf("wrapper text rendering failed")
-	}
-	if string(textRender.stdout) != document.Wrapper.Source {
-		return packagedWrapperEvidence{}, fmt.Errorf("wrapper text and JSON source differ")
-	}
-	sourceDigest := fmt.Sprintf("%x", sha256.Sum256(textRender.stdout))
 	runtimeDigest, runtimeSize, err := regularFileIdentity(executablePath)
 	if err != nil {
 		return packagedWrapperEvidence{}, fmt.Errorf("packaged runtime identity is unreadable")
 	}
-	if err := validateWrapperRenderEvidence(document, journey, executablePath, runtimeDigest, runtimeSize, sourceDigest); err != nil {
-		return packagedWrapperEvidence{}, fmt.Errorf("wrapper render binding evidence is invalid: %w", err)
-	}
-	if err := requireAttempts(attemptLog, existingAttempts); err != nil {
-		return packagedWrapperEvidence{}, fmt.Errorf("wrapper rendering started the source fixture")
-	}
 
-	declaration, err := help.fault("wrapper run", "bundle_binding_mismatch")
-	if err != nil || declaration.Kind != "rejected" || declaration.Retryable {
-		return packagedWrapperEvidence{}, fmt.Errorf("wrapper binding help contract is invalid")
+	result := packagedWrapperEvidence{
+		outcome: "ordinary_command_verified", cases: make([]wrapperCaseEvidence, 0, len(inputs)),
+		zeroAttemptRejections: 1, boundaries: make([][]byte, 0, len(inputs)*6),
 	}
-	badDigest := differentDigest(document.Wrapper.Bundle.Digest)
-	rejected, err := runner.failure(ctx, "success", 10, declaration,
-		"--error-format=json", "wrapper", "run",
-		"--contract-version=1",
-		"--bundle="+document.Wrapper.Bundle.Locator,
-		"--bundle-digest="+badDigest,
-		"--runtime-path="+document.Wrapper.Runtime.ResolvedPath,
-		"--runtime-sha256="+document.Wrapper.Runtime.SHA256,
-		fmt.Sprintf("--runtime-size=%d", document.Wrapper.Runtime.Size),
-		"--", "pr", "list", "--limit=1",
-	)
-	if err != nil {
-		return packagedWrapperEvidence{}, fmt.Errorf("wrapper binding rejection evidence is invalid")
-	}
-	if err := requireAttempts(attemptLog, existingAttempts); err != nil {
-		return packagedWrapperEvidence{}, fmt.Errorf("wrapper binding rejection started the source fixture")
-	}
+	for index, input := range inputs {
+		if input.journey.wrapperKind == "" || input.journey.resultMode == "" || input.callerArgs == nil || input.wantStdout == nil || input.wantStderr == nil || input.wantExitCode < 0 {
+			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d is incomplete", index)
+		}
+		result.boundaries = append(result.boundaries, input.journey.boundaries...)
+		jsonRender, renderErr := runner.success(ctx, "success", "wrapper", "render", "--bundle", input.journey.bundlePath(), "--format", "json")
+		if renderErr != nil {
+			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d JSON rendering failed", index)
+		}
+		document, decodeErr := decodeWrapperRender(jsonRender.stdout)
+		if decodeErr != nil {
+			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d JSON evidence is invalid", index)
+		}
+		textRender, renderErr := runner.success(ctx, "success", "wrapper", "render", "--bundle", input.journey.bundlePath())
+		if renderErr != nil {
+			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d text rendering failed", index)
+		}
+		if string(textRender.stdout) != document.Wrapper.Source {
+			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d text and JSON source differ", index)
+		}
+		sourceDigest := digestBytes(textRender.stdout)
+		if err := validateWrapperRenderEvidence(document, input.journey, executablePath, runtimeDigest, runtimeSize, sourceDigest); err != nil {
+			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d render binding evidence is invalid: %w", index, err)
+		}
+		if err := requireAttempts(attemptLog, existingAttempts+index); err != nil {
+			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d rendering started the source fixture", index)
+		}
+		result.boundaries = append(result.boundaries, jsonRender.stdout, textRender.stdout)
 
-	wrapperPath := filepath.Join(workRoot, "caller-owned-wrapper.sh")
-	if err := writePrivate(wrapperPath, textRender.stdout); err != nil {
-		return packagedWrapperEvidence{}, fmt.Errorf("caller-owned wrapper fixture write failed")
-	}
-	invocation, err := runPOSIXCaller(ctx, runner, wrapperPath)
-	if err != nil {
-		return packagedWrapperEvidence{}, fmt.Errorf("caller-owned wrapper invocation failed")
-	}
-	wantedOutput := []byte("[{\"id\":101,\"title\":\"Review policy\",\"state\":\"OPEN\"}]\n")
-	if !bytes.Equal(invocation.stdout, wantedOutput) || len(invocation.stderr) != 0 {
-		return packagedWrapperEvidence{}, fmt.Errorf("caller-owned wrapper output is invalid")
-	}
-	if err := requireAttempts(attemptLog, existingAttempts+1); err != nil {
-		return packagedWrapperEvidence{}, fmt.Errorf("caller-owned wrapper attempt evidence is invalid")
-	}
+		if index == 0 {
+			declaration, declarationErr := help.fault("wrapper run", "bundle_binding_mismatch")
+			if declarationErr != nil || declaration.Kind != "rejected" || declaration.Retryable {
+				return packagedWrapperEvidence{}, fmt.Errorf("wrapper binding help contract is invalid")
+			}
+			badDigest := differentDigest(document.Wrapper.Bundle.Digest)
+			rejectionArgs := []string{
+				"--error-format=json", "wrapper", "run",
+				"--contract-version=1",
+				"--bundle=" + document.Wrapper.Bundle.Locator,
+				"--bundle-digest=" + badDigest,
+				"--runtime-path=" + document.Wrapper.Runtime.ResolvedPath,
+				"--runtime-sha256=" + document.Wrapper.Runtime.SHA256,
+				fmt.Sprintf("--runtime-size=%d", document.Wrapper.Runtime.Size),
+				"--",
+			}
+			rejectionArgs = append(rejectionArgs, input.callerArgs...)
+			rejected, rejectionErr := runner.failure(ctx, "success", 10, declaration, rejectionArgs...)
+			if rejectionErr != nil {
+				return packagedWrapperEvidence{}, fmt.Errorf("wrapper binding rejection evidence is invalid")
+			}
+			if err := requireAttempts(attemptLog, existingAttempts); err != nil {
+				return packagedWrapperEvidence{}, fmt.Errorf("wrapper binding rejection started the source fixture")
+			}
+			result.boundaries = append(result.boundaries, rejected.stdout, rejected.stderr)
+		}
 
-	return packagedWrapperEvidence{
-		outcome: "ordinary_command_verified", sourceSHA256: sourceDigest,
-		sourceProcessAttempts: 1, zeroAttemptRejections: 1,
-		boundaries: [][]byte{jsonRender.stdout, textRender.stdout, rejected.stdout, rejected.stderr, invocation.stdout, invocation.stderr},
-	}, nil
+		wrapperPath := filepath.Join(workRoot, "caller-owned-"+input.name+"-wrapper.sh")
+		if err := writePrivate(wrapperPath, textRender.stdout); err != nil {
+			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d caller-owned fixture write failed", index)
+		}
+		invocation, invokeErr := runPOSIXCaller(ctx, runner, wrapperPath, input.callerArgs, input.wantExitCode)
+		if invokeErr != nil {
+			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d caller-owned invocation failed", index)
+		}
+		if !bytes.Equal(invocation.stdout, input.wantStdout) || !bytes.Equal(invocation.stderr, input.wantStderr) || invocation.exitCode != input.wantExitCode {
+			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d caller-owned result is invalid", index)
+		}
+		if err := requireAttempts(attemptLog, existingAttempts+index+1); err != nil {
+			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d attempt evidence is invalid", index)
+		}
+		result.cases = append(result.cases, wrapperCaseEvidence{
+			Name: input.name, WrapperKind: input.journey.wrapperKind, ResultMode: input.journey.resultMode,
+			BundleDigest: input.journey.bundleDigest, PlanDigest: input.journey.planDigest,
+			WrapperSourceSHA256: sourceDigest, StdoutSHA256: digestBytes(invocation.stdout), StderrSHA256: digestBytes(invocation.stderr),
+			SourceExitCode: invocation.exitCode, SourceProcessAttempts: 1,
+		})
+		result.sourceProcessAttempts++
+		result.boundaries = append(result.boundaries, invocation.stdout, invocation.stderr)
+	}
+	return result, nil
 }
 
 func validateWrapperRenderEvidence(document wrapperRenderDocument, journey preparedCommandJourney, executablePath, runtimeDigest string, runtimeSize int64, sourceDigest string) error {
@@ -516,15 +618,29 @@ func differentDigest(value string) string {
 	return "0" + value[1:]
 }
 
-func runPOSIXCaller(ctx context.Context, runner journeyRunner, wrapperPath string) (commandOutcome, error) {
+func digestBytes(value []byte) string {
+	return fmt.Sprintf("%x", sha256.Sum256(value))
+}
+
+func runPOSIXCaller(ctx context.Context, runner journeyRunner, wrapperPath string, callerArgs []string, wantedExit int) (commandOutcome, error) {
+	if callerArgs == nil || wantedExit < 0 {
+		return commandOutcome{}, fmt.Errorf("generic caller contract is invalid")
+	}
+	injectionPath := filepath.Join(runner.directory, "atsura-artifact-injection")
+	if _, err := os.Lstat(injectionPath); !errors.Is(err, os.ErrNotExist) {
+		return commandOutcome{}, fmt.Errorf("generic caller injection canary is not absent")
+	}
 	runContext, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
 	// #nosec G204 -- /bin/sh is the fixed generic caller fixture; the validated
-	// wrapper path is one positional value and generated source is read by dot.
-	command := exec.CommandContext(runContext, "/bin/sh", "-s", "--", wrapperPath)
+	// wrapper path and finite hostile argv are positional values, generated
+	// source is read by dot, and "$@" forwards without reconstruction.
+	shellArgs := []string{"-s", "--", wrapperPath}
+	shellArgs = append(shellArgs, callerArgs...)
+	command := exec.CommandContext(runContext, "/bin/sh", shellArgs...)
 	command.Dir = runner.directory
 	command.Env = replaceEnvironment(runner.environment, map[string]string{fixtureModeEnv: "success"})
-	command.Stdin = strings.NewReader("set -eu\n. \"$1\"\ngh pr list --limit=1\n")
+	command.Stdin = strings.NewReader("set -eu\n. \"$1\"\nshift\ngh \"$@\"\n")
 	command.WaitDelay = 2 * time.Second
 	stdout := &boundedBuffer{limit: maxCommandOutputBytes}
 	stderr := &boundedBuffer{limit: maxCommandOutputBytes}
@@ -538,11 +654,23 @@ func runPOSIXCaller(ctx context.Context, runner journeyRunner, wrapperPath strin
 	if command.ProcessState != nil {
 		outcome.exitCode = command.ProcessState.ExitCode()
 	}
-	if err != nil || outcome.exitCode != 0 {
+	if outcome.exitCode != wantedExit {
+		return commandOutcome{}, fmt.Errorf("generic caller returned an unexpected status")
+	}
+	if wantedExit == 0 && err != nil {
 		return commandOutcome{}, fmt.Errorf("generic caller did not succeed")
+	}
+	if wantedExit != 0 {
+		var exitError *exec.ExitError
+		if !errors.As(err, &exitError) {
+			return commandOutcome{}, fmt.Errorf("generic caller did not return a conventional source status")
+		}
 	}
 	if err := scanCanaries(outcome.stdout, outcome.stderr); err != nil {
 		return commandOutcome{}, err
+	}
+	if _, err := os.Lstat(injectionPath); !errors.Is(err, os.ErrNotExist) {
+		return commandOutcome{}, fmt.Errorf("generic caller evaluated a hostile argv element")
 	}
 	return outcome, nil
 }
@@ -574,7 +702,7 @@ func prepareCommandJourney(
 		return preparedCommandJourney{}, fmt.Errorf("specification evidence write failed")
 	}
 	validation, err := runner.success(ctx, "success", "spec", "validate", "--catalog", catalogPath, "--spec", specificationPath)
-	if err != nil || validateSpecificationEvidence(validation.stdout, catalogDigest) != nil {
+	if err != nil || validateSpecificationEvidence(validation.stdout, catalogDigest, 0, 1) != nil {
 		return preparedCommandJourney{}, fmt.Errorf("specification validation evidence is invalid")
 	}
 	built, err := runner.success(ctx, "success", "bundle", "build", "--catalog", catalogPath, "--spec", specificationPath)
@@ -633,7 +761,7 @@ func prepareCommandJourney(
 		return preparedCommandJourney{}, fmt.Errorf("adopted preview failed")
 	}
 	previewEvidence, err := decodePreview(preview.stdout)
-	if err != nil || previewEvidence.SourceProcessAttempts != 0 || !digestValue(previewEvidence.PlanDigest) {
+	if err != nil || previewEvidence.SourceProcessAttempts != 0 || !digestValue(previewEvidence.PlanDigest) || previewEvidence.Plan.WrapperKind != "transform" || previewEvidence.Plan.ResultMode != "transformed_json" {
 		return preparedCommandJourney{}, fmt.Errorf("adopted preview evidence is invalid")
 	}
 	if err := requireAttempts(attemptLog, existingAttempts); err != nil {
@@ -642,8 +770,88 @@ func prepareCommandJourney(
 
 	return preparedCommandJourney{
 		bundleDigest: bundleDigest, planDigest: previewEvidence.PlanDigest,
+		wrapperKind: previewEvidence.Plan.WrapperKind, resultMode: previewEvidence.Plan.ResultMode,
 		baseInvocation: baseInvocation, zeroAttemptRejections: zeroAttemptRejections,
 		boundaries: [][]byte{draft.stdout, transformedSpecification, validation.stdout, built.stdout, preAdoptionStatus.stdout, adoptedStatus.stdout, preview.stdout},
+	}, nil
+}
+
+func prepareSourceStreamJourney(
+	ctx context.Context,
+	runner journeyRunner,
+	workRoot, catalogPath, catalogDigest, trustPath, attemptLog string,
+	existingAttempts int,
+	name string,
+	command, invocationArgs []string,
+) (preparedCommandJourney, error) {
+	if len(command) != 2 || len(invocationArgs) < len(command) || strings.Join(invocationArgs[:len(command)], "\x00") != strings.Join(command, "\x00") {
+		return preparedCommandJourney{}, fmt.Errorf("source-stream journey invocation is invalid")
+	}
+	draftArguments := []string{"spec", "init", "--catalog", catalogPath, "--"}
+	draftArguments = append(draftArguments, command...)
+	draft, err := runner.success(ctx, "success", draftArguments...)
+	if err != nil {
+		return preparedCommandJourney{}, fmt.Errorf("source-stream specification draft failed")
+	}
+	specification, err := transformSourceStreamDraft(draft.stdout, name, command)
+	if err != nil {
+		return preparedCommandJourney{}, fmt.Errorf("source-stream specification edit failed")
+	}
+	specificationPath := filepath.Join(workRoot, name+"-specification.yaml")
+	if err := writePrivate(specificationPath, specification); err != nil {
+		return preparedCommandJourney{}, fmt.Errorf("source-stream specification write failed")
+	}
+	wantedIdentity, wantedTransform := 0, 1
+	if name == "identity" {
+		wantedIdentity, wantedTransform = 1, 0
+	}
+	validation, err := runner.success(ctx, "success", "spec", "validate", "--catalog", catalogPath, "--spec", specificationPath)
+	if err != nil || validateSpecificationEvidence(validation.stdout, catalogDigest, wantedIdentity, wantedTransform) != nil {
+		return preparedCommandJourney{}, fmt.Errorf("source-stream specification validation evidence is invalid")
+	}
+	built, err := runner.success(ctx, "success", "bundle", "build", "--catalog", catalogPath, "--spec", specificationPath)
+	if err != nil {
+		return preparedCommandJourney{}, fmt.Errorf("source-stream bundle build failed")
+	}
+	bundleDigest, err := decodeBundleDigest(built.stdout)
+	if err != nil {
+		return preparedCommandJourney{}, fmt.Errorf("source-stream bundle evidence is invalid")
+	}
+	bundlePath := filepath.Join(workRoot, name+"-bundle.json")
+	if err := writePrivate(bundlePath, built.stdout); err != nil {
+		return preparedCommandJourney{}, fmt.Errorf("source-stream bundle write failed")
+	}
+	store := trustfile.New(trustPath)
+	changed, err := store.Add(ctx, bundleDigest)
+	if err != nil || !changed || store.Inspect(ctx, bundleDigest) != bundletrust.StateAdopted {
+		return preparedCommandJourney{}, fmt.Errorf("source-stream exact receipt seeding failed")
+	}
+	status, err := runner.success(ctx, "success", "bundle", "status", "--bundle", bundlePath)
+	if err != nil || validateStatus(status.stdout, bundleDigest, bundletrust.StateAdopted) != nil {
+		return preparedCommandJourney{}, fmt.Errorf("source-stream adopted status evidence is invalid")
+	}
+	baseInvocation := []string{"--bundle", bundlePath, "--", "gh"}
+	baseInvocation = append(baseInvocation, invocationArgs...)
+	preview, err := runner.success(ctx, "success", append([]string{"bundle", "preview"}, baseInvocation...)...)
+	if err != nil {
+		return preparedCommandJourney{}, fmt.Errorf("source-stream adopted preview failed")
+	}
+	previewEvidence, err := decodePreview(preview.stdout)
+	wantedKind := "transform"
+	if name == "identity" {
+		wantedKind = "identity"
+	}
+	if err != nil || previewEvidence.SourceProcessAttempts != 0 || !digestValue(previewEvidence.PlanDigest) || previewEvidence.Plan.WrapperKind != wantedKind || previewEvidence.Plan.ResultMode != "source_stream_passthrough" {
+		return preparedCommandJourney{}, fmt.Errorf("source-stream preview evidence is invalid")
+	}
+	if err := requireAttempts(attemptLog, existingAttempts); err != nil {
+		return preparedCommandJourney{}, fmt.Errorf("source-stream preparation started the source fixture")
+	}
+	return preparedCommandJourney{
+		bundleDigest: bundleDigest, planDigest: previewEvidence.PlanDigest,
+		wrapperKind: previewEvidence.Plan.WrapperKind, resultMode: previewEvidence.Plan.ResultMode,
+		baseInvocation: baseInvocation,
+		boundaries:     [][]byte{draft.stdout, specification, validation.stdout, built.stdout, status.stdout, preview.stdout},
 	}, nil
 }
 
@@ -867,6 +1075,19 @@ type helpOutputSchemaReference struct {
 	Version int    `json:"version"`
 }
 
+type helpPlanResultModeProjection struct {
+	Mode             string `json:"mode"`
+	Stdout           string `json:"stdout"`
+	Stderr           string `json:"stderr"`
+	ExitStatus       string `json:"exit_status"`
+	Framing          string `json:"framing"`
+	Projection       string `json:"projection"`
+	Delivery         string `json:"delivery"`
+	CrossStreamOrder string `json:"cross_stream_order"`
+	StdoutLimitBytes int    `json:"stdout_limit_bytes"`
+	StderrLimitBytes int    `json:"stderr_limit_bytes"`
+}
+
 type helpInputProjection struct {
 	Name          string   `json:"name"`
 	Source        string   `json:"source"`
@@ -884,18 +1105,19 @@ type helpCommandProjection struct {
 		Outcome string                `json:"outcome"`
 		Inputs  []helpInputProjection `json:"inputs"`
 		Output  struct {
-			Authority          string                      `json:"authority"`
-			Formats            []string                    `json:"formats"`
-			DefaultFormat      string                      `json:"default_format"`
-			Fields             []helpOutputFieldProjection `json:"fields"`
-			Delivery           string                      `json:"delivery"`
-			CollectionCoverage string                      `json:"collection_coverage"`
-			JSONEnvelope       string                      `json:"json_envelope"`
-			JSONSchemaVersion  int                         `json:"json_schema_version"`
-			PlanSchema         *helpOutputSchemaReference  `json:"plan_schema"`
-			JSONShape          string                      `json:"json_shape"`
-			JSONRendering      string                      `json:"json_rendering"`
-			JSONFraming        string                      `json:"json_framing"`
+			Authority          string                         `json:"authority"`
+			Formats            []string                       `json:"formats"`
+			DefaultFormat      string                         `json:"default_format"`
+			Fields             []helpOutputFieldProjection    `json:"fields"`
+			Delivery           string                         `json:"delivery"`
+			CollectionCoverage string                         `json:"collection_coverage"`
+			JSONEnvelope       string                         `json:"json_envelope"`
+			JSONSchemaVersion  int                            `json:"json_schema_version"`
+			PlanSchema         *helpOutputSchemaReference     `json:"plan_schema"`
+			JSONShape          string                         `json:"json_shape"`
+			JSONRendering      string                         `json:"json_rendering"`
+			JSONFraming        string                         `json:"json_framing"`
+			PlanResultModes    []helpPlanResultModeProjection `json:"plan_result_modes"`
 		} `json:"output"`
 		Prerequisites []string               `json:"prerequisites"`
 		Errors        []helpFaultDeclaration `json:"errors"`
@@ -1090,14 +1312,38 @@ func validateWrapperRenderOutput(command helpCommandProjection) error {
 
 func validateWrapperRunOutput(command helpCommandProjection) error {
 	output := command.Contract.Output
-	wantedReference := helpOutputSchemaReference{Command: "bundle preview", Field: "plan", ID: "wrapper-plan", Version: 3}
-	if output.Authority != "fresh_wrapper_plan" || strings.Join(output.Formats, ",") != "json" || output.DefaultFormat != "json" ||
+	wantedReference := helpOutputSchemaReference{Command: "bundle preview", Field: "plan", ID: "wrapper-plan", Version: 4}
+	wantedModes := []helpPlanResultModeProjection{
+		{
+			Mode: "transformed_json", Stdout: "compact_json", Stderr: "empty", ExitStatus: "zero",
+			Framing: "one_value_lf", Projection: "visible_json", Delivery: "buffered_after_completion", CrossStreamOrder: "not_applicable",
+			StdoutLimitBytes: maxCommandOutputBytes, StderrLimitBytes: 0,
+		},
+		{
+			Mode: "source_stream_passthrough", Stdout: "exact_bounded_source_bytes", Stderr: "exact_bounded_source_bytes", ExitStatus: "source_conventional",
+			Framing: "none", Projection: "none", Delivery: "buffered_after_completion", CrossStreamOrder: "not_preserved",
+			StdoutLimitBytes: maxCommandOutputBytes, StderrLimitBytes: maxSourceStderrBytes,
+		},
+	}
+	if output.Authority != "fresh_wrapper_plan" || strings.Join(output.Formats, ",") != "plan_result" || output.DefaultFormat != "plan_result" ||
 		len(output.Fields) != 0 || output.Delivery != "complete" || output.CollectionCoverage != "not_applicable" ||
 		output.JSONEnvelope != "" || output.JSONSchemaVersion != 0 || output.PlanSchema == nil || *output.PlanSchema != wantedReference ||
-		output.JSONShape != "object_or_array" || output.JSONRendering != "compact_json" || output.JSONFraming != "one_value_lf" {
+		output.JSONShape != "" || output.JSONRendering != "" || output.JSONFraming != "" || !equalPlanResultModes(output.PlanResultModes, wantedModes) {
 		return fmt.Errorf("wrapper run output authority is invalid")
 	}
 	return nil
+}
+
+func equalPlanResultModes(left, right []helpPlanResultModeProjection) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func validateInputs(got, wanted []helpInputProjection) error {
@@ -1159,7 +1405,7 @@ func validateRootHelp(value []byte, wanted []string) error {
 			Path string `json:"path"`
 		} `json:"commands"`
 	}
-	if err := json.Unmarshal(value, &document); err != nil || document.SchemaVersion != 9 || document.View != "index" || document.Program != "atr" {
+	if err := json.Unmarshal(value, &document); err != nil || document.SchemaVersion != 10 || document.View != "index" || document.Program != "atr" {
 		return fmt.Errorf("invalid root agent help")
 	}
 	paths := make(map[string]struct{}, len(document.Commands))
@@ -1185,7 +1431,7 @@ func validateScopedHelp(path string, value []byte) (helpCommandProjection, error
 		} `json:"scope"`
 		Commands []helpCommandProjection `json:"commands"`
 	}
-	if err := json.Unmarshal(value, &document); err != nil || document.SchemaVersion != 9 || document.View != "scope" || document.Program != "atr" || document.Scope.Selector != path || document.Scope.Kind != "command" || len(document.Commands) != 1 || document.Commands[0].Path != path {
+	if err := json.Unmarshal(value, &document); err != nil || document.SchemaVersion != 10 || document.View != "scope" || document.Program != "atr" || document.Scope.Selector != path || document.Scope.Kind != "command" || len(document.Commands) != 1 || document.Commands[0].Path != path {
 		return helpCommandProjection{}, fmt.Errorf("invalid scoped agent help")
 	}
 	command := document.Commands[0]
@@ -1254,7 +1500,7 @@ func validateScopedHelp(path string, value []byte) (helpCommandProjection, error
 		}) != nil || validateWrapperRunOutput(command) != nil {
 			return helpCommandProjection{}, fmt.Errorf("wrapper run contract is incomplete")
 		}
-		for _, marker := range []string{"complete closure emitted by wrapper render", "exact bundle to remain adopted", "compact JSON object or array followed by LF", "without a shell"} {
+		for _, marker := range []string{"complete closure emitted by wrapper render", "exact bundle to remain adopted", "transformed_json", "source_stream_passthrough", "without a shell"} {
 			if !strings.Contains(prerequisites, marker) {
 				return helpCommandProjection{}, fmt.Errorf("wrapper run admission marker is missing")
 			}
@@ -1544,10 +1790,26 @@ func validateAttemptSequence(value []byte, goos string) error {
 	})
 	switch goos {
 	case "linux", "darwin":
-		expected = append(expected, fixtureAttemptRecord{
-			SchemaVersion: 1, Kind: "runtime", Mode: "success",
-			Argv: []string{"pr", "list", "--limit=1", "--json=number,title,state"},
-		})
+		expected = append(expected,
+			fixtureAttemptRecord{
+				SchemaVersion: 1, Kind: "runtime", Mode: "success",
+				Argv: []string{"pr", "list", "--limit=1", "--json=number,title,state"},
+			},
+			fixtureAttemptRecord{
+				SchemaVersion: 1, Kind: "runtime", Mode: "success",
+				Argv: []string{
+					"pr", "list",
+					"--search=space value;$(touch atsura-artifact-injection)",
+					"--label=first", "--label=Unicode 雪", "--repo=-dash",
+				},
+			},
+			fixtureAttemptRecord{
+				SchemaVersion: 1, Kind: "runtime", Mode: "success",
+				Argv: []string{
+					"issue", "list", "--search=append value", "--label=one", "--label=two", "--limit=1",
+				},
+			},
+		)
 	case "windows":
 	default:
 		return fmt.Errorf("attempt sequence platform is unsupported")
@@ -1640,6 +1902,52 @@ func transformDraft(value []byte, command []string) ([]byte, error) {
 	return []byte(strings.Join(lines, "\n")), nil
 }
 
+func transformSourceStreamDraft(value []byte, name string, command []string) ([]byte, error) {
+	if len(command) != 2 || command[1] != "list" {
+		return nil, fmt.Errorf("source-stream draft command is unsupported")
+	}
+	wantedPrefix := ""
+	wantedInclude := ""
+	wantedKind := "identity"
+	wantedAppend := "[]"
+	switch name {
+	case "identity":
+		if command[0] != "pr" {
+			return nil, fmt.Errorf("identity draft command is unsupported")
+		}
+		wantedPrefix = "Preserve the exact reviewed source streams."
+		wantedInclude = "[--label, --repo, --search]"
+	case "append_only":
+		if command[0] != "issue" {
+			return nil, fmt.Errorf("append-only draft command is unsupported")
+		}
+		wantedPrefix = "Append one fixed reviewed source argument and preserve its streams."
+		wantedInclude = "[--label, --search]"
+		wantedKind = "transform"
+		wantedAppend = `["--limit=1"]`
+	default:
+		return nil, fmt.Errorf("source-stream draft case is unsupported")
+	}
+	text := string(value)
+	replacements := [][2]string{
+		{"reason: Include this verified command without transformation.", "reason: " + wantedPrefix},
+		{"default: inherit", "default: exclude"},
+		{"include: []", "include: " + wantedInclude},
+		{"kind: identity", "kind: " + wantedKind},
+		{"append_args: []", "append_args: " + wantedAppend},
+	}
+	for _, replacement := range replacements {
+		if strings.Count(text, replacement[0]) != 1 {
+			return nil, fmt.Errorf("source-stream draft shape is not the expected single-command identity wrapper")
+		}
+		text = strings.Replace(text, replacement[0], replacement[1], 1)
+	}
+	if strings.Count(text, "- "+command[0]+"\n") != 1 || strings.Count(text, "- "+command[1]+"\n") != 1 || strings.Contains(text, "output:") {
+		return nil, fmt.Errorf("source-stream draft command shape is invalid")
+	}
+	return []byte(text), nil
+}
+
 type inspectionEvidence struct {
 	CatalogDigest string `json:"catalog_digest"`
 	Catalog       struct {
@@ -1662,7 +1970,7 @@ func decodeInspection(value []byte) (inspectionEvidence, error) {
 	return document.Inspection, nil
 }
 
-func validateSpecificationEvidence(value []byte, catalogDigest string) error {
+func validateSpecificationEvidence(value []byte, catalogDigest string, wantedIdentity, wantedTransform int) error {
 	var document struct {
 		SchemaVersion int `json:"schema_version"`
 		Validation    struct {
@@ -1680,7 +1988,7 @@ func validateSpecificationEvidence(value []byte, catalogDigest string) error {
 		return fmt.Errorf("invalid validation document")
 	}
 	result := document.Validation
-	if !result.Valid || result.CatalogDigest != catalogDigest || !digestValue(result.SpecificationDigest) || result.CommandCount != 1 || result.IncludedCount != 1 || result.ExcludedCount != 0 || result.IdentityWrapperCount != 0 || result.TransformWrapperCount != 1 {
+	if !result.Valid || result.CatalogDigest != catalogDigest || !digestValue(result.SpecificationDigest) || result.CommandCount != 1 || result.IncludedCount != 1 || result.ExcludedCount != 0 || result.IdentityWrapperCount != wantedIdentity || result.TransformWrapperCount != wantedTransform || wantedIdentity+wantedTransform != 1 {
 		return fmt.Errorf("unexpected validation evidence")
 	}
 	return nil
@@ -1721,8 +2029,12 @@ func validateStatus(value []byte, digest string, state bundletrust.State) error 
 }
 
 type previewEvidence struct {
-	PlanDigest            string `json:"plan_digest"`
-	SourceProcessAttempts int    `json:"source_process_attempts"`
+	PlanDigest string `json:"plan_digest"`
+	Plan       struct {
+		WrapperKind string `json:"wrapper_kind"`
+		ResultMode  string `json:"result_mode"`
+	} `json:"plan"`
+	SourceProcessAttempts int `json:"source_process_attempts"`
 }
 
 func decodePreview(value []byte) (previewEvidence, error) {

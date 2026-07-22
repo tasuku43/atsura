@@ -23,12 +23,20 @@ const (
 	modeMalformed      = "malformed"
 	modeMissingField   = "missing_field"
 
+	identityStreamCommand   = "identity source stream"
+	appendOnlyStreamCommand = "append-only source stream"
+	identityStreamStdout    = "ID:\x00\xff\n"
+	identityStreamStderr    = "IDERR:\xfe"
+	appendOnlyStreamStdout  = "APP:\xff\x00"
+	appendOnlyStreamStderr  = "APPERR:\n"
+
 	stdoutCanary     = "ATSURA_SECRET_STDOUT_CANARY"
 	stderrCanary     = "ATSURA_SECRET_STDERR_CANARY"
 	unselectedCanary = "ATSURA_SECRET_UNSELECTED_CANARY"
 
 	exitOK             = 0
 	exitUsage          = 2
+	exitAppendOnly     = 23
 	exitCommandFailure = 42
 )
 
@@ -149,12 +157,28 @@ func classifyInvocation(args []string) (invocation, bool) {
 		return invocation{kind: "runtime", runtime: true, command: "issue list"}, true
 	case "pr\x00list\x00--limit=1\x00--json=number,title,state":
 		return invocation{kind: "runtime", runtime: true, command: "pr list"}, true
+	case "pr\x00list\x00--search=space value;$(touch atsura-artifact-injection)\x00--label=first\x00--label=Unicode 雪\x00--repo=-dash":
+		return invocation{kind: "runtime", runtime: true, command: identityStreamCommand}, true
+	case "issue\x00list\x00--search=append value\x00--label=one\x00--label=two\x00--limit=1":
+		return invocation{kind: "runtime", runtime: true, command: appendOnlyStreamCommand}, true
 	default:
 		return invocation{}, false
 	}
 }
 
 func runRuntime(command, mode string, stdout, stderr io.Writer) int {
+	if mode == modeSuccess {
+		switch command {
+		case identityStreamCommand:
+			_, _ = io.WriteString(stdout, identityStreamStdout)
+			_, _ = io.WriteString(stderr, identityStreamStderr)
+			return exitOK
+		case appendOnlyStreamCommand:
+			_, _ = io.WriteString(stdout, appendOnlyStreamStdout)
+			_, _ = io.WriteString(stderr, appendOnlyStreamStderr)
+			return exitAppendOnly
+		}
+	}
 	if mode == modeCommandFailure {
 		_, _ = io.WriteString(stdout, stdoutCanary)
 		_, _ = io.WriteString(stderr, stderrCanary)
