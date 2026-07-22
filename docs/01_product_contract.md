@@ -6,7 +6,9 @@ semantics of ADR 0004; ADR 0006 adds the first compatibility-admitted runtime;
 ADR 0007 prefers explicit RTK-backed optimizer defaults for exact maintained
 compatibility contracts; and ADR 0008 keeps coding-agent hosts outside Atsura's
 wrapper boundary. ADR 0010 adds plan-declared source-stream results for finite
-identity and argv-only ordinary wrappers. One canonical vendor-neutral bundle
+identity and argv-only ordinary wrappers. ADR 0011 adds Go CLI contract 1 as a
+second source and one finite application compatibility registry shared by plan
+application and whole-surface rendering. One canonical vendor-neutral bundle
 remains the authority.
 
 ## Product statement
@@ -247,6 +249,12 @@ accepted. ADR 0009 rejects the `v0.43.0` `git-log` candidate because a valid
 commit message can collide with its literal block delimiter and produce a
 successful but misleading association. Exact identity, exit zero, and empty
 stderr do not by themselves establish semantic compatibility.
+ADR 0011 makes `go test -json` followed by RTK's fixed `go-test` filter the
+next pass-only candidate for a separate optimizer iteration. It is not part of
+the current specification or runtime: skip-only classification, malformed-line
+omission, nonzero-status preservation, and deterministic failure ordering still
+require an explicit preservation and semantic-validation contract. No RTK
+default is currently generated.
 
 ### Materialized authoring default
 
@@ -361,6 +369,10 @@ separate argv, no shell, finite attempts, time, and bytes remain required.
 Source inspection uses Execute because it starts the selected source executable
 with adapter-owned fixed metadata argv. Preview, validation, build, and status
 remain read effects because they do not start a caller-selected source task.
+Ordinary no-argument `go test` also remains Execute: tests may run untrusted
+repository code, use credentials or configuration, resolve modules, access
+networks, and mutate caller-owned files or caches. Its inclusion in a tailored
+surface is not a read-only or authorization claim.
 
 ### Atsura-owned mutation
 
@@ -388,11 +400,14 @@ current `atr` path/hash/size, and `source_process_attempts: 0`. Rendering is an
 
 The renderer accepts only Linux or macOS, an absolute clean bundle locator, and
 a requested executable that is verbatim one portable non-reserved POSIX Name.
-It does not derive a basename from a path. The complete included surface must
-contain exactly one transforming GitHub CLI `issue list` or `pr list` command,
-and every exposed option must be admitted by the maintained runtime contract.
-Identity, mixed, partial, or otherwise unsupported surfaces produce no wrapper
-bytes. On Windows, POSIX rendering returns the structured
+It does not derive a basename from a path. One finite application registry
+selects the whole-surface verifier by the bundle's exact adapter kind. The
+complete included surface must contain exactly one command admitted in full:
+GitHub CLI contract 2 permits `issue list` or `pr list` with its maintained
+transform, identity, or append-only grammar; Go CLI contract 1 permits only
+identity-wrapped `test` with no observed long-option or structured-output
+surface. Mixed, multi-command, partial, or otherwise unsupported surfaces
+produce no wrapper bytes. On Windows, POSIX rendering returns the structured
 `wrapper_platform_not_supported` fault; no Windows POSIX activation contract is
 claimed.
 
@@ -500,7 +515,7 @@ The current milestone exposes these artifact and runtime outcomes, with release
 quality still conditional on the required gates and exact-artifact evidence:
 
 ```text
-atr source inspect --adapter github-cli --executable <path-or-name>
+atr source inspect --adapter github-cli|go-cli --executable <path-or-name>
 atr spec init --catalog <catalog.json> -- <source-command-path>
 atr spec validate --catalog <catalog.json> --spec <spec.yaml>
 atr bundle build --catalog <catalog.json> --spec <spec.yaml>
@@ -513,6 +528,12 @@ atr wrapper run --contract-version=1 --bundle=<absolute-bundle.json> \
   --bundle-digest=<sha256> --runtime-path=<absolute-atr> \
   --runtime-sha256=<sha256> --runtime-size=<bytes> -- <argv...>
 ```
+
+`source inspect` selects one bounded adapter explicitly. `github-cli` contract
+2 performs four fixed offline probes; `go-cli` contract 1 performs exactly
+`go version`, `go help`, and `go help test`. Both produce the same vendor-neutral
+catalog schema and retain only validated structural evidence, source identity,
+and attempt counts.
 
 `spec init` emits an exclude-by-default specification containing one included
 verified command with inherited options and an identity wrapper. It does not
@@ -573,6 +594,26 @@ success. Live execution inherits the caller's source-CLI authentication plus
 repository context from the inherited working directory or an admitted
 command-specific `--repo` option. Atsura neither obtains those credentials nor
 turns a source-owned failure into replay permission.
+
+Ordinary-wrapper admission is broader only through the shared finite registry,
+not through a second plan or executor. It dispatches by the exact adapter kind
+already bound into the fresh plan or bundle. Go CLI contract 1 accepts stable
+Go 1.26.x effective-toolchain evidence observed by `go version` during
+inspection, exact command `test`, one identity wrapper, no output stage, and no
+argv element after `test`; the result mode is
+`source_stream_passthrough`. Every Go option, package pattern, `--` marker, and
+test-binary argument is rejected before source start. Direct `bundle execute`
+remains the GitHub JSON-transform evidence command.
+
+`go version` may itself delegate, so the recorded version is not the version of
+the directly identified launcher file. The plan carries that inspection-time
+observation; runtime revalidates only the direct launcher's path, SHA-256, size,
+and exact argv, and does not repeat the version probe. The same launcher can
+later select or download a different
+effective toolchain from module, working-directory, `GOTOOLCHAIN`, `GOROOT`, or
+related ambient state without pre-start detection. Atsura does not identify a
+selected toolchain or GOROOT tree. A future constraint needs an explicit
+environment/toolchain closure, a successor ADR, and platform evidence.
 
 ## Host-neutral wrapper result
 
@@ -657,21 +698,35 @@ The stable project identity is `Atsura`, binary `atr`, and Go module
 
 Shared catalog, specification, bundle, surface, wrapper-binding, and plan
 schemas contain no GitHub-, Claude-, Codex-, or RTK-specific transport fields.
-GitHub CLI 2.x remains
-the first source adapter. Inspection contract 2 uses four fixed offline probes
-and exposes runtime field/selector evidence only for `issue list` and `pr
-list`. Its maintained runtime accepts GitHub CLI major 2, but one captured
-version does not prove every future 2.x release. Coding-agent host protocols are
-outside production compatibility. Consumer fixtures may record exact external
-conditions needed to invoke the shared wrapper, but those conditions neither
-enter product schemas nor become Atsura support claims.
+GitHub CLI 2.x remains the first source adapter. Inspection contract 2 uses four
+fixed offline probes and exposes runtime field/selector evidence only for
+`issue list` and `pr list`. Go CLI is the second source. Inspection contract 1
+uses three fixed offline probes and the maintained runtime accepts stable Go
+1.26.x recorded inspection observations only for exact no-argument `test` with
+an identity wrapper. One finite application registry routes both contracts
+through the same plan, binding,
+process, and result schemas. An unknown, absent, duplicate, nil, or otherwise
+misconfigured verifier fails as `adapter_contract`; it cannot create a fallback
+or partial registry.
+
+The maintained GitHub major-2 and recorded Go 1.26.x ranges are explicit
+compatibility decisions, not proof that one captured observation predicts
+every later patch or minor release. A catalog whose recorded Go observation is
+outside 1.26.x, Go options, package arguments, positional markers, and test-
+binary arguments require new evidence and contract revisions. A later effective
+Go 1.27 selection by the same launcher is not detected by contract 1; closing
+that gap is a separate environment/toolchain decision. Coding-agent
+host protocols are outside production compatibility. Consumer fixtures may
+record exact external conditions needed to invoke the shared wrapper, but those
+conditions neither enter product schemas nor become Atsura support claims.
 
 The first wrapper renderer is intentionally platform- and surface-bounded. It
-produces fixed POSIX function source only on Linux and macOS, derives `gh`
-verbatim from the bundle's requested executable, and requires one complete
-runtime-admitted surface and result mode. The finite contracts cover the
-existing JSON-transform surface plus identity and append-argv-only source-
-stream surfaces. Windows supports the existing portable commands but not POSIX
+produces fixed POSIX function source only on Linux and macOS, derives the
+ordinary command (`gh` or `go`) verbatim from the bundle's requested
+executable, and requires one complete runtime-admitted surface and result mode.
+The finite contracts cover the GitHub JSON-transform, identity, and append-
+argv-only source-stream surfaces plus the exact Go `test` identity source-
+stream surface. Windows supports the existing portable commands but not POSIX
 wrapper rendering or activation.
 
 The current preview grammar is intentionally narrower than arbitrary source

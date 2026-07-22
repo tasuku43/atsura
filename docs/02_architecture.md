@@ -13,6 +13,9 @@ Atsura: they consume an already generated host-neutral wrapper rather than
 enter through a host protocol adapter.
 ADR 0010 extends the same host-neutral wrapper with an explicit source-stream
 result for finite identity and argv-only plans; it does not add a raw route.
+ADR 0011 adds Go CLI as a nature-distinct second source and one finite
+application compatibility registry, without adding a second plan, executor, or
+vendor field to shared artifacts.
 
 The current runtime milestone extends strict schema-3 specification loading,
 schema-2 bundle compilation/adoption, and pure surface resolution through one
@@ -119,6 +122,9 @@ source read/create/write effect, or source-operation target and impact.
   boundaries.
 - Source adapters and output processors are orthogonal vendor-neutral ports.
   They cannot broaden a surface or define core wrapper semantics.
+- One application-owned finite compatibility registry dispatches both fresh-
+  plan and complete-surface proof by the exact adapter kind already present in
+  the canonical evidence. It performs no discovery, execution, or fallback.
 - A wrapper binding contains only the exact adopted purpose bundle, wrapper
   contract, runtime identity, command spelling, and source identity. It
   contains no host protocol or configuration state.
@@ -187,8 +193,9 @@ coding-agent-host protocol.
   runtime closure through the same fresh-plan application service as direct
   execution;
 - apply a supported fresh plan through one identity-bound source-process port
-  and vendor-neutral compatibility port, then return either a strict parsed
-  and transformed JSON result or a validated conventional source-stream result;
+  and the shared finite vendor-neutral compatibility registry, then return
+  either a strict parsed and transformed JSON result or a validated
+  conventional source-stream result;
 - for a future optimizer, require exact external-processor identity and
   compatibility before source start, then coordinate at most one processor
   attempt only after an admitted successful source result.
@@ -240,6 +247,25 @@ parser and transformer still validate every successful result. Production
 infrastructure contains no coding-agent-host protocol codec, settings store,
 permission mapper, process client, or lifecycle adapter.
 
+The current infrastructure adapters are deliberately unequal in shape. GitHub
+CLI contract 2 performs four fixed offline probes and maintains finite `issue
+list` / `pr list` grammars. Go CLI contract 1 performs `go version`, `go help`,
+and `go help test`; it accepts a recorded inspection-time effective-toolchain
+observation in stable Go 1.26.x and proves only exact no-argument `test` with an
+identity source-stream wrapper. The application
+registry knows only their namespaced kinds and the two compatibility ports;
+all source version, command, argv, and surface knowledge remains in these
+infrastructure verifiers.
+
+For Go, executable identity and version evidence have different authorities.
+Path/hash/size identify the direct launcher file. `Source.Version` records the
+effective toolchain observed when `go version` runs under the inspection
+working directory and environment; that probe may itself delegate. Runtime
+revalidates the direct launcher identity but does not repeat the version probe,
+freeze environment/module state, or identify a selected/downloaded toolchain or
+GOROOT tree. A later selection change is therefore source-owned downstream
+behavior, not a pre-start rejection under contract 1.
+
 Infrastructure reports observations and typed failures. It does not decide
 which command is included, which wrapper applies, or whether the source CLI
 will authorize its downstream operation.
@@ -282,11 +308,13 @@ replacement. A generated shell function's digest is deterministic artifact
 evidence, not runtime attestation of the sourced function bytes.
 
 Rendering rejects Windows with a structured unsupported fault and requires the
-complete included surface to contain exactly one runtime-admitted GitHub CLI
-list command and result mode, including every exposed option. The finite
-surface proof covers the existing JSON transform plus identity and append-argv-
-only source streams. Windows remains a
-regression target for existing commands but receives no POSIX activation claim.
+complete included surface to contain exactly one command and result mode
+admitted by the selected registry verifier, including every exposed option.
+GitHub CLI contract 2 covers its existing JSON transform plus identity and
+append-argv-only source streams for `issue list` and `pr list`. Go CLI contract
+1 covers only identity-wrapped `test` with no observed long-option or
+structured-output surface. Windows remains a regression target for existing
+commands but receives no POSIX activation claim.
 
 The repository conformance fixture owns only a generic caller environment. A
 vendor integration and its host-specific evidence live downstream and consume
@@ -325,6 +353,11 @@ the proposed RTK `v0.43.0` `git-log` tuple because its literal block delimiter
 collides with valid Git commit text. A future adapter must validate every
 semantic delimiter, grouping key, and association precondition through hostile
 fixtures before an exit-zero processor result can become plan output.
+ADR 0011 identifies pass-only `go test -json` plus RTK's fixed `go-test` filter
+as the next candidate for that separate iteration. It remains unregistered and
+is not an authoring default: skip-only classification, malformed-line omission,
+nonzero-status preservation, and deterministic failure ordering still require
+a typed pre-processor preservation and semantic-validation boundary.
 
 ### CLI
 
@@ -341,10 +374,14 @@ fixtures before an exit-zero processor result can become plan output.
 - composition of application tasks with source and output infrastructure
   adapters.
 
-The current CLI composition injects the GitHub CLI contract-2 verifier into the
-generic execution application service. A later source adapter supplies another
-implementation of the same compatibility port; it does not add provider fields
-to the plan or result.
+The current CLI composition explicitly registers the GitHub CLI contract-2 and
+Go CLI contract-1 verifiers in one `internal/app/runtimecompat` registry. That
+registry structurally satisfies the existing plan-application and whole-
+surface-rendering ports, dispatches only by exact adapter kind, preserves valid
+finite runtime-admission categories, and maps missing, unknown, duplicate, nil,
+or misconfigured entries to `adapter_contract`. It does not maintain a public
+source catalog, inspect PATH, load plugins, construct requests, or execute a
+process.
 
 The credential-free recovery conformance fixture composes the production CLI,
 application services, bundle codec, trust store, source identity reader,
@@ -381,6 +418,12 @@ effects. A post-start unknown outcome cannot be reported as safe to retry.
 Source inspection also starts a source-owned process and therefore uses
 `EffectExecute`, even when its fixed adapter probes are observational in
 purpose.
+
+The exact no-argument `go test` wrapper is also `EffectExecute`. The invoked Go
+process may compile and run untrusted repository code, read caller credentials
+or configuration, resolve modules, access networks, and mutate files or caches.
+Those effects remain source-owned and are not permission facts inferred by the
+registry or plan.
 
 ### Atsura-owned mutation
 
@@ -461,6 +504,19 @@ it. Platform evidence therefore belongs to the CI and release harness, while
 the deterministic catalog, specification, bundle, plan, and execution
 contracts remain owned by their production layers above.
 
+Evidence schema 4 adds one bounded `go_source` record to every native row.
+Each row must obtain a stable Go 1.26.x effective-toolchain observation through
+exactly three probes and bind adapter contract 1, catalog digest, command `test`, bundle
+digest, and plan digest. Linux and macOS then render and invoke one ordinary
+identity-wrapped wrapper, first reject `go test extra` with
+`wrapper_runtime_not_supported`, exit 12, and zero Go attempts, then run no-argument `go
+test` with one source attempt. Both platform branches record one Go zero-
+attempt rejection. Windows
+records the exact unsupported POSIX outcome, an empty Go wrapper-case list, one
+zero-attempt rejection, and zero Go wrapper source attempts. These facts are
+separate from the existing GitHub fixture-attempt counter and do not turn the
+journey into a production Go adapter or sandbox.
+
 ## Current milestone boundary
 
 The completed finite transform-runtime milestone is:
@@ -505,6 +561,16 @@ ordinary argv invocation
   -> source_stream_passthrough: exact bounded source stdout/stderr and status
 ```
 
+The second-source path reuses that same flow:
+
+```text
+Go CLI contract 1 catalog (three probes, recorded Go 1.26.x observation)
+  -> exclude-by-default bundle with exact identity-wrapped `test`
+  -> finite runtimecompat registry dispatch by `atsura.source.go_cli`
+  -> ordinary no-argument `go test`
+  -> one source_stream_passthrough result through the shared process boundary
+```
+
 This implementation does not itself establish release-quality evidence. The
 full gates and exact installed-artifact POSIX journey on every claimed Linux
 and macOS target remain the completion decision. Windows exercises existing
@@ -523,8 +589,15 @@ remain outside these milestones.
   disambiguation rule.
 - Whether `append_args` may follow an existing positional-only `--`, and how a
   wrapper should express any required insertion point.
-- Which source adapters and commands should gain a maintained runtime contract
-  after GitHub CLI contract 2 `issue list` and `pr list`.
+- Which recorded Go version observations beyond 1.26.x can be admitted, and
+  which evidence justifies a version-range change without overstating runtime
+  toolchain identity.
+- Whether a future runtime should close working directory, module toolchain
+  directives, `GOTOOLCHAIN`, `GOROOT`, selected toolchain identity, and download
+  behavior through one explicit environment/toolchain contract.
+- Which Go options, package patterns, positional markers, and test-binary
+  arguments can enter a finite grammar without inheriting ambient defaults or
+  guessing across Go's build/test layers.
 - Whether named profiles or multiple adopted bundles are needed and how they
   are selected.
 - Executable identity evidence beyond exact path, bytes, observed version, and
@@ -535,9 +608,9 @@ remain outside these milestones.
   replacement, and recursion guard close a persistent wrapper lifecycle.
 - How multiple purpose profiles select wrappers for one ordinary command
   without ambient or coding-agent-host state.
-- Which source/RTK tuple should replace the rejected ambiguous `git-log`
-  candidate and prove the first original-preserving optimizer without an
-  unvalidated delimiter or association rule.
+- Whether the pass-only `go test -json` / RTK `go-test` candidate can preserve
+  skip-only, malformed, nonzero-status, and failure-order semantics well enough
+  to replace the rejected ambiguous `git-log` tuple.
 - Which explicit processor-observation input and storage boundary should bind an
   exact RTK artifact at bundle build without consulting ambient `PATH`.
 - Whether jq, plugins, scripts, or other external processors ever justify a

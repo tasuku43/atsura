@@ -37,7 +37,7 @@
   {
     "id": "tailoring.output.optimize",
     "status": "deferred",
-    "reason": "ADR 0007 accepts a materialized RTK-preferred optimizer default only for exact maintained compatibility contracts, while ADR 0009 rejects the ambiguous git-log candidate; no replacement tuple, optimizer schema, external-processor runtime, or complete native compatibility evidence is implemented."
+    "reason": "ADR 0007 accepts a materialized RTK-preferred optimizer default only for an exact maintained compatibility contract, ADR 0009 rejects the ambiguous git-log candidate, and ADR 0011 identifies pass-only go test -json with the fixed go-test filter only as the next research candidate. Skip-only, malformed-line, nonzero-status, and failure-order semantics remain unresolved; no optimizer schema, accepted tuple, external-processor runtime, generated default, or complete native processor evidence is implemented."
   },
   {
     "id": "tailoring.catalog.inspect",

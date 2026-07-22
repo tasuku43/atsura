@@ -8,8 +8,10 @@ ADR 0007 prefers explicit RTK-backed optimizer defaults where Atsura maintains
 an exact compatibility contract. ADR 0008 corrects the agent-host boundary:
 coding-agent hosts consume an already generated host-neutral wrapper and are
 not Atsura adapters. ADR 0010 admits plan-declared source-stream results for
-finite identity and argv-only ordinary wrappers. The vendor-neutral,
-compiled-bundle architecture remains authoritative.
+finite identity and argv-only ordinary wrappers. ADR 0011 adds Go CLI as a
+second source contract and replaces direct single-adapter composition with one
+finite application compatibility registry. The vendor-neutral, compiled-bundle
+architecture remains authoritative.
 
 ## North star
 
@@ -242,10 +244,35 @@ and render a task-specific structure without inventing facts.
 Preview verifies one active cataloged selector for the planned input format
 before `--`. Runtime proceeds only when the exact source adapter kind, contract
 version, source version, command, complete argv grammar, and selector value are
-covered by maintained compatibility evidence. GitHub CLI adapter contract 2
-currently admits only `issue list` and `pr list` after four fixed offline
+covered by maintained compatibility evidence. One application-owned finite
+registry dispatches the plan and complete-surface proof by the exact adapter
+kind already bound into the bundle; it does not inspect plugins, construct a
+source request, or execute a process. GitHub CLI adapter contract 2 currently
+admits only `issue list` and `pr list` after four fixed offline
 version/reference/command-help probes. Successful stdout is still untrusted and
 must satisfy the bounded JSON parser and typed transform.
+
+Go CLI adapter contract 1 uses exactly three fixed offline probes: `go
+version`, `go help`, and `go help test`. Its first runtime admits only plans
+whose recorded inspection-time effective-toolchain observation is stable Go
+1.26.x, and then only for the exact no-argument invocation `go test`, one
+complete identity-wrapper surface, and `source_stream_passthrough`. An option,
+package pattern, positional marker, or test-binary argument is outside this
+contract and fails before source start. `go test` is still a source-owned
+`EffectExecute`: it may compile and run repository code, consult credentials or
+configuration, resolve modules, access networks, and mutate caller-owned files
+or caches. Atsura neither classifies nor authorizes those effects.
+
+`go version` may itself delegate, so `Source.Version` is the effective
+toolchain observed under the inspection working directory and environment; it
+is not the version of the direct launcher file. Runtime binds that direct
+launcher's path/hash/size and exact argv but does not repeat the observation.
+The same launcher may later select or download another toolchain from module
+directives, `GOTOOLCHAIN`, `GOROOT`, or related ambient state without pre-start
+detection. Atsura does not identify the selected toolchain or GOROOT tree.
+Constraining that behavior requires an explicit environment/toolchain closure,
+a successor ADR, and new native evidence rather than stronger wording around
+contract 1.
 
 Projection failure never changes argv, retries the source process, selects raw
 mode, or silently exposes unreviewed raw output.
@@ -275,6 +302,12 @@ proposed `git log` / `git-log` first tuple: RTK `v0.43.0` accepts a valid commit
 message containing its literal block delimiter and can return exit zero with a
 misleading association. A future tuple must prove semantic relationships with
 hostile fixtures, not merely identity, exit status, and shorter output.
+ADR 0011 identifies `go test -json` with RTK's fixed `go-test` filter as the
+next pass-only candidate to investigate, not an accepted tuple. Native evidence
+still has unresolved skip-only classification, malformed-line omission,
+nonzero-status preservation, and failure-order determinism. The current
+authoring workflow therefore emits no RTK default and the runtime starts no
+RTK process.
 
 ## Thesis 7: Agents propose and invoke; the deterministic core compiles
 
@@ -295,7 +328,8 @@ bundle digest, invokes `wrapper run` with structured JSON errors, and forwards
 `"$@"` without `eval`, `sh -c`, or specification-authored source. Rendering is
 allowed only when the complete included surface is one maintained runtime-
 admitted command and result mode. The finite first contracts cover one JSON-
-transforming command and identity or append-argv-only source-stream commands.
+transforming GitHub CLI command, finite GitHub CLI identity or append-argv-only
+source-stream commands, and the exact no-argument Go `test` identity wrapper.
 Windows returns a structured unsupported fault for POSIX rendering; this
 contract makes no Windows activation claim.
 
@@ -391,6 +425,16 @@ completed source stdout and stderr bytes unchanged, followed by the source
 status only after complete final delivery. It never selects this visibility as
 fallback, and uncertain execution exposes neither captured stream.**
 
+The second-source proof is:
+
+**A maintainer can obtain a stable Go 1.26.x effective-toolchain observation
+through three fixed offline probes of one directly identified Go launcher,
+adopt an exclude-by-default bundle containing only an identity-
+wrapped `test` command, and invoke ordinary no-argument `go test` through the
+same host-neutral wrapper, fresh-plan constructor, finite compatibility
+registry, and source-process boundary. Any additional Go argv starts no source
+process.**
+
 The release-quality proof uses a generic caller-owned activation fixture and
 the exact installed `atr` artifact. It verifies the wrapper bytes, binding,
 argv, plan, attempt, and tailored result without importing a coding-agent host
@@ -435,8 +479,15 @@ exact-artifact evidence and the required gates pass on the claimed targets.
   options, and command-specific positional arguments without guessing?
 - Should invocation transforms be allowed to append option-looking arguments
   after an existing `--`, where the source will interpret them as positional?
-- Which source adapter should receive the next maintained runtime compatibility
-  contract after the first GitHub CLI `issue list`/`pr list` evidence?
+- Which recorded inspection-time Go version observations beyond stable 1.26.x
+  can enter a maintained source contract, and which evidence can revise that
+  admission range without implying runtime toolchain closure?
+- Should a future Go runtime close `GOTOOLCHAIN`, `GOROOT`, module toolchain
+  selection, and the selected toolchain identity; if so, which explicit
+  environment/toolchain artifact can prove that closure across platforms?
+- Which Go test options, package patterns, positional markers, and test-binary
+  arguments can be modeled without guessing across build, test, and package
+  grammar?
 - How should multiple purpose profiles select distinct wrappers for the same
   source command without ambient or host-specific state?
 - Which executable-shim format, location, ownership, binding, atomic
@@ -444,9 +495,9 @@ exact-artifact evidence and the required gates pass on the claimed targets.
   without giving repository content authority?
 - What stronger executable identity mechanism can close the remaining
   check-to-exec race on each supported platform?
-- After rejection of the ambiguous `git-log` tuple, which exact RTK version,
-  pipe filter, source command, and platform can satisfy the first no-state,
-  semantic-association-safe optimizer compatibility contract?
+- Can the pass-only `go test -json` / fixed RTK `go-test` candidate preserve
+  status and lifecycle semantics under skip-only, malformed, nonzero, and
+  ordering fixtures well enough to become the first optimizer tuple?
 - When, if ever, should jq, other external transformers, plugins, or scripts be
   admitted through a similarly finite contract?
 - How, if at all, should usage evidence be collected without storing secrets or

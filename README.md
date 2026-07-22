@@ -39,14 +39,18 @@ source inspect -> spec init/validate -> bundle build -> bundle status/trust
   The fixed function forwards ordinary argv to `wrapper run`, which applies the
   same fresh plan. A `transformed_json` plan emits one compact JSON object or
   array; a `source_stream_passthrough` plan returns the conventionally completed
-  source stdout, stderr, and exit status without changing their bytes.
+  source stdout, stderr, and exit status without changing their bytes. One
+  finite compatibility registry admits the existing GitHub cases and exact no-
+  argument `test` identity wrappers carrying a recorded stable Go 1.26.x
+  inspection observation through that same path.
 - The retired authorization-oriented policy schemas, legacy `plan preview`,
   and `run` have migration diagnostics only. They are not current tailoring
   capabilities.
 
 Direct `bundle execute` support for identity and argv-only plans, source
-refresh, raw bypass, additional source/output adapter contracts, persistent
-wrapper installation, and executable shims remain unimplemented.
+refresh, raw bypass, source contracts beyond the current GitHub CLI and Go CLI
+slices, output-processor contracts, persistent wrapper installation, and
+executable shims remain unimplemented.
 Coding-agent host adapters are outside the product boundary. Windows retains
 the existing command surface but returns a structured unsupported fault for
 POSIX wrapper rendering; no Windows POSIX activation support is claimed.
@@ -102,8 +106,10 @@ feature, not an OS sandbox.
 
 ## Try the installed artifact workflow
 
-The first source adapter inspects an installed GitHub CLI using four bounded
-offline probes. Use one stable built or installed `atr` path for the entire
+The current source adapters inspect GitHub CLI with four bounded offline probes.
+The Go adapter uses exactly `go version`, `go help`, and `go help test`, and
+requires the first probe to record stable Go 1.26.x.
+Use one stable built or installed `atr` path for the entire
 workflow; do not render a wrapper from `go run`, whose temporary executable may
 disappear before the function is invoked. No public Atsura archive has been
 released yet. From a source checkout, a stable local candidate can be built as:
@@ -246,14 +252,15 @@ again. The credential- and provider-network-free synthetic fixture is the
 canonical automated evidence.
 
 `wrapper render` additionally rejects a bundle unless its complete included
-surface contains exactly one runtime-admitted `issue list` or `pr list` command
-and every exposed option belongs to the maintained grammar. The admitted
-surface may use the existing typed JSON transform, an identity wrapper, or a
-finite append-argv-only transform. It derives the function name verbatim from
-the bundle's requested executable, so an absolute source path or
-non-POSIX/reserved name is not normalized into a wrapper name. The rendered
-source digest is deterministic review evidence, not attestation after the
-caller sources or changes the function.
+surface contains exactly one command admitted by the registry-selected runtime
+verifier. GitHub CLI contract 2 permits `issue list` or `pr list` under the
+existing typed JSON, identity, or finite append-argv-only grammar. Go CLI
+contract 1 permits only identity-wrapped `test` with no observed long-option or
+structured-output surface. It derives the function name verbatim from the
+bundle's requested executable, so an absolute source path or non-POSIX/reserved
+name is not normalized into a wrapper name. The rendered source digest is
+deterministic review evidence, not attestation after the caller sources or
+changes the function.
 
 `wrapper run` derives the source spelling from the strictly loaded bundle and
 uses the same fresh-plan application service as direct execution. Its runtime
@@ -261,6 +268,48 @@ hash check is cooperative drift detection: the shell must start the bound
 absolute `atr` path before honest runtime code can verify itself. A mismatch
 prevents that honest runtime from starting the source, but Atsura does not claim
 to sandbox malicious replacement code already executing at that path.
+
+To exercise the second-source slice, run from a reviewed Go module where
+inspection records stable Go 1.26.x. The identity draft is already the complete admitted specification;
+direct `bundle execute` remains transform-only, so use preview and the ordinary
+wrapper:
+
+```sh
+"$ATR" source inspect \
+  --adapter go-cli \
+  --executable go > /tmp/atsura-go-catalog.json
+"$ATR" spec init \
+  --catalog /tmp/atsura-go-catalog.json \
+  -- test > /tmp/atsura-go-spec.yaml
+"$ATR" spec validate \
+  --catalog /tmp/atsura-go-catalog.json \
+  --spec /tmp/atsura-go-spec.yaml
+"$ATR" bundle build \
+  --catalog /tmp/atsura-go-catalog.json \
+  --spec /tmp/atsura-go-spec.yaml > /tmp/atsura-go-bundle.json
+"$ATR" bundle trust --bundle /tmp/atsura-go-bundle.json
+"$ATR" bundle preview --bundle /tmp/atsura-go-bundle.json -- go test
+"$ATR" wrapper render \
+  --bundle /tmp/atsura-go-bundle.json > /tmp/atsura-go-wrapper.sh
+
+. /tmp/atsura-go-wrapper.sh
+go test
+unset -f go
+```
+
+The runtime accepts no argv after `test`: options, package patterns, `--`, and
+test-binary arguments fail before source start. `go test` is source-owned
+`EffectExecute`, not a read or permission decision. It may compile and run
+repository code, use credentials or configuration, resolve modules, access
+networks, and mutate caller-owned files or caches; Atsura does not sandbox or
+authorize those effects.
+
+For Go, path/hash/size identify the direct launcher file, while
+`Source.Version` is the possibly delegated effective toolchain observed by
+`go version` under the inspection working directory and environment. Runtime
+does not repeat that probe or bind a selected/downloaded toolchain or GOROOT
+tree. The same launcher may later select another toolchain from module state,
+`GOTOOLCHAIN`, `GOROOT`, or related ambient inputs without pre-start detection.
 
 Use `atr help <exact-command> --format agent` for the complete machine-readable
 contract. Agent help currently uses schema version 10; object outputs may
@@ -279,7 +328,10 @@ runtime-LLM actions are invalid.
 
 The following remain later research or vertical-slice decisions:
 
-- additional source CLIs and adapter compatibility;
+- source CLIs beyond the current GitHub and Go contracts;
+- recorded Go version observations beyond 1.26.x, any option, package,
+  positional-marker, or test-binary argument grammar, and any future explicit
+  environment/toolchain closure for effective runtime selection;
 - source refresh and command-discovery depth;
 - direct `bundle execute` support for source-stream plans;
 - persistent wrapper installation, replacement, removal, executable/PATH shims,
@@ -287,7 +339,9 @@ The following remain later research or vertical-slice decisions:
 - raw tailoring bypass;
 - output transformations beyond the schema-3 built-ins;
 - usage-history collection; and
-- jq, RTK, plugin, or external-transformer boundaries.
+- jq, RTK, plugin, or external-transformer boundaries. The next RTK research
+  candidate is pass-only `go test -json` with the fixed `go-test` filter; it is
+  not implemented, registered, or generated as a default.
 
 Current plan parsing is deliberately bounded. Source short options,
 root/global options, and command-specific positional grammar are not completely
@@ -346,6 +400,10 @@ The canonical verification profiles are:
 
 The gate sets `GOTOOLCHAIN=local`; the `go` binary selected by `PATH` must
 belong to the exact required installation.
+The native second-source artifact fixture also uses `GOTOOLCHAIN=local`,
+isolated cache/module roots, and disabled downloads for deterministic evidence.
+Those fixture settings do not change the production wrapper's inherited
+environment or guarantee its effective Go toolchain.
 
 ## Safety and maturity
 

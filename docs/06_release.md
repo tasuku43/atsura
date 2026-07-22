@@ -7,13 +7,17 @@ Atsura is not yet published or released. The repository identity is
 license. ADR 0005 supersedes the earlier v0.1 local-run product boundary, ADR
 0006 accepts the narrow transform runtime, and ADR 0010 admits finite plan-
 declared source-stream results for identity and append-argv-only ordinary
-wrappers. The packaging mechanics below remain reviewed infrastructure, but
-they do not authorize publication. The current runtime claim is intentionally
-narrower than the artifact matrix: one compatibility-admitted typed JSON
-transform boundary plus finite transformed-JSON, identity, and append-argv-only
-ordinary wrapper cases through fixed host-neutral POSIX rendering on Linux and
-macOS. Windows retains existing-command runtime evidence and exact structured
-unsupported wrapper rendering; no Windows POSIX activation claim is made.
+wrappers. ADR 0011 adds Go CLI contract 1 as the nature-distinct second source
+and requires one shared finite compatibility registry. The packaging mechanics
+below remain reviewed infrastructure, but they do not authorize publication.
+The current runtime claim is intentionally narrower than the artifact matrix:
+one GitHub compatibility-admitted typed JSON transform boundary; finite GitHub
+transformed-JSON, identity, and append-argv-only ordinary wrapper cases; and one
+recorded stable Go 1.26.x inspection observation plus an exact no-argument
+`test` identity case through fixed host-
+neutral POSIX rendering on Linux and macOS. Windows retains existing-command
+runtime evidence and exact structured unsupported wrapper rendering; no
+Windows POSIX activation claim is made.
 
 The current first-release packaging decisions are:
 
@@ -146,9 +150,11 @@ The release workflow follows this order:
 4. Download each build artifact on its matching native runner and replay the
    installed-artifact transform and wrapper journey with no provider
    credentials or provider network. Linux and macOS activate generated
-   ordinary-command functions for transformed-JSON, identity, and append-argv-
-   only cases; Windows verifies the exact structured unsupported-render
-   contract and continues the existing command journey.
+   ordinary-command functions for the three GitHub cases and one exact identity-
+   wrapped no-argument Go `test`; every target first completes the Go adapter's
+   three inspection probes. Windows verifies exact structured unsupported-
+   render contracts for both source bundles and continues the existing command
+   journey without a wrapper source attempt.
 5. Aggregate exactly five bounded native evidence documents and verify their
    target, archive digest, version, revision, journey counts, fault set, plan
    identities, and leak checks.
@@ -235,6 +241,21 @@ the exact structured `wrapper_platform_not_supported` fault, no source bytes or
 digest, and zero wrapper source attempts. This is a platform boundary, not a
 skipped test.
 
+The same candidate must obtain a stable Go 1.26.x effective-toolchain
+observation with
+exactly `go version`, `go help`, and `go help test`, then build and adopt one
+exclude-by-default bundle containing only identity-wrapped `test`. Linux and
+macOS render the ordinary wrapper, first invoke `go test extra`, and require
+`wrapper_runtime_not_supported`, exit 12, and zero Go attempts. They then invoke no-
+argument `go test` once in the dependency-free synthetic module, bind the
+preview and wrapper plan digest, and retain only stdout/stderr digests plus
+conventional status. Windows performs the same
+three-probe inspection but must record the exact unsupported render with one
+zero-attempt rejection, no rendered case, and zero Go wrapper source attempts.
+This fixture sets `GOTOOLCHAIN=local`, isolates module/cache roots, and disables
+downloads as test discipline; those are not production wrapper guarantees and
+do not sandbox the Go process or narrow source-owned effects.
+
 The current executable runtime claim is limited to all of the following:
 
 - a strict schema-3 transform wrapper with JSON input and compact JSON output;
@@ -252,13 +273,38 @@ The current executable runtime claim is limited to all of the following:
   or public inclusion of raw stdout, raw stderr, or unselected fields; and
 - non-retryable classification for every post-start or final-output failure.
 
+The second-source executable claim is separately limited to all of the
+following:
+
+- Go CLI adapter contract 1 and a successful exact three-probe inspection whose
+  recorded effective-toolchain observation is stable Go 1.26.x;
+- one complete included surface containing only exact command `test`, no
+  observed long-option or structured-output grammar, and an identity wrapper;
+- exact source argv `test`, with every option, package pattern, `--` marker,
+  test-binary argument, and other command rejected before source start;
+- `source_stream_passthrough` through the same finite compatibility registry,
+  fresh schema-4 plan, identity-bound no-shell process port, byte bounds, and
+  conventional-completion contract as the existing ordinary wrapper; and
+- `EffectExecute` with no claim that Go test is read-only, authorized, or
+  contained; repository code, module resolution, credentials, network access,
+  caller-owned mutations, and effective toolchain selection remain source-owned.
+
+For this contract, path/hash/size identify the direct `go` launcher, while
+`Source.Version` is the possibly delegated effective toolchain observed by
+`go version` under inspection conditions. Production runtime does not repeat
+that observation or bind the selected/downloaded toolchain or GOROOT tree. A
+later different selection by the same launcher is not a pre-start rejection.
+Any future release claim that constrains it requires an explicit
+environment/toolchain closure, successor ADR, and native matrix evidence.
+
 The host-neutral wrapper claim is additionally limited to all of the following:
 
 - `wrapper render --bundle <absolute-path> [--format text|json]` on Linux or
   macOS, with a portable non-reserved POSIX requested executable name;
-- one complete included surface, either GitHub CLI `issue list` or `pr list`,
-  whose exposed options and concrete invocation all belong to the maintained
-  runtime grammar;
+- one complete included surface selected by the shared finite compatibility
+  registry: either GitHub CLI `issue list` / `pr list` under contract 2, or
+  exact identity-wrapped Go `test` under contract 1, with every exposed option
+  and concrete invocation inside that adapter's maintained grammar;
 - exactly one schema-4 result mode: `transformed_json` for the existing typed
   projection, or `source_stream_passthrough` for a complete identity or fixed-
   argv-append-only wrapper without an output stage;
@@ -307,8 +353,18 @@ receipt-consumption evidence, not evidence that automation provided human
 consent. Full-digest controlling-terminal success and redirected-input
 rejection are proven separately by production-adapter and application tests.
 
+The second-source portion uses a directly identified Go launcher, requires its
+fixture observation to be stable Go 1.26.x, and runs a dependency-free
+synthetic module with `GOTOOLCHAIN=local`, isolated cache/config roots, and
+downloads disabled. Its separate bounded evidence proves three inspection attempts,
+command `test`, zero preview attempts, and one zero-attempt rejection on every
+target. Linux/macOS then record one ordinary Go wrapper source attempt; Windows
+records the unsupported-render outcome and zero wrapper attempts. These counts
+do not change the GitHub fixture totals above and do not claim that the Go
+process is sandboxed.
+
 Each bounded artifact-journey document required for the source-stream candidate
-uses evidence schema 3. On Linux and macOS it records `wrapper_outcome:
+uses evidence schema 4. On Linux and macOS its existing GitHub section records `wrapper_outcome:
 ordinary_command_verified`, an ordered three-entry `wrapper_cases` inventory,
 and `wrapper_source_process_attempts: 3`. The entries represent transformed-
 JSON, identity, and append-argv-only ordinary invocations in the fixed order
@@ -318,10 +374,21 @@ JSON, identity, and append-argv-only ordinary invocations in the fixed order
 `source_exit_code`, and `source_process_attempts: 1` without storing either
 stream. Windows instead records
 `wrapper_outcome: platform_not_supported`, an empty `wrapper_cases` inventory,
-and zero wrapper source attempts. The fixed fixture-attempt total is 13 on a
-POSIX target and remains 10 on Windows. The aggregator validates those target-
-specific alternatives rather than treating unsupported POSIX activation as a
-skipped success.
+and zero wrapper source attempts.
+
+Schema 4 additionally requires `go_source` with exact
+`adapter_kind: atsura.source.go_cli`, contract version 1, a recorded stable `go1.26.x` observation,
+three inspection attempts, `commands_verified: ["test"]`, and separate catalog,
+bundle, and plan digests. Linux/macOS record
+`wrapper_outcome: ordinary_command_verified`, one `go_test_identity` case,
+identity wrapper, `source_stream_passthrough`, nonempty rendered-wrapper and stdout digests, empty
+stderr digest, status zero, one source attempt, and one preceding zero-attempt
+`go test extra` rejection. Windows records
+`wrapper_outcome: platform_not_supported`, an empty case list, one zero-attempt
+rejection, and zero Go wrapper source attempts. The fixed GitHub fixture-attempt
+total remains 13 on a POSIX target and 10 on Windows. The aggregator validates
+both source-specific platform alternatives without treating unsupported POSIX
+activation as a skipped success.
 
 The credential-free in-process production-composition fixture supplies the
 complete phase evidence that a portable exact-archive journey cannot safely
@@ -351,6 +418,16 @@ before publication. That job does not rebuild or rerun a binary. If a native
 runner is unavailable, the release fails or the platform claim must be
 revised; emulation is not substituted.
 
+Recorded stable Go 1.26.x inspection evidence is likewise an explicit contract,
+not evidence for every future patch or for the toolchain selected during a
+later wrapper invocation. A catalog recording another version, options,
+package patterns, `--`, and test-binary arguments remain outside the first
+runtime. The same launcher selecting Go 1.27 later is not detected by contract
+1. Ambient Go configuration and toolchain selection remain source-owned. The
+pass-only `go test -json` / RTK `go-test` optimizer candidate is a later
+iteration; no release evidence in schema 4 claims RTK execution or a generated
+RTK default.
+
 Matrix artifacts use stable, target-unique names and explicit replacement of
 the prior same-name artifact. Candidate archives, native journey evidence, and
 aggregate summaries use disjoint prefixes. This avoids immutable-name
@@ -360,10 +437,11 @@ checks still fail closed on any absent or stale input.
 Current bounded observation: on 2026-07-22 the Darwin/arm64 exact packaged
 journey passed for revision `b4ade8c`, including ordinary-command wrapper
 activation. This is one implementation observation, not evidence for the later
-documentation commits, schema-4 source-stream plans, evidence schema 3, the
-identity or append-argv-only cases, the other four native rows, the aggregate,
-publication, or a release-quality matrix claim. The exact revision selected for
-any tag must replay all required rows again.
+documentation commits, schema-4 source-stream plans, evidence schema 4, the
+identity or append-argv-only GitHub cases, the Go inspection/wrapper case, the
+other four native rows, the aggregate, publication, or a release-quality matrix
+claim. The exact revision selected for any tag must replay all required rows
+again.
 
 No public release has yet made the wrapper claim. A future candidate that
 passes the complete gates may claim only the fixed Linux/macOS POSIX

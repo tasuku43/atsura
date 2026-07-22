@@ -58,10 +58,11 @@ go help
 go help test
 ```
 
-It accepts stable Go 1.26.x version output, requires the documented root help
-grammar and test usage anchors, and emits a normal source-catalog schema-1
-document. Root built-in command names and summaries come only from the bounded
-command table. The catalog contains no Go-specific field. Probe output,
+It accepts a stable Go 1.26.x effective-toolchain observation from `go version`
+under the inspection working directory and environment, requires the documented
+root help grammar and test usage anchors, and emits a normal source-catalog
+schema-1 document. Root built-in command names and summaries come only from the
+bounded command table. The catalog contains no Go-specific field. Probe output,
 environment values, credentials, and working-directory data are not persisted.
 
 ### First Go runtime grammar
@@ -69,7 +70,7 @@ environment values, credentials, and working-directory data are not persisted.
 The finite runtime accepts only:
 
 - adapter kind `atsura.source.go_cli`, contract version 1;
-- source version `go1.26.x`;
+- recorded inspection observation `source.version: go1.26.x`;
 - a complete included surface containing exactly command `test`;
 - an identity wrapper with no before, append, output, or after transform;
 - plan result mode `source_stream_passthrough`; and
@@ -84,6 +85,22 @@ may have status zero or nonzero and nonempty stderr, exact bounded streams are
 written stdout then stderr, and the source status is returned only after both
 writes complete. Uncertain completion suppresses captured bytes and never
 advertises replay as safe.
+
+### Direct launcher and effective toolchain boundary
+
+Executable path, SHA-256, and size identify the direct `go` launcher file.
+`go version` may itself delegate, so `Source.Version` identifies only the
+effective toolchain observed under the inspection working directory and
+environment. Runtime revalidates the direct launcher identity and exact argv;
+it does not repeat `go version`, freeze module/environment state, or identify a
+selected or downloaded toolchain or GOROOT tree.
+
+The same launcher may therefore select Go 1.27 or another toolchain at wrapper
+runtime because of the working directory, module `go`/`toolchain` directives,
+`GOTOOLCHAIN`, `GOROOT`, or related ambient state, without contract-1 pre-start
+detection. That is source-owned downstream behavior, not an accepted Go 1.27
+compatibility claim. Constraining it requires an explicit
+environment/toolchain closure, a successor ADR, and new platform evidence.
 
 ### Compatibility registry
 
@@ -102,8 +119,9 @@ version.
 
 `go test` remains `EffectExecute`. It may compile and run untrusted repository
 code, read credentials or configuration, resolve modules, access networks, and
-mutate caller-owned files or caches. Atsura neither classifies nor authorizes
-those effects. Exact source identity, separate argv, no shell, finite bounds,
+mutate caller-owned files or caches. Effective toolchain selection and download
+are also source-owned. Atsura neither classifies nor authorizes those effects.
+Exact direct-launcher identity, separate argv, no shell, finite bounds,
 and non-retryable uncertainty describe only Atsura's process boundary.
 
 ## Alternatives considered
@@ -138,7 +156,8 @@ executable grammar contract.
 ### Negative
 
 - The initial Go surface accepts only a no-argument current-package test.
-- Go 1.27 or another version range needs new inspection/runtime evidence.
+- A recorded inspection observation outside Go 1.26.x needs new admission
+  evidence; a later effective-toolchain change is currently unobserved.
 - Ordinary Go test execution can have broad source-owned effects outside
   Atsura's containment and authorization claims.
 - RTK remains deferred after this decision.
@@ -155,12 +174,20 @@ executable grammar contract.
   bounded attempt facts without creating a second inspection command.
 - Exact installed-artifact journeys exercise Go inspection on every native
   target and ordinary no-argument Go test wrappers on claimed POSIX targets.
+  They set `GOTOOLCHAIN=local`, disable download, and isolate module/cache roots
+  as deterministic fixture inputs, not production guarantees. Every target
+  records one zero-attempt rejection; POSIX requires `go test extra` to return
+  `wrapper_runtime_not_supported` / exit 12, then records one admitted Go test
+  attempt and a nonempty rendered-wrapper digest, while Windows retains the
+  empty unsupported wrapper case set.
 - Completion requires `task check`, `task security`, `task public:check`,
   `task release:check`, and the required native CI matrix on one revision.
 
 ## Reconsideration signals
 
 Create a successor ADR before admitting Go flags or package arguments,
-accepting Go 1.27+, treating Go test as read-only, injecting environment
-defaults into the plan, adding a second source executor, or combining
-pre-processor preservation with ADR 0010's plain source-stream mode.
+accepting a recorded version observation outside Go 1.26.x, treating Go test as
+read-only, adding any effective-toolchain guarantee, closing or injecting
+working-directory/environment/module/toolchain state into the plan, adding a
+second source executor, or combining pre-processor preservation with ADR
+0010's plain source-stream mode.

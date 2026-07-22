@@ -273,6 +273,14 @@ and surface/wrapper counts. Repeating bundle build with identical catalog and
 specification bytes produces the same bundle digest. Status starts no source
 process and reports `not_adopted` before adoption.
 
+The same public inspection contract also accepts `--adapter go-cli` when `go
+version` records a stable Go 1.26.x effective-toolchain observation. It
+performs exactly `go version`, `go help`, and `go help test`, emits the same
+vendor-neutral catalog schema with all parsed root built-ins including `test`,
+and persists no raw help. The runtime contract admits only `test`; this
+alternate artifact path does not imply that arbitrary Go commands or arguments
+are executable. Scenario G owns the one admitted no-argument runtime.
+
 The static [schema-3 example](../examples/tailoring-spec.schema3.yaml) is
 structural evidence only: its placeholder digest is deliberately not silently
 rebound. `spec init` is the executable route to a catalog-bound draft.
@@ -565,8 +573,10 @@ Given one adopted runtime-admitted bundle and a stable installed or built
 `atr`, a maintainer can render a deterministic POSIX function, activate it in a
 caller-owned Linux or macOS shell, and invoke ordinary `gh` through any of the
 three finite result cases: transformed JSON, identity source stream, or append-
-argv-only source stream. No coding-agent-host protocol or repository-source
-inspection is part of routine invocation.
+argv-only source stream. The same product path admits ordinary no-argument `go
+test` for one identity-wrapped bundle carrying a recorded stable Go 1.26.x
+observation. No coding-agent-host
+protocol or repository-source inspection is part of routine invocation.
 
 ### Runnable probe
 
@@ -655,6 +665,51 @@ Each bundle contains exactly one included command and only an option surface
 covered by the maintained GitHub CLI runtime grammar. These are three reviewed
 bundles and three ordinary invocations, not runtime mode selection or fallback.
 
+For the nature-distinct second source, run from a reviewed Go module where the
+inspection probe records stable Go 1.26.x. The generated draft is already the only admitted
+identity wrapper, so no transform edit is needed:
+
+```sh
+"$ATR" source inspect \
+  --adapter go-cli \
+  --executable go > /tmp/atsura-go-catalog.json
+
+"$ATR" spec init \
+  --catalog /tmp/atsura-go-catalog.json \
+  -- test > /tmp/atsura-go-spec.yaml
+
+"$ATR" spec validate \
+  --catalog /tmp/atsura-go-catalog.json \
+  --spec /tmp/atsura-go-spec.yaml
+
+"$ATR" bundle build \
+  --catalog /tmp/atsura-go-catalog.json \
+  --spec /tmp/atsura-go-spec.yaml > /tmp/atsura-go-bundle.json
+
+"$ATR" bundle trust --bundle /tmp/atsura-go-bundle.json
+"$ATR" bundle preview --bundle /tmp/atsura-go-bundle.json -- go test
+"$ATR" wrapper render \
+  --bundle /tmp/atsura-go-bundle.json > /tmp/atsura-go-wrapper.sh
+
+. /tmp/atsura-go-wrapper.sh
+go test
+unset -f go
+```
+
+Inspection performs exactly three source attempts. Path/hash/size identify the
+direct `go` launcher; `Source.Version` is the possibly delegated effective
+toolchain observed by `go version` under the inspection working directory and
+environment. Preview performs zero and
+ordinary `go test` performs one. The finite registry selects Go CLI contract 1
+from the bundle and plan adapter kind; it does not introduce a Go-specific
+plan, executor, or result. `go test` remains source-owned `EffectExecute` and
+may compile and run repository code, use credentials or configuration, resolve
+modules, access networks, and mutate caller-owned files or caches. This probe
+is an invocation contract, not a sandbox or authorization claim. Runtime does
+not repeat the version probe, so the same launcher may select or download a
+different toolchain because of module state, `GOTOOLCHAIN`, `GOROOT`, or related
+ambient inputs without a pre-start rejection.
+
 The generated function contains the complete `wrapper run` contract-version-1
 closure and always inserts the explicit `--` separator before `"$@"`. Users do
 not copy the bundle digest or runtime identity into a second command. On
@@ -685,6 +740,14 @@ not runtime attestation.
 - A mixed, multi-command, partially admitted, or otherwise unsupported complete
   surface returns
   `wrapper_runtime_not_supported` before rendering.
+- A catalog recording a version outside stable Go 1.26.x, a non-`test` command,
+  a non-identity wrapper, any option or package pattern, `--`, or a test-binary argument returns
+  `wrapper_runtime_not_supported` before the Go test process starts. Expanding
+  either the recorded source-version range or argv grammar requires new
+  evidence. A later effective Go 1.27 selection by the same launcher is not
+  detected by this contract and is not this recovery case.
+- A nil, unknown, duplicate, or misconfigured compatibility verifier fails as
+  `adapter_contract`; the registry never tries the other source adapter.
 - A changed bundle digest, missing adoption, source drift, malformed closure,
   or honest current-`atr` path/hash/size mismatch starts zero source processes
   and points to render, status, or trust recovery as declared.
@@ -714,12 +777,13 @@ not runtime attestation.
 An agent that knows only the ordinary-command outcome reaches `wrapper render`
 and `wrapper run` through root plus one selected wrapper scope; a known path
 takes one scoped-help invocation. After caller-owned activation, routine use is
-the ordinary `gh` invocation with zero external reconstruction. Direct preview
+the ordinary `gh` or exact no-argument `go test` invocation with zero external
+reconstruction. Direct preview
 and wrapper application use the same fresh plan and plan digest for identical
 validated inputs; the generic fixture, not wrapper stdout, compares that
 evidence. Each admitted case has exactly one successful source attempt, the
-three-case fixture has three, and every pre-start rejection has zero. Vendor-
-specific activation remains downstream.
+three-case GitHub fixture has three, the Go case has one, and every pre-start
+rejection has zero. Vendor-specific activation remains downstream.
 
 ## Scenario H: Exact installed-artifact transform and wrapper journey
 
@@ -731,8 +795,10 @@ transform journey on that target without a repository-built replacement
 binary, provider credential, provider network call, or undeclared parser. On
 Linux and macOS the same extracted executable must also render and serve the
 transformed-JSON, identity, and append-argv-only ordinary-command POSIX cases.
-Windows must prove the exact unsupported-render result while retaining the
-transform journey.
+Every native target must record stable Go 1.26.x inspection evidence through contract 1; Linux and
+macOS must additionally serve one exact identity-wrapped no-argument `go test`,
+while Windows proves the exact unsupported-render result at zero attempts for
+both source bundles while retaining the GitHub transform journey.
 
 ### Automated probe
 
@@ -789,8 +855,21 @@ conventional status without storing either stream. Windows must instead
 receive `wrapper_platform_not_supported`, no rendered source digest or case,
 and zero wrapper source attempts.
 
+Every target also uses packaged `atr` to obtain a stable Go 1.26.x observation
+with `go version`, `go help`, and `go help test`. The harness
+builds an exclude-by-default identity specification for only `test`, validates,
+builds, seeds its exact receipt, and proves preview has zero attempts. Linux and
+macOS render the ordinary `go` function from the extracted `atr`, first invoke
+`go test extra`, and require `wrapper_runtime_not_supported` with zero Go
+attempts and exit 12. They then invoke exact no-argument `go test` once in a dependency-free synthetic module with
+`GOTOOLCHAIN=local`, isolated Go/cache roots, and downloads disabled. These are
+fixture conditions, not production guarantees. Windows performs the inspection
+but requires `wrapper_platform_not_supported`, no Go wrapper case, one zero-
+attempt rejection, and zero Go wrapper source attempts. Isolation is fixture
+discipline, not an Atsura sandbox claim.
+
 The bounded journey document required for this source-stream candidate uses
-evidence schema 3. Linux/macOS record `wrapper_outcome:
+evidence schema 4. Linux/macOS retain the GitHub `wrapper_outcome:
 ordinary_command_verified`, an ordered three-entry `wrapper_cases` inventory,
 and `wrapper_source_process_attempts: 3`. Case names occur in the fixed order
 `transformed_json`, `identity`, `append_only`. Each case binds `name`,
@@ -799,19 +878,29 @@ and `wrapper_source_process_attempts: 3`. Case names occur in the fixed order
 `source_exit_code`, and `source_process_attempts: 1`. Windows records
 `wrapper_outcome: platform_not_supported`, an empty `wrapper_cases` inventory,
 and zero attempts.
-Together with the four inspection and two direct success attempts plus induced
-failures, the fixed fixture-attempt total is 13 on Linux/macOS and remains 10
-on Windows. These are acceptance requirements, not a claim here that a gate run
-has passed.
+
+The required `go_source` object separately binds
+`atsura.source.go_cli` contract 1, a recorded stable `go1.26.x` observation, three source-
+inspection attempts, `commands_verified: ["test"]`, and exact catalog, bundle,
+and plan digests. Linux/macOS record one `go_test_identity` case with identity
+wrapper, `source_stream_passthrough`, a nonempty rendered-source digest, stdout/stderr digests,
+status zero, one source attempt, and one preceding zero-attempt rejection.
+Windows records
+`platform_not_supported`, an empty case list, one zero-attempt rejection, and
+zero Go wrapper source attempts. Together with the four GitHub inspection and
+two direct success attempts plus induced failures, the fixed GitHub fixture-
+attempt total remains 13 on Linux/macOS and 10 on Windows. These are acceptance
+requirements, not a claim here that a gate run has passed.
 
 ### Platform acceptance
 
 CI runs this probe natively on Linux amd64, Linux arm64, macOS amd64, macOS
 arm64, and Windows amd64. The release workflow downloads the exact archive
 uploaded by its build job and blocks publication until all five native replays
-succeed. The four POSIX rows must close all three ordinary-command result
-cases; the Windows row must close the exact structured unsupported-render
-contract and does not count as POSIX activation. Each job uploads a bounded
+succeed. The four POSIX rows must close all three GitHub ordinary-command result
+cases plus the exact Go identity case; the Windows row must close both exact
+structured unsupported-render contracts and does not count as POSIX activation.
+Each job uploads a bounded
 document bound to its target, archive digest, and exact revision. A dependent
 job accepts exactly those five
 canonical documents, validates the complete fixed journey facts, and emits a
@@ -823,9 +912,10 @@ the five native job results.
 On 2026-07-22, the exact packaged Darwin/arm64 journey passed for revision
 `b4ade8c`, including ordinary-command activation. That bounded observation does
 not cover this later documentation tree, schema-4 source-stream plans, evidence
-schema 3, the identity or append-argv-only cases, Linux, macOS amd64, Windows,
-evidence aggregation, publication, or the complete release matrix; the tagged
-revision must replay every required row.
+schema 4, the identity or append-argv-only GitHub cases, the Go inspection and
+identity-wrapper case, Linux, macOS amd64, Windows, evidence aggregation,
+publication, or the complete release matrix; the tagged revision must replay
+every required row.
 
 Exact scoped help is the public authoring contract: the source catalog exposes
 command paths, provenance, option grammar, structured output selector, and
@@ -836,6 +926,11 @@ boundary, platform matrix, static review envelope, and the exact fresh-plan
 result-mode union.
 The harness's deterministic YAML edit verifies those artifact contracts but
 does not erase the user's deliberate configuration-authoring step.
+
+This journey does not run RTK or validate an optimizer default. Pass-only `go
+test -json` with RTK's fixed `go-test` filter is the next research candidate,
+but skip-only, malformed, nonzero-status, and failure-order behavior remains
+unresolved and outside evidence schema 4.
 
 ## Review record
 

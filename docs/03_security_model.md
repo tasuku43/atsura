@@ -53,6 +53,21 @@ Catalog membership proves observed structure, not permission or safety. Only
 verified built-ins are eligible for the currently managed compiled surface;
 observed extensions and unverified dynamic entries remain evidence.
 
+The two current inspection contracts are separately bounded. `github-cli`
+contract 2 performs four fixed offline probes. `go-cli` contract 1 performs
+exactly `go version`, `go help`, and `go help test`, admits only stable Go
+1.26.x effective-toolchain evidence observed under the inspection working
+directory and environment, and stores no raw help or environment value. Neither probe set
+makes the inspected executable, its help, or a later source invocation trusted.
+
+For Go, path/hash/size identify the direct launcher file, while
+`Source.Version` is the possibly delegated effective toolchain observed by
+`go version`. Runtime revalidates the launcher identity but does not repeat the
+version observation. The same launcher may later select or download another
+toolchain because of module state, working directory, `GOTOOLCHAIN`, `GOROOT`,
+or related ambient inputs; contract 1 neither detects nor pre-start rejects that
+change and does not identify the selected toolchain or GOROOT tree.
+
 ### Tailoring specification
 
 Repository-provided and user-provided specifications are untrusted input. The
@@ -195,6 +210,12 @@ adopted bounded source-stream result. Neither has a maintainer evidence
 envelope, and the latter is not raw execution because every tailored check and
 argv transformation still applies.
 
+One finite application compatibility registry serves both the fresh-plan and
+complete-surface checks. It dispatches only by the exact namespaced adapter kind
+already present in validated evidence. Missing, unknown, duplicate, nil, or
+misconfigured verifiers fail as `adapter_contract`; the registry never probes,
+starts a source, selects another adapter, or falls back to a weaker result mode.
+
 ## Source process execution
 
 Starting the source is `operation.EffectExecute`: a source-owned process may
@@ -223,6 +244,14 @@ start, and after wait. Compatibility admission covers maintained command and
 argv behavior; it does not trust stdout, which still passes through the strict
 parser and typed transformer. `bundle preview` remains read-only. Inspection
 probes remain separately bounded source execution.
+
+Go CLI contract 1 adds only exact no-argument `go test` through an identity
+wrapper and `source_stream_passthrough`. Every option, package pattern, `--`
+marker, or test-binary argument fails before start. An admitted Go test remains
+source-owned `EffectExecute`: it may compile and run untrusted repository code,
+read credentials or configuration, resolve modules, access networks, and
+mutate caller-owned files or caches. Atsura does not classify, authorize, or
+sandbox those effects.
 
 `wrapper run` is a second public façade over that same source boundary, not a
 second executor. Runtime/bundle closure validation, adoption, source identity,
@@ -323,6 +352,13 @@ fixtures must exercise hostile delimiters, grouping keys, truncation boundaries,
 and association rules, and must reject results whose task-owned relationships
 cannot be validated independently of presentation.
 
+The next research candidate is pass-only `go test -json` with RTK's fixed
+`go-test` filter. It is not registered, executed, or emitted as a default in
+the current product. Native observations of skip-only classification,
+malformed-line omission, nonzero-status loss, and nondeterministic failure
+ordering must be resolved by a typed preservation and semantic-validation
+contract before that candidate can handle source output.
+
 Recovery conformance covers every exact scoped-help declaration rather than a
 selected sample. Preview has 27 zero-attempt cases. Execute has 28 pre-start
 and 15 post-start phase cases spanning its 41 public codes, with zero/one
@@ -368,6 +404,8 @@ owns, including:
 - command absent from the tailored surface;
 - attempted option absent from the matched command's tailored option surface;
 - missing adoption, source drift, or pre-start identity mismatch;
+- missing, unknown, duplicate, nil, or misconfigured runtime compatibility
+  verifier;
 - malformed wrapper binding, expected bundle mismatch, honest runtime drift,
   unsupported POSIX platform, or a surface not completely covered by one
   maintained runtime contract; or
@@ -425,11 +463,25 @@ caller-owned POSIX shell, invoke the ordinary command, observe one exact source
 attempt, and retain only the plan-declared result. On Windows it must obtain the
 exact structured `wrapper_platform_not_supported` result with zero wrapper
 source attempts and no rendered digest; that is regression evidence, not POSIX
-activation support. The bounded journey evidence schema 2 records
-`wrapper_outcome`, `wrapper_source_sha256`, and
-`wrapper_source_process_attempts` so aggregation cannot confuse those two
-platform contracts. These are required evidence conditions; this section does
-not assert that the complete native matrix has passed.
+activation support. Bounded journey evidence schema 4 retains the existing
+GitHub `wrapper_outcome`, ordered wrapper cases, and attempt facts and adds one
+strict `go_source` record on every native target. That record binds Go adapter
+contract 1, a stable Go 1.26.x inspection observation, three inspection attempts, exact command
+`test`, catalog/bundle/plan digests, and the platform outcome. Linux and macOS
+must record one zero-attempt `go test extra` rejection with
+`wrapper_runtime_not_supported` / exit 12 followed by one successful identity
+`go_test_identity` case, a nonempty rendered-wrapper digest, and one source attempt; Windows
+must record an empty case list, one zero-attempt unsupported
+rejection, and zero Go wrapper source attempts. No source stream enters the
+document. These are required evidence conditions; this section does not assert
+that the complete native matrix has passed.
+
+The native Go fixture fixes `GOTOOLCHAIN=local`, disables download, and isolates
+module/cache roots so that one replay is deterministic. Those are harness-owned
+conditions, not production wrapper guarantees. Production inherits the
+caller's environment and working directory; constraining effective toolchain
+selection would require a new explicit environment/toolchain closure and
+native security evidence.
 
 Each native replay emits one bounded journey document. The aggregation tool
 accepts exactly the five canonical evidence filenames and five matching
@@ -476,6 +528,13 @@ job produced it.
   version is not evidence for every future 2.x release. Competing
   `--jq`/`--template`/`--web` output modes, unmodeled options, and positional
   arguments fail before source start.
+- The Go runtime admits only catalogs whose recorded inspection observation is
+  stable 1.26.x, and only exact no-argument `test`. A catalog recording another
+  version, every option, package pattern, positional marker, and test-binary
+  argument remain outside the contract. A later effective Go 1.27 selection by
+  the same launcher is not detected; ambient toolchain selection and downstream
+  test behavior are source-owned, not evidence that Atsura has modeled or
+  contained them.
 - Successful nonempty stderr is rejected without exposure by
   `transformed_json`, but is returned exactly when the adopted plan declares
   `source_stream_passthrough`.
@@ -492,11 +551,16 @@ job produced it.
 The runtime milestone may claim that validated schema-3
 specifications compile deterministically into schema-2 bundles; preview returns
 one canonical schema-4 plan with zero attempts; and application rebuilds that plan, requires
-exact adoption/current identity and adapter compatibility admission, requires
+exact adoption/current identity and finite-registry adapter compatibility
+admission, requires
 every observable executable identity to match the plan-bound path/hash/size,
 and starts at most once without a shell. `bundle execute` returns only the
 complete typed selected JSON result. An admitted ordinary wrapper returns that
 result or the plan-declared bounded source streams and conventional status.
+The second-source contract adds only a recorded stable Go 1.26.x inspection
+observation and exact no-argument `test` with an identity wrapper; it does not
+classify the effects of test execution or freeze the runtime-selected
+toolchain.
 Pre-start contract failures start zero processes. Every uncertain post-start
 failure is non-retryable and exposes no captured source output. The milestone
 does not claim source-operation authorization, sandboxing, raw execution, or

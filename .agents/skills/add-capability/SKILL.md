@@ -105,6 +105,25 @@ For source-owned execution, specify:
   output-write failure; and
 - audit-safe fields and secret/raw-output fields.
 
+When adding or extending a source adapter, keep source-specific version,
+command, argv, and complete-surface proof in infrastructure. Compose its
+verifier through the one finite `internal/app/runtimecompat` registry so the
+existing fresh-plan and whole-surface ports dispatch by the exact adapter kind.
+Do not add an application vendor branch, second plan/executor/public registry,
+PATH discovery, plugin loading, or adapter fallback. Nil, typed-nil, empty,
+unknown, duplicate, or misconfigured registrations fail closed as
+`runtimeadmission.CategoryAdapterContract`; preserve only errors carrying a
+valid finite runtime-admission category.
+
+For Go CLI contract 1, distinguish direct-launcher identity from version
+observation. Path/hash/size identify the direct `go` file. `go version` may
+delegate, so `Source.Version` is the effective toolchain observed under the
+inspection working directory/environment. Runtime does not repeat that probe
+or identify a selected/downloaded toolchain or GOROOT tree; the same launcher
+may select another version later without pre-start detection. Do not claim
+otherwise. Any effective-toolchain guarantee requires an accepted successor
+ADR, an explicit environment/module/toolchain closure, and native evidence.
+
 For an output-stage capability, classify the stage before selecting a backend:
 
 - a typed projection promises one declared result shape and fails closed
@@ -124,6 +143,12 @@ insert an ambient processor at compile or runtime. Atsura starts the exact
 source itself; the processor receives only bounded admitted stage input and
 never receives source-selection authority, separately supplied credentials,
 source stderr, caller payloads, or ambient configuration.
+
+The next RTK research candidate is pass-only `go test -json` with the fixed
+`go-test` filter. It is not an accepted tuple or current authoring default.
+Resolve skip-only classification, malformed-line omission, nonzero-status
+preservation, and deterministic failure ordering before registering or
+materializing it.
 
 Bind and revalidate exact processor identity, compatibility contract, fixed
 argv, original-output allowance, limits, environment, and reason before source
@@ -444,6 +469,10 @@ Add the smallest set that proves the capability:
 - source-execution tests proving `EffectExecute` has no mutation contract,
   preserves exact identity/argv, starts at most once, and never advertises a
   post-start unknown outcome or output failure as safe to retry;
+- for a second source adapter, exact fixed-probe/version/help fixtures, runtime
+  plan and complete-surface truth tables, registry dispatch/misconfiguration
+  tests, and zero-attempt rejection of every argv family outside its finite
+  grammar;
 - catalog tests rejecting missing, extra, duplicate, optional, non-CLI, non-opaque, and reference-kind-mismatched mutation bindings;
 - catalog tests rejecting optional act references and closed required-reference cycles;
 - authentication/policy/cancellation tests proving zero downstream mutation;
@@ -482,6 +511,16 @@ Add the smallest set that proves the capability:
 - for coding-agent consumption, prove the generic wrapper interface has no host
   fields or dependencies and leave vendor activation/conformance to downstream
   integrations;
+
+For the current Go second-source release evidence, schema 4 must record three
+inspection attempts on every native target. Linux/macOS first reject ordinary
+`go test extra` with `wrapper_runtime_not_supported`, exit 12, and zero Go
+attempts, then run one no-argument identity-wrapper case with a nonempty
+rendered-wrapper digest and one attempt. Windows records the
+same zero-attempt rejection count, an empty wrapper-case list, and the exact
+unsupported POSIX outcome. The fixture may set `GOTOOLCHAIN=local`, disable
+download, and isolate roots for determinism; never promote those fixture inputs
+to production toolchain guarantees.
 
 Tests must use temporary directories, fixed clocks, fake credentials, and local
 test servers. They must not require a developer account or live network.

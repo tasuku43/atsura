@@ -70,6 +70,13 @@ Contract tests must prove:
 - source adapters declare namespaced kind, contract version, exact probe argv,
   and finite attempts/time/bytes; adapter contracts and tests define and
   enforce their accepted source-version range;
+- GitHub CLI contract 2 executes exactly four fixed offline probes, while Go
+  CLI contract 1 executes exactly `go version`, `go help`, and `go help test`;
+- Go inspection accepts a stable Go 1.26.x effective-toolchain observation
+  from `go version` under the probe working directory/environment, requires the
+  bounded root command table and no-argument test-help anchors, emits exact
+  `test` catalog evidence, and rejects version/help drift without persisting raw
+  probe output;
 - source identity and probe evidence are preserved in the catalog;
 - verified built-ins, observed extensions, and unverified dynamic entries stay
   distinct;
@@ -240,9 +247,25 @@ public source-runtime boundary. Tests must prove:
 `wrapper run` extends the shared plan application service without broadening
 the direct `bundle execute` result envelope. Tests must prove:
 
+- one finite application registry structurally satisfies both fresh-plan and
+  whole-surface compatibility ports, dispatches the exact unchanged plan or
+  bundle by adapter kind, preserves valid finite admission categories, and
+  rejects nil, typed-nil, empty, unknown, duplicate, or misconfigured entries
+  as `adapter_contract` without dispatch;
 - the complete GitHub CLI adapter/version/command/surface/long-option grammar
   is admitted before source start for one identity or append-argv-only wrapper,
   without requiring a JSON selector;
+- Go CLI contract 1 admits only a recorded stable Go 1.26.x inspection
+  observation, exact command `test`, one complete identity wrapper,
+  `source_stream_passthrough`, no observed long-
+  option or structured-output surface, and no argv element after `test`;
+- every Go option, package pattern, `--` marker, test-binary argument, other
+  command, non-identity wrapper, and catalog recording a version outside stable
+  1.26.x fails before source start;
+- tests distinguish direct-launcher path/hash/size from the possibly delegated
+  `Source.Version` observation and do not claim that runtime repeats `go
+  version`, detects a later effective-toolchain change, or binds a selected
+  toolchain/GOROOT tree;
 - preview and wrapper application rebuild byte-identical schema-4 plans and
   plan digests for `source_stream_passthrough`;
 - source stdout and stderr are returned byte-for-byte within 4 MiB and 256 KiB,
@@ -273,9 +296,10 @@ the direct `bundle execute` result envelope. Tests must prove:
 `tailoring.output.optimize` remains deferred. Schema 3 and the current runtime
 continue to reject RTK and arbitrary external-processor actions. ADR 0007
 selects a future contract, while ADR 0009 rejects the ambiguous `v0.43.0`
-`git-log` candidate and leaves the first tuple unselected. Neither the current
-transform-runtime milestone nor its passing gates claim an optimizer, an RTK
-authoring default, or RTK runtime compatibility.
+`git-log` candidate. ADR 0011 identifies pass-only `go test -json` plus the
+fixed RTK `go-test` filter as the next candidate, but does not accept it as a
+tuple. Neither the current transform-runtime milestone nor its passing gates
+claim an optimizer, an RTK authoring default, or RTK runtime compatibility.
 
 An implementing slice may change that ledger state only after tests prove:
 
@@ -314,6 +338,9 @@ An implementing slice may change that ledger state only after tests prove:
 - each filter fixture covers its literal delimiters, grouping keys, truncation
   boundaries, and association rules with hostile valid source data; exit zero,
   empty stderr, and smaller output never substitute for semantic validation.
+- the Go candidate additionally resolves skip-only classification, malformed-
+  line omission, nonzero-status preservation, and deterministic failure
+  ordering before any pass-only source result becomes eligible.
 
 ### Source execution effect and process boundary
 
@@ -332,6 +359,12 @@ non-retryable post-start uncertainty. `bundle preview` is `EffectRead` and
 starts no source process. `bundle execute` is `EffectExecute`, has no Atsura
 mutation contract, and starts at most one source process after compatibility
 and identity checks succeed.
+
+Go runtime tests must also keep `go test` classified as source-owned
+`EffectExecute`, not Read or an Atsura-owned mutation. The tests prove only
+exact identity/argv, zero/one attempts, and failure classification; they do not
+claim to contain or authorize repository code, module resolution, credential
+use, network access, or caller-owned file/cache changes.
 
 ### Retired-schema migration
 
@@ -393,9 +426,11 @@ The slice must prove:
   no POSIX activation claim;
 - the bundle's requested executable is used verbatim only when it is a portable
   non-reserved POSIX Name; no basename or path normalization invents a command;
-- the complete included surface contains exactly one GitHub CLI `issue list`
-  or `pr list` command, one admitted result mode, and only options covered by
-  the maintained runtime contract before bytes are rendered;
+- the complete included surface contains exactly one command and result mode
+  covered by its registry-selected verifier before bytes are rendered: GitHub
+  CLI contract 2 admits finite `issue list` / `pr list` transform, identity, or
+  append-only surfaces; Go CLI contract 1 admits only identity-wrapped `test`
+  with no observed long-option or structured-output surface;
 - the wrapper binding contains only wrapper contract, bundle identity, runtime
   identity, source identity, and ordinary command spelling;
 - no bundle, binding, plan, result, help, or capability field names a
@@ -496,8 +531,10 @@ bytes in persisted or structured evidence.
   cancellation, timeout, and identity-race faults.
 - Artifact-journey fixtures own execution of the exact `atr` file extracted
   from a release archive. They use a native credential- and provider-network-
-  free source fixture, an isolated user-config root, and an append-only attempt
-  log. Before source inspection they verify schema-10 root help and seven exact
+  free GitHub-compatible source fixture, a direct Go launcher whose fixture
+  observation is stable 1.26.x against a dependency-free synthetic module, an isolated user-
+  config root, and bounded append-only attempt logs. Before source inspection
+  they verify schema-10 root help and seven exact
   scoped authoring/runtime contracts, including complete nested field
   inventories and the complete ordered 27-fault preview and 41-fault execute
   recovery signatures. The non-shipped harness may seed an exact
@@ -507,20 +544,31 @@ bytes in persisted or structured evidence.
   evidence. The journey verifies eight help documents: the root index plus
   seven exact scoped public contracts. Linux and macOS activate deterministic
   `wrapper render` bytes and invoke transformed-JSON, identity, and append-argv-
-  only ordinary commands through the extracted runtime. The raw-byte cases
-  prove exact stream digests, conventional status, hostile argv, and three
-  total wrapper source attempts. Windows verifies the exact structured
-  unsupported-render result without sourcing bytes.
+  only GitHub ordinary commands plus one exact identity-wrapped no-argument Go
+  `test` command through the extracted runtime. The raw-byte cases prove exact
+  stream digests, conventional status, hostile argv, and three GitHub plus one
+  Go wrapper source attempts. Windows verifies the exact structured unsupported-
+  render result for both source bundles without sourcing bytes or starting a
+  wrapper source process. The Go fixture sets `GOTOOLCHAIN=local`, disables
+  download, and isolates module/cache roots; those are deterministic harness
+  inputs, not production environment or effective-toolchain guarantees.
 - Each native CI artifact row runs the full production source-runner and
   trust-store tests, the exact bundle-file fault mapping, and the complete CLI
   recovery matrix before packaging and replay. The release linter pins that
   exact step as well as the five runner/target tuples.
 - Artifact-evidence aggregation owns the exact five-target set. Evidence schema
-  3 distinguishes `ordinary_command_verified` on Linux/macOS from
+  4 distinguishes `ordinary_command_verified` on Linux/macOS from
   `platform_not_supported` on Windows and binds an ordered `wrapper_cases`
-  inventory. Each POSIX case records wrapper kind, result mode, bundle and plan
+  inventory for GitHub CLI. Each POSIX case records wrapper kind, result mode, bundle and plan
   digests, rendered-source digest, stdout/stderr digests, source status, and one
-  source attempt; Windows records an empty case list and zero attempts. Each
+  source attempt; Windows records an empty case list and zero attempts. Its
+  required `go_source` record separately binds adapter contract 1, a stable Go
+  1.26.x inspection observation, three inspection attempts, exact command `test`, catalog/bundle/plan
+  digests, and one zero-attempt rejection on every target. POSIX additionally
+  records exit 12 / `wrapper_runtime_not_supported` for `go test extra`, then
+  one identity-wrapper case with a nonempty rendered-wrapper digest and one
+  attempt; Windows records the empty
+  unsupported case set with zero wrapper attempts. Each
   native job uploads one bounded document containing target and
   observed host,
   revision, archive, command, bundle, and command-specific plan identities,
@@ -551,41 +599,48 @@ tree:
    covers exact selector encoding, preview/execute plan-digest equality,
    selected/renamed typed JSON, no raw-output leak, and exactly one source
    attempt per command;
-6. `wrapper render` and `wrapper run` catalog, typed-argv, output-authority,
+6. Go CLI contract 1 inspection proves the exact three probes and a recorded
+   stable 1.26.x observation; finite-registry, plan, and whole-surface truth tables admit
+   only identity-wrapped exact no-argument `test` and reject every additional
+   argv or misconfigured adapter before source start;
+7. `wrapper render` and `wrapper run` catalog, typed-argv, output-authority,
    fault, and scoped-help contracts match the implementation; `wrapper run`
    requires the explicit `--` separator and publishes the exact transformed-
    JSON/source-stream result union;
-7. deterministic binding/render tests cover portable command-name eligibility,
+8. deterministic binding/render tests cover portable command-name eligibility,
    POSIX quoting, exact bundle and runtime closure, whole-surface runtime
    admission, hostile argv forwarding, and no host fields;
-8. application and CLI tests prove direct preview/wrapper plan-digest parity,
+9. application and CLI tests prove direct preview/wrapper plan-digest parity,
    bundle/runtime/source drift rejection at zero source attempts, exact one-
    attempt transformed-JSON, identity, and append-argv-only success, source
    stream/status fidelity, uncertain-stream suppression, final-write faults,
    no maintainer envelope, and no raw fallback;
-9. the production-composition recovery matrix covers all 27 preview faults,
+10. the production-composition recovery matrix covers all 27 preview faults,
    all 28 execute pre-start phase cases at zero attempts, and all 15 execute
    post-start phase cases at one non-retryable attempt, with exact scoped-help
    parity and no raw or secret canary leak;
-10. retired authorization schemas fail with zero source attempts and legacy
+11. retired authorization schemas fail with zero source attempts and legacy
    `plan preview` remains migration-only;
-11. exact scoped agent help publishes the finite source-catalog,
+12. exact scoped agent help publishes the finite source-catalog,
    specification-authoring, and runtime-admission contracts used by the
    installed-artifact journey;
-12. `task release:check` replays the platform-native exact archive, and CI defines
+13. `task release:check` replays the platform-native exact archive, and CI defines
    required native jobs for Linux amd64/arm64, macOS amd64/arm64, and Windows
    amd64; a dependent aggregation job verifies the exact five evidence
    documents and five candidate archive hashes, and the release publish job
    depends on that aggregate. Linux/macOS rows activate the ordinary POSIX
-   commands for all three result cases, while Windows proves structured
-   unsupported rendering with zero wrapper source attempts;
-13. evidence schema 3 records the ordered wrapper cases, result modes, stream
-   digests, conventional statuses, and attempt counts without storing source
-   bytes or claiming caller attestation;
-14. `task check` passes;
-15. `task security` passes;
-16. `task public:check` passes; and
-17. repository search finds no live source-wrapper requirement for
+   GitHub commands for all three result cases plus one exact Go `test` identity
+   case, while Windows proves structured unsupported rendering for both source
+   bundles with zero wrapper source attempts;
+14. evidence schema 4 records the ordered GitHub wrapper cases and the separate
+   Go adapter/recorded-version/three-probe/catalog/bundle/plan and platform outcome,
+   including one zero-attempt Go rejection on every target, followed by one
+   POSIX Go success attempt or the Windows empty unsupported case set,
+   without storing source bytes or claiming caller attestation;
+15. `task check` passes;
+16. `task security` passes;
+17. `task public:check` passes; and
+18. repository search finds no live source-wrapper requirement for
    allow/confirm/deny, source read/create/write, or source target/impact outside
    explicit migration and superseded-history contexts.
 
