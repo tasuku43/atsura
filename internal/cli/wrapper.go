@@ -128,7 +128,7 @@ func runWrapperRun(ctx context.Context, c *CLI, spec CommandSpec, intent operati
 			"output_contract_exceeded",
 			"The fresh wrapper plan returned an unknown result mode.",
 			false,
-			fault.NextAction{Command: "bundle preview", Reason: "Inspect the fresh wrapper plan; the source was not retried."},
+			wrapperResultRecovery(),
 		))
 	}
 
@@ -149,7 +149,7 @@ func runWrapperRun(ctx context.Context, c *CLI, spec CommandSpec, intent operati
 			"output_contract_exceeded",
 			"The plan-declared wrapper result exceeds its 2 MiB output limit.",
 			false,
-			fault.NextAction{Command: "bundle preview", Reason: "Reduce the bounded transformed result; the source was not retried."},
+			wrapperResultRecovery(),
 		))
 	}
 	return c.emitResult(ctx, append(encoded, '\n'))
@@ -162,8 +162,12 @@ func invalidWrapperPlanResult(err error) error {
 		"The fresh wrapper plan returned a result outside its declared result-mode contract.",
 		false,
 		err,
-		fault.NextAction{Command: "bundle preview", Reason: "Inspect the bounded fresh-plan result; the source was not retried."},
+		wrapperResultRecovery(),
 	)
+}
+
+func wrapperResultRecovery() fault.NextAction {
+	return fault.NextAction{Command: "bundle preview", Reason: "Inspect the bounded fresh-plan result; the source was not retried."}
 }
 
 func validateTransformedJSONEnvelope(result planapply.Result) error {

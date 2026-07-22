@@ -129,7 +129,8 @@ func TestExecuteVerifiesRuntimeAndForwardsExactArgvToBundleDerivedPlan(t *testin
 	if err := request.Command.Validate(); err != nil {
 		t.Fatalf("wrapper command context = %+v: %v", request.Command, err)
 	}
-	if request.Command.RuntimeHelpAction.Command != "help wrapper run" || request.Command.BundleMismatchAction.Command != "wrapper render" {
+	wantRuntimeRecovery := (fault.NextAction{Command: "help wrapper run", Reason: "Review the supported generated-wrapper runtime contract."})
+	if request.Command.RuntimeHelpAction != wantRuntimeRecovery || request.Command.BundleMismatchAction.Command != "wrapper render" {
 		t.Fatalf("wrapper recovery context = %+v", request.Command)
 	}
 	args[0] = "mutated-after-execute"

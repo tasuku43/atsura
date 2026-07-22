@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -53,15 +52,21 @@ func (w *orderedWriter) Write(value []byte) (int, error) {
 	return w.buffer.Write(value)
 }
 
-type failFirstWriter struct {
-	calls  int
-	buffer bytes.Buffer
+type partialFirstWriter struct {
+	calls      int
+	firstLimit int
+	buffer     bytes.Buffer
 }
 
-func (w *failFirstWriter) Write(value []byte) (int, error) {
+func (w *partialFirstWriter) Write(value []byte) (int, error) {
 	w.calls++
 	if w.calls == 1 {
-		return 0, errors.New("first write failed")
+		kept := w.firstLimit
+		if kept > len(value) {
+			kept = len(value)
+		}
+		_, _ = w.buffer.Write(value[:kept])
+		return kept, nil
 	}
 	return w.buffer.Write(value)
 }
@@ -201,6 +206,34 @@ func TestWrapperCatalogDeclaresCompleteFacadeFaultInventories(t *testing.T) {
 	}
 	wantRun = append(wantRun, "invalid_wrapper_binding", "wrapper_runtime_unavailable", "wrapper_runtime_drift", "bundle_binding_mismatch")
 	assertCommandErrorCodes(t, run.Agent.Errors, wantRun)
+}
+
+func TestWrapperRunModeNeutralRecoveriesMatchScopedHelp(t *testing.T) {
+	declarations := exactRecoveryHelp(t, "wrapper run")
+	wantRuntime := fault.NextAction{Command: "help wrapper run", Reason: "Review the supported generated-wrapper runtime contract."}
+	wantResult := wrapperResultRecovery()
+	for code, want := range map[string]fault.NextAction{
+		"wrapper_runtime_not_supported": wantRuntime,
+		"output_contract_exceeded":      wantResult,
+	} {
+		declared, ok := declarations[code]
+		if !ok || len(declared.NextActions) != 1 || declared.NextActions[0] != want {
+			t.Fatalf("%s declaration=%+v want recovery=%+v", code, declared, want)
+		}
+	}
+
+	binding := testWrapperRenderResult(t).Binding.RuntimeInvocation()
+	malformed := testWrapperSourceStreamResult([]byte("secret stdout"), []byte("secret stderr"), 0, tailoringbundle.WrapperIdentity)
+	malformed.SourceProcessAttempts = 0
+	stub := &cliWrapperRunStub{result: malformed}
+	var stdout, stderr bytes.Buffer
+	command := New(strings.NewReader(""), &stdout, &stderr)
+	command.wrapperRuns = stub
+	args := append([]string{"--error-format=json"}, wrapperRunInvocation(binding, "pr", "list")...)
+	exit := command.RunContext(context.Background(), args)
+	assertRecoveryObservation(t, "wrapper run", declarations["output_contract_exceeded"], recoveryObservation{
+		stdout: stdout.Bytes(), stderr: stderr.Bytes(), exitCode: exit, attempts: 0,
+	}, 0)
 }
 
 func assertCommandErrorCodes(t *testing.T, declared []CommandError, want []string) {
@@ -375,29 +408,30 @@ func TestWrapperRunSourceStreamFinalWriteFailuresAreNonRetryable(t *testing.T) {
 
 	t.Run("stdout", func(t *testing.T) {
 		stub := &cliWrapperRunStub{result: result}
+		stdout := &partialFirstWriter{firstLimit: 7}
 		var stderr bytes.Buffer
-		command := New(strings.NewReader(""), shortWriter{}, &stderr)
+		command := New(strings.NewReader(""), stdout, &stderr)
 		command.wrapperRuns = stub
 		args := append([]string{"--error-format=json"}, wrapperRunInvocation(binding, "pr", "list")...)
 		if code := command.RunContext(context.Background(), args); code != ExitInternal || stub.calls != 1 {
 			t.Fatalf("code=%d calls=%d stderr=%q", code, stub.calls, stderr.String())
 		}
-		if !strings.Contains(stderr.String(), `"code":"execute_output_write_failed"`) || !strings.Contains(stderr.String(), `"retryable":false`) || bytes.Contains(stderr.Bytes(), sourceStdout) || bytes.Contains(stderr.Bytes(), sourceStderr) {
-			t.Fatalf("stderr=%q", stderr.String())
+		if !bytes.Equal(stdout.buffer.Bytes(), sourceStdout[:stdout.firstLimit]) || !strings.Contains(stderr.String(), `"code":"execute_output_write_failed"`) || !strings.Contains(stderr.String(), `"retryable":false`) || bytes.Contains(stderr.Bytes(), sourceStdout) || bytes.Contains(stderr.Bytes(), sourceStderr) {
+			t.Fatalf("stdout=%q stderr=%q", stdout.buffer.Bytes(), stderr.String())
 		}
 	})
 
 	t.Run("stderr after stdout", func(t *testing.T) {
 		stub := &cliWrapperRunStub{result: result}
 		var stdout bytes.Buffer
-		stderr := &failFirstWriter{}
+		stderr := &partialFirstWriter{firstLimit: 9}
 		command := New(strings.NewReader(""), &stdout, stderr)
 		command.wrapperRuns = stub
 		args := append([]string{"--error-format=json"}, wrapperRunInvocation(binding, "pr", "list")...)
 		if code := command.RunContext(context.Background(), args); code != ExitInternal || stub.calls != 1 {
 			t.Fatalf("code=%d calls=%d stderr=%q", code, stub.calls, stderr.buffer.String())
 		}
-		if !bytes.Equal(stdout.Bytes(), sourceStdout) || !strings.Contains(stderr.buffer.String(), `"code":"execute_output_write_failed"`) || !strings.Contains(stderr.buffer.String(), `"retryable":false`) || bytes.Contains(stderr.buffer.Bytes(), sourceStderr) {
+		if !bytes.Equal(stdout.Bytes(), sourceStdout) || !bytes.HasPrefix(stderr.buffer.Bytes(), sourceStderr[:stderr.firstLimit]) || !strings.Contains(stderr.buffer.String(), `"code":"execute_output_write_failed"`) || !strings.Contains(stderr.buffer.String(), `"retryable":false`) || bytes.Contains(stderr.buffer.Bytes(), sourceStderr[stderr.firstLimit:]) {
 			t.Fatalf("stdout=%q stderr=%q", stdout.Bytes(), stderr.buffer.String())
 		}
 	})

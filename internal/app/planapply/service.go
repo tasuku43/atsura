@@ -346,7 +346,7 @@ func sourceStreamResult(ctx context.Context, command CommandContext, plan tailor
 		}
 	} else {
 		public, ok := fault.PublicCopy(processErr)
-		if !ok || public.Code != "source_command_failed" || public.Retryable || processResult.ExitCode <= 0 {
+		if !ok || public.Kind != fault.KindRejected || public.Code != "source_command_failed" || public.Retryable || processResult.ExitCode <= 0 {
 			return Result{}, classifyProcess(processRequest, processResult, processErr, command)
 		}
 	}

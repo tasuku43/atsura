@@ -196,6 +196,12 @@ func TestApplySuppressesSourceBytesForUnknownOrInconsistentStreamErrors(t *testi
 			code:   "source_command_failed",
 		},
 		{
+			name:   "wrong-kind command failure",
+			result: sourceprocess.Result{Attempts: 1, ExitCode: 9, Stdout: []byte("secret stdout"), Stderr: []byte("secret stderr"), Identity: identity},
+			err:    fault.New(fault.KindUnavailable, "source_command_failed", "secret adapter cause", false),
+			code:   "source_command_failed",
+		},
+		{
 			name:   "command failure with zero exit",
 			result: sourceprocess.Result{Attempts: 1, ExitCode: 0, Stdout: []byte("secret stdout"), Stderr: []byte("secret stderr"), Identity: identity},
 			err:    fault.New(fault.KindRejected, "source_command_failed", "secret adapter cause", false),

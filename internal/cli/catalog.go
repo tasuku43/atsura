@@ -725,6 +725,7 @@ func wrapperRenderErrors() []CommandError {
 func wrapperRunErrors() []CommandError {
 	errors := bundleFileErrors("wrapper run")
 	errors[0] = declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help wrapper run", "Use only the complete render-produced binding flags and forward argv after --.")
+	resultRecovery := wrapperResultRecovery()
 	return append(errors,
 		declaredCommandError(fault.KindInvalidInput, "invalid_wrapper_binding", false, "wrapper render", "Render a complete binding from the exact current bundle and Atsura runtime."),
 		declaredCommandError(fault.KindUnavailable, "wrapper_runtime_unavailable", false, "wrapper render", "Render again only after the current Atsura executable identity is readable and stable."),
@@ -743,7 +744,7 @@ func wrapperRunErrors() []CommandError {
 		declaredCommandError(fault.KindNotFound, "command_not_in_surface", false, "help wrapper run", "Use a command present in the compiled tailored surface."),
 		declaredCommandError(fault.KindNotFound, "option_not_in_surface", false, "help wrapper run", "Use only options present in the matched command's tailored option surface."),
 		declaredCommandError(fault.KindContract, "invalid_wrapper_plan", false, "bundle preview", "Inspect the fresh plan and repair incomplete wrapper construction."),
-		declaredCommandError(fault.KindUnsupported, "wrapper_runtime_not_supported", false, "help wrapper run", "Use a transform wrapper and source adapter contract with accepted JSON selector behavior."),
+		declaredCommandError(fault.KindUnsupported, "wrapper_runtime_not_supported", false, "help wrapper run", "Review the supported generated-wrapper runtime contract."),
 		declaredCommandError(fault.KindContract, "invalid_source_process_request", false, "bundle preview", "Inspect the exact plan-derived source request before execution."),
 		declaredCommandError(fault.KindUnavailable, "source_process_start_failed", true, "wrapper run", "Retry the exact generated invocation only when the result proves no source process started."),
 		declaredCommandError(fault.KindContract, "source_stdout_too_large", false, "help wrapper run", "Reduce source output within the declared bound; the source was not retried."),
@@ -757,7 +758,7 @@ func wrapperRunErrors() []CommandError {
 		declaredCommandError(fault.KindContract, "source_json_invalid", false, "bundle preview", "Repair the source output selector or adapter contract; raw output is not a fallback."),
 		declaredCommandError(fault.KindContract, "output_transform_failed", false, "bundle preview", "Repair selected fields and typed transform expectations; raw output is not a fallback."),
 		declaredCommandError(fault.KindContract, "unclassified_source_execution_outcome", false, "bundle status", "Reconcile source-owned effects before considering another invocation."),
-		declaredCommandError(fault.KindContract, "output_contract_exceeded", false, "bundle preview", "Reduce the bounded transformed result; the source was not retried."),
+		declaredCommandError(fault.KindContract, "output_contract_exceeded", false, resultRecovery.Command, resultRecovery.Reason),
 		declaredCommandError(fault.KindContract, "output_encoding_failed", false, "bundle preview", "Repair deterministic compact wrapper JSON; the source was not retried."),
 		declaredCommandError(fault.KindInternal, "internal_error", false, "bundle status", "Inspect wrapper execution wiring without replaying the source."),
 		declaredCommandError(fault.KindInternal, "execute_output_write_failed", false, "bundle status", "The source completed; reconcile before considering another invocation."),
