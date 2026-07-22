@@ -46,6 +46,7 @@ func TestInspectContractsAcceptsPublicCapabilitiesAndSchemaFixture(t *testing.T)
 		Provenance: "A publishable synthetic provider fixture.",
 		License:    "CC0-1.0",
 	}})
+	writeJSON(t, root, processorsPath, validProcessorManifest())
 
 	issues, err := inspectContracts(root, set("items.read"))
 	if err != nil {
@@ -94,6 +95,10 @@ func TestStrictManifestParsingRejectsUnknownDuplicateAndTrailingJSON(t *testing.
 		{name: "schema duplicate key", path: schemasPath, data: `[{"id":"provider.v1","path":"testdata/a.json","path":"testdata/b.json","sha256":"","provenance":"fixture","license":"CC0-1.0"}]`},
 		{name: "null is not explicit empty", path: schemasPath, data: `null`},
 		{name: "object is not array", path: schemasPath, data: `{}`},
+		{name: "processor unknown field", path: processorsPath, data: `{"schema_version":1,"processors":[],"download":true}`},
+		{name: "processor duplicate key", path: processorsPath, data: `{"schema_version":1,"schema_version":2,"processors":[]}`},
+		{name: "processor null is not object", path: processorsPath, data: `null`},
+		{name: "processor array is not object", path: processorsPath, data: `[]`},
 		{name: "multiple values", path: schemasPath, data: `[] []`},
 	}
 	for _, test := range tests {
@@ -101,10 +106,13 @@ func TestStrictManifestParsingRejectsUnknownDuplicateAndTrailingJSON(t *testing.
 			root := t.TempDir()
 			writeFile(t, root, test.path, []byte(test.data))
 			var err error
-			if test.path == capabilitiesPath {
+			switch test.path {
+			case capabilitiesPath:
 				_, err = loadStrictArray[capability](root, test.path)
-			} else {
+			case schemasPath:
 				_, err = loadStrictArray[schemaFixture](root, test.path)
+			case processorsPath:
+				_, err = loadStrictObject[processorManifest](root, test.path)
 			}
 			if err == nil {
 				t.Fatal("strict manifest parsing succeeded")
@@ -144,6 +152,17 @@ func TestManifestsMustBeRegularFilesWithoutSymbolicLinks(t *testing.T) {
 			t.Fatal(err)
 		}
 		if _, err := loadStrictArray[schemaFixture](root, schemasPath); err == nil || !strings.Contains(err.Error(), "regular file") {
+			t.Fatalf("error = %v, want regular-file rejection", err)
+		}
+	})
+
+	t.Run("processor directory", func(t *testing.T) {
+		root := t.TempDir()
+		path := filepath.Join(root, filepath.FromSlash(processorsPath))
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := loadStrictObject[processorManifest](root, processorsPath); err == nil || !strings.Contains(err.Error(), "regular file") {
 			t.Fatalf("error = %v, want regular-file rejection", err)
 		}
 	})
@@ -243,6 +262,65 @@ func TestSchemaFixtureDigestIsByteExact(t *testing.T) {
 	assertIssuesContain(t, issues, "sha256 mismatch")
 }
 
+func TestProcessorManifestAcceptsExactADR0012Provenance(t *testing.T) {
+	if issues := validateProcessorManifest(validProcessorManifest()); len(issues) != 0 {
+		t.Fatalf("issues = %+v", issues)
+	}
+}
+
+func TestProcessorManifestRejectsEveryUnpinnedContractDimension(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*processorManifest)
+	}{
+		{name: "schema", mutate: func(value *processorManifest) { value.SchemaVersion++ }},
+		{name: "missing processor", mutate: func(value *processorManifest) { value.Processors = nil }},
+		{name: "extra processor", mutate: func(value *processorManifest) { value.Processors = append(value.Processors, expectedRTKProcessor()) }},
+		{name: "contract", mutate: func(value *processorManifest) { value.Processors[0].ContractID = "atsura.output.other.v1" }},
+		{name: "kind", mutate: func(value *processorManifest) { value.Processors[0].Kind = "atsura.processor.other" }},
+		{name: "version", mutate: func(value *processorManifest) { value.Processors[0].Version = "0.43.1" }},
+		{name: "commit", mutate: func(value *processorManifest) { value.Processors[0].UpstreamCommit = strings.Repeat("0", 40) }},
+		{name: "release", mutate: func(value *processorManifest) { value.Processors[0].ReleaseURL = "https://example.com/release" }},
+		{name: "checksums URL", mutate: func(value *processorManifest) {
+			value.Processors[0].Checksums.URL = "https://example.com/checksums.txt"
+		}},
+		{name: "checksums digest", mutate: func(value *processorManifest) { value.Processors[0].Checksums.SHA256 = strings.Repeat("0", 64) }},
+		{name: "license", mutate: func(value *processorManifest) { value.Processors[0].License.SPDX = "MIT" }},
+		{name: "license URL", mutate: func(value *processorManifest) { value.Processors[0].License.URL = "https://example.com/LICENSE" }},
+		{name: "license digest", mutate: func(value *processorManifest) { value.Processors[0].License.SHA256 = strings.Repeat("0", 64) }},
+		{name: "notice", mutate: func(value *processorManifest) { value.Processors[0].Notice.Status = "present" }},
+		{name: "distribution", mutate: func(value *processorManifest) { value.Processors[0].Distribution = "bundled" }},
+		{name: "SBOM review", mutate: func(value *processorManifest) { value.Processors[0].SBOMReview = "complete" }},
+		{name: "missing target", mutate: func(value *processorManifest) { value.Processors[0].Artifacts = value.Processors[0].Artifacts[:3] }},
+		{name: "Windows target", mutate: func(value *processorManifest) { value.Processors[0].Artifacts[0].Target = "windows/amd64" }},
+		{name: "target order", mutate: func(value *processorManifest) {
+			value.Processors[0].Artifacts[0], value.Processors[0].Artifacts[1] = value.Processors[0].Artifacts[1], value.Processors[0].Artifacts[0]
+		}},
+		{name: "archive name", mutate: func(value *processorManifest) { value.Processors[0].Artifacts[0].ArchiveName = "rtk.tar.gz" }},
+		{name: "archive URL", mutate: func(value *processorManifest) {
+			value.Processors[0].Artifacts[0].ArchiveURL = "https://example.com/rtk.tar.gz"
+		}},
+		{name: "archive digest", mutate: func(value *processorManifest) {
+			value.Processors[0].Artifacts[0].ArchiveSHA256 = strings.Repeat("0", 64)
+		}},
+		{name: "archive size", mutate: func(value *processorManifest) { value.Processors[0].Artifacts[0].ArchiveSize++ }},
+		{name: "binary member", mutate: func(value *processorManifest) { value.Processors[0].Artifacts[0].BinaryMember = "bin/rtk" }},
+		{name: "binary digest", mutate: func(value *processorManifest) {
+			value.Processors[0].Artifacts[0].BinarySHA256 = strings.Repeat("0", 64)
+		}},
+		{name: "binary size", mutate: func(value *processorManifest) { value.Processors[0].Artifacts[0].BinarySize++ }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			manifest := validProcessorManifest()
+			test.mutate(&manifest)
+			if issues := validateProcessorManifest(manifest); len(issues) == 0 {
+				t.Fatal("unpinned processor manifest was accepted")
+			}
+		})
+	}
+}
+
 func writeJSON(t *testing.T, root, relative string, value any) {
 	t.Helper()
 	data, err := json.MarshalIndent(value, "", "  ")
@@ -250,6 +328,13 @@ func writeJSON(t *testing.T, root, relative string, value any) {
 		t.Fatal(err)
 	}
 	writeFile(t, root, relative, append(data, '\n'))
+}
+
+func validProcessorManifest() processorManifest {
+	return processorManifest{
+		SchemaVersion: processorManifestSchemaVersion,
+		Processors:    []processorProvenance{expectedRTKProcessor()},
+	}
 }
 
 func writeFixture(t *testing.T, root, relative string, data []byte) {

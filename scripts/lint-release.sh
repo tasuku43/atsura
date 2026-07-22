@@ -495,10 +495,13 @@ sha256_of() {
 release_root=$(mktemp -d "${TMPDIR:-/tmp}/${binary}-release-check.XXXXXXXX")
 cleanup() { rm -rf -- "$release_root"; }
 trap cleanup EXIT
+# Processor provenance is release-claim input, but the external executable is
+# deliberately absent from archive_supporting_files and every Atsura archive.
 release_input_roots=(
   go.mod
   LICENSE
   .harness/project.json
+  .harness/processors.json
   .github/workflows/release.yml
   Formula
   Taskfile.yml

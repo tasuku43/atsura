@@ -19,7 +19,23 @@ import (
 
 const (
 	capabilitiesPath = ".harness/capabilities.json"
+	processorsPath   = ".harness/processors.json"
 	schemasPath      = ".harness/schemas.json"
+
+	processorManifestSchemaVersion = 1
+	rtkContractID                  = "atsura.output.rtk_go_test_pass.v1"
+	rtkKind                        = "atsura.processor.rtk"
+	rtkVersion                     = "0.43.0"
+	rtkUpstreamCommit              = "5a7880d404db8364d602f2ecdc41dd790f64013f"
+	rtkReleaseURL                  = "https://github.com/rtk-ai/rtk/releases/tag/v0.43.0"
+	rtkChecksumsURL                = "https://github.com/rtk-ai/rtk/releases/download/v0.43.0/checksums.txt"
+	rtkChecksumsSHA256             = "b7f973a9693b0cb3de894ec71f74003992080cabcd5b039b9510ed3b299ed5bc"
+	rtkLicenseSPDX                 = "Apache-2.0"
+	rtkLicenseURL                  = "https://raw.githubusercontent.com/rtk-ai/rtk/5a7880d404db8364d602f2ecdc41dd790f64013f/LICENSE"
+	rtkLicenseSHA256               = "4044ade9c21d8b084d3d16a03375cf3b7e166b946a327bb37a3fbbdb53287cfd"
+	rtkNoticeStatus                = "absent_upstream"
+	rtkDistribution                = "external_user_supplied_not_bundled"
+	rtkSBOMReview                  = "not_provided_external_dependency"
 )
 
 var contractID = regexp.MustCompile(`^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*$`)
@@ -43,6 +59,51 @@ type schemaFixture struct {
 	License    string `json:"license"`
 }
 
+type processorManifest struct {
+	SchemaVersion int                   `json:"schema_version"`
+	Processors    []processorProvenance `json:"processors"`
+}
+
+type processorProvenance struct {
+	ContractID     string              `json:"contract_id"`
+	Kind           string              `json:"kind"`
+	Version        string              `json:"version"`
+	UpstreamCommit string              `json:"upstream_commit"`
+	ReleaseURL     string              `json:"release_url"`
+	Checksums      processorChecksums  `json:"checksums"`
+	License        processorLicense    `json:"license"`
+	Notice         processorNotice     `json:"notice"`
+	Distribution   string              `json:"distribution"`
+	SBOMReview     string              `json:"sbom_review"`
+	Artifacts      []processorArtifact `json:"artifacts"`
+}
+
+type processorChecksums struct {
+	URL    string `json:"url"`
+	SHA256 string `json:"sha256"`
+}
+
+type processorLicense struct {
+	SPDX   string `json:"spdx"`
+	URL    string `json:"url"`
+	SHA256 string `json:"sha256"`
+}
+
+type processorNotice struct {
+	Status string `json:"status"`
+}
+
+type processorArtifact struct {
+	Target        string `json:"target"`
+	ArchiveName   string `json:"archive_name"`
+	ArchiveURL    string `json:"archive_url"`
+	ArchiveSHA256 string `json:"archive_sha256"`
+	ArchiveSize   int64  `json:"archive_size"`
+	BinaryMember  string `json:"binary_member"`
+	BinarySHA256  string `json:"binary_sha256"`
+	BinarySize    int64  `json:"binary_size"`
+}
+
 func inspectContracts(root string, catalogIDs map[string]struct{}) ([]issue, error) {
 	capabilities, err := loadStrictArray[capability](root, capabilitiesPath)
 	if err != nil {
@@ -52,8 +113,13 @@ func inspectContracts(root string, catalogIDs map[string]struct{}) ([]issue, err
 	if err != nil {
 		return nil, err
 	}
+	processors, err := loadStrictObject[processorManifest](root, processorsPath)
+	if err != nil {
+		return nil, err
+	}
 	issues := validateCapabilities(capabilities, catalogIDs)
 	issues = append(issues, validateSchemas(root, schemas)...)
+	issues = append(issues, validateProcessorManifest(processors)...)
 	sort.Slice(issues, func(i, j int) bool {
 		if issues[i].Path != issues[j].Path {
 			return issues[i].Path < issues[j].Path
@@ -61,6 +127,134 @@ func inspectContracts(root string, catalogIDs map[string]struct{}) ([]issue, err
 		return issues[i].Message < issues[j].Message
 	})
 	return issues, nil
+}
+
+func validateProcessorManifest(manifest processorManifest) []issue {
+	var issues []issue
+	if manifest.SchemaVersion != processorManifestSchemaVersion {
+		issues = append(issues, issue{Path: processorsPath + ".schema_version", Message: "schema_version must be exactly 1"})
+	}
+	if len(manifest.Processors) != 1 {
+		issues = append(issues, issue{Path: processorsPath + ".processors", Message: "processors must contain exactly the one ADR 0012 RTK contract"})
+		if len(manifest.Processors) == 0 {
+			return issues
+		}
+	}
+
+	actual := manifest.Processors[0]
+	expected := expectedRTKProcessor()
+	processorLocation := processorsPath + ".processors[0]"
+	for _, value := range []struct {
+		field string
+		got   string
+		want  string
+	}{
+		{field: "contract_id", got: actual.ContractID, want: expected.ContractID},
+		{field: "kind", got: actual.Kind, want: expected.Kind},
+		{field: "version", got: actual.Version, want: expected.Version},
+		{field: "upstream_commit", got: actual.UpstreamCommit, want: expected.UpstreamCommit},
+		{field: "release_url", got: actual.ReleaseURL, want: expected.ReleaseURL},
+		{field: "checksums.url", got: actual.Checksums.URL, want: expected.Checksums.URL},
+		{field: "checksums.sha256", got: actual.Checksums.SHA256, want: expected.Checksums.SHA256},
+		{field: "license.spdx", got: actual.License.SPDX, want: expected.License.SPDX},
+		{field: "license.url", got: actual.License.URL, want: expected.License.URL},
+		{field: "license.sha256", got: actual.License.SHA256, want: expected.License.SHA256},
+		{field: "notice.status", got: actual.Notice.Status, want: expected.Notice.Status},
+		{field: "distribution", got: actual.Distribution, want: expected.Distribution},
+		{field: "sbom_review", got: actual.SBOMReview, want: expected.SBOMReview},
+	} {
+		if value.got != value.want {
+			issues = append(issues, issue{
+				Path:    processorLocation + "." + value.field,
+				Message: fmt.Sprintf("must equal the ADR 0012 pinned value %q", value.want),
+			})
+		}
+	}
+
+	if len(actual.Artifacts) != len(expected.Artifacts) {
+		issues = append(issues, issue{
+			Path:    processorLocation + ".artifacts",
+			Message: "artifacts must contain exactly linux/amd64, linux/arm64, darwin/amd64, and darwin/arm64 in that order; Windows is not claimed",
+		})
+	}
+	for index := 0; index < len(actual.Artifacts) && index < len(expected.Artifacts); index++ {
+		got := actual.Artifacts[index]
+		want := expected.Artifacts[index]
+		location := fmt.Sprintf("%s.artifacts[%d]", processorLocation, index)
+		for _, value := range []struct {
+			field string
+			got   string
+			want  string
+		}{
+			{field: "target", got: got.Target, want: want.Target},
+			{field: "archive_name", got: got.ArchiveName, want: want.ArchiveName},
+			{field: "archive_url", got: got.ArchiveURL, want: want.ArchiveURL},
+			{field: "archive_sha256", got: got.ArchiveSHA256, want: want.ArchiveSHA256},
+			{field: "binary_member", got: got.BinaryMember, want: want.BinaryMember},
+			{field: "binary_sha256", got: got.BinarySHA256, want: want.BinarySHA256},
+		} {
+			if value.got != value.want {
+				issues = append(issues, issue{
+					Path:    location + "." + value.field,
+					Message: fmt.Sprintf("must equal the ADR 0012 pinned value %q", value.want),
+				})
+			}
+		}
+		for _, value := range []struct {
+			field string
+			got   int64
+			want  int64
+		}{
+			{field: "archive_size", got: got.ArchiveSize, want: want.ArchiveSize},
+			{field: "binary_size", got: got.BinarySize, want: want.BinarySize},
+		} {
+			if value.got != value.want {
+				issues = append(issues, issue{
+					Path:    location + "." + value.field,
+					Message: fmt.Sprintf("must equal the ADR 0012 pinned value %d", value.want),
+				})
+			}
+		}
+	}
+	return issues
+}
+
+func expectedRTKProcessor() processorProvenance {
+	const releaseDownload = "https://github.com/rtk-ai/rtk/releases/download/v0.43.0/"
+	return processorProvenance{
+		ContractID:     rtkContractID,
+		Kind:           rtkKind,
+		Version:        rtkVersion,
+		UpstreamCommit: rtkUpstreamCommit,
+		ReleaseURL:     rtkReleaseURL,
+		Checksums:      processorChecksums{URL: rtkChecksumsURL, SHA256: rtkChecksumsSHA256},
+		License:        processorLicense{SPDX: rtkLicenseSPDX, URL: rtkLicenseURL, SHA256: rtkLicenseSHA256},
+		Notice:         processorNotice{Status: rtkNoticeStatus},
+		Distribution:   rtkDistribution,
+		SBOMReview:     rtkSBOMReview,
+		Artifacts: []processorArtifact{
+			{
+				Target: "linux/amd64", ArchiveName: "rtk-x86_64-unknown-linux-musl.tar.gz",
+				ArchiveURL: releaseDownload + "rtk-x86_64-unknown-linux-musl.tar.gz", ArchiveSHA256: "ff8a1e7766496e175291a85aeca1dc97c9ff6df33e51e5893d1fbc78fea2a609", ArchiveSize: 4460416,
+				BinaryMember: "rtk", BinarySHA256: "f160611f3baee17fe4eb3a04c56a8bc3d15fec4274d8838016088d4776c6f628", BinarySize: 10083968,
+			},
+			{
+				Target: "linux/arm64", ArchiveName: "rtk-aarch64-unknown-linux-gnu.tar.gz",
+				ArchiveURL: releaseDownload + "rtk-aarch64-unknown-linux-gnu.tar.gz", ArchiveSHA256: "5519f7ca12e5c143a609f0d28a0a77b97413a8dce31c2681f1a41c24519a8731", ArchiveSize: 4087098,
+				BinaryMember: "rtk", BinarySHA256: "86bd2badb697e41fa4fae805ed1a42d9b2495600260918d6ba9c148bc40013cf", BinarySize: 8544624,
+			},
+			{
+				Target: "darwin/amd64", ArchiveName: "rtk-x86_64-apple-darwin.tar.gz",
+				ArchiveURL: releaseDownload + "rtk-x86_64-apple-darwin.tar.gz", ArchiveSHA256: "a85f60e2637811be68366208b8d8b9c5ba1b748cb5df4477ab20cd73d3c5d9f8", ArchiveSize: 4139835,
+				BinaryMember: "rtk", BinarySHA256: "22adaa27b3fd6d8906159ba3ff7ca8346e914df112408bcc7a88cda30a3a6107", BinarySize: 9006316,
+			},
+			{
+				Target: "darwin/arm64", ArchiveName: "rtk-aarch64-apple-darwin.tar.gz",
+				ArchiveURL: releaseDownload + "rtk-aarch64-apple-darwin.tar.gz", ArchiveSHA256: "8a17e49acbd378997eb21d0eb6f7f861111f35b4fc9b1c74edf4c7448e576c65", ArchiveSize: 3759961,
+				BinaryMember: "rtk", BinarySHA256: "2dab449f32ea744c30b02a3ef9806e3e7d3b356a145332f3f2aaabb5ea48edee", BinarySize: 7763408,
+			},
+		},
+	}
 }
 
 func validateCapabilities(entries []capability, catalogIDs map[string]struct{}) []issue {
@@ -283,6 +477,30 @@ func loadStrictArray[T any](root, relative string) ([]T, error) {
 		return nil, fmt.Errorf("%s: %w", relative, err)
 	}
 	return entries, nil
+}
+
+func loadStrictObject[T any](root, relative string) (T, error) {
+	var zero T
+	data, err := readRegularManifest(root, relative)
+	if err != nil {
+		return zero, err
+	}
+	if err := rejectDuplicateJSONKeys(data); err != nil {
+		return zero, fmt.Errorf("%s: invalid strict JSON: %w", relative, err)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	var value *T
+	if err := decoder.Decode(&value); err != nil {
+		return zero, fmt.Errorf("%s: decode strict JSON object: %w", relative, err)
+	}
+	if value == nil {
+		return zero, fmt.Errorf("%s: top level must be an object", relative)
+	}
+	if err := requireJSONEOF(decoder); err != nil {
+		return zero, fmt.Errorf("%s: %w", relative, err)
+	}
+	return *value, nil
 }
 
 func readRegularManifest(root, relative string) ([]byte, error) {
