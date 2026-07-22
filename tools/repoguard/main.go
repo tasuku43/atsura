@@ -897,7 +897,7 @@ func checkAgentHarness(root string) []issue {
 	var issues []issue
 	for _, path := range paths {
 		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(path))); err != nil {
-			issues = append(issues, issue{Path: path, Message: "required Codex harness file is missing"})
+			issues = append(issues, issue{Path: path, Message: "required agent contribution harness file is missing"})
 		}
 	}
 	return issues
@@ -921,7 +921,7 @@ func checkFilesystemShape(root string, config projectconfig.Config) ([]issue, er
 			return filepath.SkipDir
 		}
 		if strings.EqualFold(entry.Name(), ".claude") {
-			issues = append(issues, issue{Path: relative, Message: "Claude-specific harness paths are outside this Codex-only template"})
+			issues = append(issues, issue{Path: relative, Message: ".claude paths are outside this repository's canonical contribution harness"})
 			if entry.IsDir() {
 				return filepath.SkipDir
 			}
@@ -946,7 +946,7 @@ func checkWorkingTreeArtifact(path string, config projectconfig.Config) []issue 
 	lower := strings.ToLower(path)
 	base := strings.ToLower(filepath.Base(path))
 	if strings.EqualFold(base, "claude.md") {
-		return []issue{{Path: path, Message: "Claude-specific instructions are outside this Codex-only template"}}
+		return []issue{{Path: path, Message: "CLAUDE.md is a parallel agent-policy file; AGENTS.md is canonical"}}
 	}
 	if strings.HasSuffix(lower, ".bootstrap.tmp") || strings.HasSuffix(lower, ".bootstrap.orig") {
 		return []issue{{Path: path, Message: "interrupted bootstrap residue must not be published"}}

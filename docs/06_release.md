@@ -35,9 +35,9 @@ The current first-release packaging decisions are:
 
 These decisions fit the current pure-Go artifact and transform-runtime binary
 with no bundled provider SDK or credential store. The selected source CLI is an
-external user dependency. A later native hook, signing system, extra package
-manager, or non-Go runtime dependency must revise the matrix and release
-contract.
+external user dependency. A later persisted/native wrapper artifact, signing
+system, extra package manager, or non-Go runtime dependency must revise the
+matrix and release contract.
 
 The base template defines byte-for-byte reproducible archives within a pinned pure-Go build contract and a public, reproducible-enough overall release path without private package infrastructure. A derived project must review supported platforms, artifact signing, provenance, package managers, and compatibility promises before its first release.
 
@@ -283,7 +283,7 @@ checks still fail closed on any absent or stale input.
 
 There is no current release claim for identity-wrapper execution, argv-only
 transforms, nonempty successful source stderr, raw execution, arbitrary
-transformers, or host integration. The retired legacy `plan preview`/`run`
+transformers, or host-neutral wrapper materialization. The retired legacy `plan preview`/`run`
 slice is not runtime evidence.
 
 ## Failure and recovery

@@ -8,13 +8,16 @@ pipelines. It does not decide whether a source operation is permitted. ADR
 0006 adds the first compatibility-admitted transform runtime without making its
 GitHub CLI evidence part of the shared model. ADR 0007 accepts explicit
 RTK-backed optimizer defaults as a future finite processor contract without
-delegating source execution to RTK.
+delegating source execution to RTK. ADR 0008 keeps coding-agent hosts outside
+Atsura: they consume an already generated host-neutral wrapper rather than
+enter through a host protocol adapter.
 
 The current runtime milestone extends strict schema-3 specification loading,
 schema-2 bundle compilation/adoption, and pure surface resolution through one
 complete bundle-backed wrapper plan into one compatibility-admitted JSON
-transform execution. Identity/raw execution and host adapters remain
-unimplemented.
+transform execution. Identity/raw execution remain unimplemented. Host-neutral
+wrapper materialization is the next bounded entry-point slice around this
+completed direct path.
 
 ## Dependency direction
 
@@ -29,8 +32,9 @@ internal/app does not depend on infra or cli.
 internal/infra does not depend on app or cli.
 ```
 
-`tools/archlint` enforces this direction. Source-specific and host-specific
-adapters remain outside the shared domain vocabulary.
+`tools/archlint` enforces this direction. Source-specific adapters remain
+outside the shared domain vocabulary; coding-agent-host protocols remain
+outside production packages entirely.
 
 ## Artifact flow
 
@@ -58,6 +62,12 @@ adopted bundle + attempted invocation
        -> plan-derived expected path/hash/size and exact argv
        -> one no-shell source attempt
        -> bounded JSON parse -> pure select/rename -> fixed result envelope
+
+adopted bundle + explicit purpose binding
+  -> deterministic host-neutral wrapper materialization
+  -> caller-owned command resolution exposes the ordinary source command
+  -> wrapper accepts argv and revalidates artifact, bundle, and source binding
+  -> same fresh plan constructor and compatibility-admitted execution path
 ```
 
 Surface membership and wrapper behavior are independent inputs to compilation.
@@ -95,14 +105,21 @@ source read/create/write effect, or source-operation target and impact.
 - Invocation and output transformations are independent typed stages.
 - The finite built-in stage registry is the only initial transformation
   vocabulary. Unknown actions fail during validation.
-- One canonical bundle is the compilation product consumed by every future
-  gateway or host adapter.
+- One canonical bundle is the compilation product consumed by the direct
+  gateway and every materialized wrapper.
 - Adoption binds the exact bundle digest. It does not grant source-operation
   permission.
 - Source execution and Atsura-owned mutation cross different controlled
   boundaries.
-- Source and host adapters are orthogonal vendor-neutral ports. They cannot
-  broaden a surface or define core wrapper semantics.
+- Source adapters and output processors are orthogonal vendor-neutral ports.
+  They cannot broaden a surface or define core wrapper semantics.
+- A wrapper binding contains only the exact adopted purpose bundle, wrapper
+  contract, runtime identity, command spelling, and source identity. It
+  contains no host protocol or configuration state.
+- Caller-owned activation is outside Atsura and cannot create adoption or
+  change wrapper meaning.
+- Output processors remain orthogonal to the caller. A wrapper consumes an
+  already compiled stage and never selects RTK or another processor.
 
 ## Layer responsibilities
 
@@ -123,6 +140,9 @@ source read/create/write effect, or source-operation target and impact.
 - canonical schema-2 bundles, digests, and drift validation;
 - pure surface resolution and `command_not_in_surface`;
 - ordered schema-3 wrapper execution plans and canonical plan digests;
+- a future host-neutral wrapper binding containing an exact adopted purpose
+  bundle, wrapper contract, runtime identity, source identity, and ordinary
+  command spelling;
 - finite vendor-neutral runtime-admission diagnostic categories; and
 - operation effects, including `EffectExecute` for starting a source-owned
   process and create/write contracts for Atsura-owned state only.
@@ -139,7 +159,7 @@ Domain validation enforces this truth table:
 
 The domain never decodes YAML or JSON bytes, probes a source executable,
 launches a process, mutates trust state, renders terminal output, or speaks a
-host protocol.
+coding-agent-host protocol.
 
 ### Application
 
@@ -154,17 +174,20 @@ host protocol.
 - require exact bundle adoption, revalidate current source path/hash/size, and
   construct one pure wrapper plan without starting the source;
 - coordinate Atsura-owned trust-store changes through the central mutation
-  invoker; and
+  invoker;
+- materialize and reconcile a future host-neutral wrapper binding through
+  narrow artifact ports while reusing the existing bundle preview and
+  execution services;
 - apply a supported transform plan through an identity-bound source-process
   port, a vendor-neutral compatibility port, strict source-format parser, and
-  pure transformer; and
+  pure transformer;
 - for a future optimizer, require exact external-processor identity and
   compatibility before source start, then coordinate at most one processor
   attempt only after an admitted successful source result.
 
 Application code receives typed observations. It does not parse vendor help,
-YAML, arbitrary source bytes, shell syntax, or host payloads. It does not infer
-source-operation meaning or authorization.
+YAML, arbitrary source bytes, shell syntax, or coding-agent-host payloads. It
+does not infer source-operation meaning or authorization.
 
 A source launch declares `EffectExecute`. The application binds exact source
 identity and argv, requires finite attempts/time/bytes, and treats every
@@ -189,24 +212,57 @@ target or impact to the downstream source operation.
 - run a future exact output processor with bounded stdin/stdout/stderr, an
   isolated environment and working directory, no shell, and separately counted
   attempts without giving it source-execution authority; and
-- translate a future host protocol without changing core surface or wrapper
-  meaning.
+- encode, identify, persist, and atomically replace a future host-neutral
+  wrapper artifact from a fixed bounded template without accepting
+  configuration-authored code.
 
 Each source adapter owns its probe grammar, accepted version range, runtime
 argv contract, attempt and byte budgets, and conversion into the shared
 catalog. Compatibility admission does not make stdout trusted; the format
-parser and transformer still validate every successful result. Each host
-adapter owns only protocol decoding, protocol response mapping, and exact-owner settings
-persistence. A host `allow`, `ask`, or `deny` response is transport vocabulary,
-not a core permission state.
+parser and transformer still validate every successful result. Production
+infrastructure contains no coding-agent-host protocol codec, settings store,
+permission mapper, process client, or lifecycle adapter.
 
 Infrastructure reports observations and typed failures. It does not decide
 which command is included, which wrapper applies, or whether the source CLI
 will authorize its downstream operation.
 
+### Host-neutral wrapper boundary
+
+The next vertical slice introduces one generated wrapper artifact and binding,
+not a coding-agent integration. The artifact is derived from an exact adopted
+bundle and enters the same application services as the direct gateway. It
+accepts ordinary invocation argv and never accepts a host hook document or a
+shell command string.
+
+The first slice must choose and test one command-resolution mechanism: a fixed
+generated shell function, an executable shim, or both. A generated shell form
+may contain only Atsura's fixed template, an exact artifact or binding
+reference, and lossless `"$@"` forwarding. The tailoring specification cannot
+contribute shell source. An executable form must distinguish its own identity
+from the exact physical source so it cannot recurse through ambient `PATH`.
+
+If materialization persists local artifacts, application owns the task and
+infrastructure owns bounded atomic file operations. The lifecycle exposes exact
+ownership and drift, preserves unrelated state, and routes create/write through
+the central mutation boundary. Caller-owned shell or agent settings remain
+outside that lifecycle.
+
+At invocation, the wrapper revalidates the exact bundle adoption, runtime,
+source identity, and command spelling before fresh plan construction. Failure
+starts no source process. Success uses the existing compatibility admission,
+no-shell source process, typed transform, and result renderer. It cannot select
+raw mode or another bundle as fallback. A generated shell function's digest is
+deterministic artifact evidence, not runtime attestation of the sourced
+function bytes.
+
+The repository conformance fixture owns only a generic caller environment. A
+vendor integration and its host-specific evidence live downstream and consume
+the same wrapper argv contract without adding a production Atsura path.
+
 ### External output processors
 
-An output processor is orthogonal to source and host adapters. Shared domain
+An output processor is orthogonal to source adapters and wrapper consumers. Shared domain
 types describe a projection or original-preserving optimizer contract; they do
 not contain RTK command lines, host fields, or arbitrary executable
 configuration. The specification selects one namespaced, versioned
@@ -229,7 +285,7 @@ native artifact and invocation read no project filter, created no
 tracking/tee/telemetry state outside temporary roots, and attempted no network
 I/O within the platform harness's declared observation scope. This is bounded
 compatibility evidence, not an OS or network sandbox; portable processor
-identity checks retain a check-to-exec race. A host adapter consumes the already
+identity checks retain a check-to-exec race. A wrapper consumes the already
 compiled stage and never selects RTK at invocation time.
 
 ### CLI
@@ -239,9 +295,11 @@ compiled stage and never selects RTK at invocation time.
 - catalog-derived public command registration and typed argv parsing;
 - specification validation and bundle-build presentation;
 - adoption and drift status presentation;
+- future host-neutral wrapper materialization and reconciliation commands;
 - stable migration diagnostics for retired policy and bundle schemas;
 - schema-3 wrapper-plan and schema-2 tailored-result rendering; and
-- composition of application tasks with infrastructure adapters.
+- composition of application tasks with source and output infrastructure
+  adapters.
 
 The current CLI composition injects the GitHub CLI contract-2 verifier into the
 generic execution application service. A later source adapter supplies another
@@ -263,8 +321,9 @@ production identity reader, while the process runner's own tests induce native
 start, wait, limit, cancellation, timeout, and pre/post identity races. No
 fixture mode or test branch exists in the shipped composition.
 
-The transform-runtime milestone does not add identity/raw execution or host
-installation commands. Retired authorization command paths remain only as
+The completed transform-runtime milestone does not add identity/raw execution.
+ADR 0008 defines host-neutral wrapper materialization as the next entry point
+around that runtime. Retired authorization command paths remain only as
 catalog-declared migration diagnostics and start zero source processes.
 
 ## Controlled side-effect boundaries
@@ -284,10 +343,11 @@ purpose.
 
 ### Atsura-owned mutation
 
-Trust receipt and future integration-setting changes are Atsura state. Their
-create/write tasks retain explicit intent, exact target binding, impact,
+Trust receipts and any future wrapper artifacts or bindings are Atsura state.
+Their create/write tasks retain explicit intent, exact target binding, impact,
 central mutation invocation, and structured uncertain-outcome handling. Those
-contracts must not be projected onto source CLI commands.
+contracts must not be projected onto source CLI commands or caller-owned
+activation settings.
 
 ## Bundle adoption and drift
 
@@ -300,16 +360,17 @@ A repository path, familiar command name, or previous bundle receipt is not
 authority for changed content. Any catalog, specification, surface, wrapper,
 source, or bundle change requires a new digest and explicit adoption.
 
-## Future raw and host boundaries
+## Raw and caller boundaries
 
 Raw execution, when implemented, will be an explicit tailoring bypass using
 the same bundle-bound source identity. It will not apply surface selection or
 wrapper transforms and will never be automatic fallback or a recovery hint.
 
-A host adapter, when implemented, will map core outcomes such as `rewrite`,
-`not_managed`, `command_not_in_surface`, `invalid_invocation`, and
-`interaction_required` into its transport. It cannot turn host `deny` into a
-core authorization judgment or claim that a hidden command is sandboxed.
+A caller-owned environment may expose a generated wrapper through shell or
+agent-host mechanisms, but those mechanisms remain outside Atsura's surface,
+plan, execution, fault, and lifecycle boundaries. Atsura cannot claim that a
+missing activation is fail closed or that a hidden command is sandboxed. Its
+guarantees begin only after the generated wrapper has actually been selected.
 
 ## Release-artifact conformance boundary
 
@@ -358,7 +419,7 @@ and execution contracts remain owned by their production layers above.
 
 ## Current milestone boundary
 
-The finite transform-runtime milestone is:
+The completed finite transform-runtime milestone is:
 
 ```text
 strict schema-3 specification
@@ -383,9 +444,22 @@ retired authorization schema or command
   -> zero source-process attempts
 ```
 
+The accepted next wrapper slice is:
+
+```text
+exact adopted purpose bundle
+  -> deterministic host-neutral wrapper artifact and binding
+  -> caller-owned environment exposes ordinary source-command spelling
+
+ordinary argv invocation
+  -> bundle/runtime/source/command binding revalidation
+  -> fresh plan through the same application/domain constructor
+  -> same bundle execution path
+```
+
 Identity/argv-only plan application, original-preserving optimizers, external
-processor execution, raw execution, source refresh, and host integration are
-deliberately outside this milestone.
+processor execution, raw execution, source refresh, and coding-agent-host
+integration remain outside these milestones.
 
 ## Unresolved architecture decisions
 
@@ -404,12 +478,18 @@ deliberately outside this milestone.
   adapter contract.
 - Streaming and output budgets beyond the current bounded buffered process
   boundary.
-- Further source and host adapters and their individual compatibility ranges.
+- Whether the first wrapper materialization is a fixed generated shell
+  function, an executable shim, or both.
+- Which artifact location, exact-digest binding, ownership, atomic replacement,
+  and recursion guard close the generic wrapper lifecycle.
+- How multiple purpose profiles select wrappers for one ordinary command
+  without ambient or coding-agent-host state.
+- Which generic caller-owned activation fixture proves ordinary command
+  resolution without becoming a production lifecycle.
 - Which exact Git/RTK `git log` source, format, filter, version, and platform
   contract should prove the first original-preserving optimizer.
 - Which explicit processor-observation input and storage boundary should bind an
   exact RTK artifact at bundle build without consulting ambient `PATH`.
 - Whether jq, plugins, scripts, or other external processors ever justify a
   similarly finite port.
-- The exact raw and host-adapter public contracts after wrapper runtime is
-  validated.
+- The exact raw-execution public contract after wrapper runtime is validated.

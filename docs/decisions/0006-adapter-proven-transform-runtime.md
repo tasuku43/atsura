@@ -7,6 +7,7 @@
   transformation, faults, tests, and release evidence
 - Extends: docs/decisions/0005-purpose-specific-surface-and-wrapper.md
 - Extended by: docs/decisions/0007-prefer-explicit-rtk-optimizer-defaults.md
+  and docs/decisions/0008-keep-coding-agent-hosts-outside-atsura.md
 - Supersedes: None
 - Superseded by: None
 
@@ -130,7 +131,7 @@ compatibility evidence.
 - Identity-wrapper and argv-only-transform execution.
 - Nonempty successful source stderr.
 - A source adapter beyond an accepted compatibility contract.
-- Source refresh, raw execution, and host integration.
+- Source refresh, raw execution, and host-neutral wrapper materialization.
 - Arbitrary shell, jq, RTK program/argv, plugin, script, or runtime-LLM
   transformers. ADR 0007 accepts only a future finite identity-bound RTK
   optimizer contract and does not change this milestone's implemented schema.
@@ -150,7 +151,8 @@ compatibility evidence.
 
 - Runtime compatibility is intentionally much narrower than catalog discovery.
 - GitHub CLI major-2 compatibility requires ongoing fixture maintenance.
-- Identity, argv-only, raw, and host experiences remain incomplete.
+- Identity, argv-only, raw, and ordinary-command wrapper experiences remain
+  incomplete.
 - First-release runtime claims require platform observations beyond the
   automated packaging profile.
 

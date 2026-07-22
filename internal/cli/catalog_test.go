@@ -163,6 +163,31 @@ func TestDefaultCatalogIsValidAndUnique(t *testing.T) {
 	}
 }
 
+func TestDefaultCatalogContainsNoRetiredCodingAgentHostSurface(t *testing.T) {
+	forbiddenPaths := map[string]struct{}{
+		"hook claude-code":        {},
+		"hook codex":              {},
+		"integration claude-code": {},
+		"integration codex":       {},
+	}
+	forbiddenCapabilities := map[string]struct{}{
+		"integration.claude-code.lifecycle": {},
+		"integration.claude-code.transport": {},
+		"integration.codex.lifecycle":       {},
+		"integration.codex.transport":       {},
+	}
+	for _, command := range DefaultCatalog().Commands() {
+		for path := range forbiddenPaths {
+			if command.Path == path || strings.HasPrefix(command.Path, path+" ") {
+				t.Errorf("retired coding-agent-host command entered product catalog: %q", command.Path)
+			}
+		}
+		if _, forbidden := forbiddenCapabilities[command.Agent.CapabilityID]; forbidden {
+			t.Errorf("retired coding-agent-host capability entered product catalog: %q", command.Agent.CapabilityID)
+		}
+	}
+}
+
 func TestDefaultCatalogSeparatesDeliveryFromCollectionCoverage(t *testing.T) {
 	wantCoverage := map[string]CollectionCoverage{
 		"doctor":      CollectionCoverageExhaustive,

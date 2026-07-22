@@ -1,8 +1,10 @@
 # Security Policy
 
-Atsura is pre-release. Its current tailoring boundary can execute one
-explicitly configured read-only source command and transform bounded successful
-JSON. The exact controls and limitations are recorded in
+Atsura is pre-release. Its current tailoring boundary can execute one exact
+bundle-backed source invocation and transform bounded successful JSON. Atsura
+does not classify that source operation as read-only; the source CLI remains
+authoritative for its authentication, authorization, semantics, and effects.
+The exact controls and limitations are recorded in
 [the Security Model](docs/03_security_model.md).
 
 ## Supported versions
@@ -35,11 +37,12 @@ Include, when possible:
 ## Current security principles
 
 - Commands, arguments, executable resolution, help output, generated catalogs,
-  policies, hook payloads, and source output are untrusted.
-- Repository-provided policy is not automatically user-trusted.
-- A controlling policy or source-identity decision that cannot be evaluated
-  must produce no source-process attempt.
-- Arbitrary shell code is not an accepted default policy mechanism.
+  tailoring specifications, bundles, wrapper bindings, and source output are
+  untrusted.
+- Repository-provided configuration is not automatically user-adopted.
+- A controlling bundle, specification, or source-identity decision that cannot
+  be evaluated must produce no source-process attempt.
+- A tailoring specification does not accept arbitrary shell code.
 - Process execution uses an exact executable and argv vector without shell
   interpolation, with one direct attempt and fixed time and byte bounds.
 - Output optimization failure must not change argv, run a different command,
@@ -47,13 +50,17 @@ Include, when possible:
 - Atsura acquires and stores no OAuth token, PAT, provider credential, usage
   history, or raw confidential source output. A source process still inherits
   the caller's environment.
-- A future raw route must be explicit and must state that Atsura policy is
-  bypassed.
+- A future raw route must be explicit and must state that tailoring is bypassed.
 
 The inherited harness checks architecture, repository hygiene, secrets,
 contracts, and public boundaries. Those checks bound the current synthetic
-local-run outcome; they do not prove a particular vendor source CLI, future
-hook, mutation policy, or extension mechanism is secure.
+local-run outcome; they do not prove a particular vendor source CLI, external
+activation mechanism, mutation capability, or extension mechanism is secure.
+
+Coding-agent hosts and their hooks, settings, permissions, sessions, and tool
+request protocols are outside Atsura. External consumers may expose an
+Atsura-generated wrapper, but Atsura does not parse or rewrite their requests
+or manage their configuration.
 
 ## Out of scope
 

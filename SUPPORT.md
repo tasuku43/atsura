@@ -73,9 +73,10 @@ transformed strictly; raw stdout, stderr, and unselected fields are not returned
 or persisted.
 
 Identity-wrapper and argv-only-transform execution, nonempty successful stderr,
-source refresh, hooks, host adapters, raw bypass, history, RTK or external
-transformers, additional runtime adapter contracts, and published release
-installation are not current capabilities. Retired policy
+source refresh, raw bypass, history, RTK or external transformers, additional
+runtime adapter contracts, and published release installation are not current
+capabilities. Coding-agent-host configuration, hooks, permissions, and
+lifecycle are outside Atsura rather than deferred capabilities. Retired policy
 schemas 1 and 2, bundle schema 1, legacy `plan preview`, and `run` are supported
 only by explicit zero-execution migration diagnostics and are not automatically
 converted.

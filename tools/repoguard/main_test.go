@@ -561,7 +561,7 @@ func TestCheckTextAllowsDocumentedExamplesAndReleasePlaceholders(t *testing.T) {
 	}
 }
 
-func TestCheckFilesystemShapeRejectsClaudePolicyAndRootBuildArtifacts(t *testing.T) {
+func TestCheckFilesystemShapeRejectsClaudeSettingsPathAndRootBuildArtifacts(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, ".claude", "hooks"), 0o755); err != nil {
 		t.Fatal(err)
@@ -578,7 +578,7 @@ func TestCheckFilesystemShapeRejectsClaudePolicyAndRootBuildArtifacts(t *testing
 		t.Fatalf("issues = %#v", issues)
 	}
 	messages := issues[0].Message + "\n" + issues[1].Message
-	for _, expected := range []string{"Claude-specific", "root build artifact"} {
+	for _, expected := range []string{".claude paths", "root build artifact"} {
 		if !strings.Contains(messages, expected) {
 			t.Errorf("issues do not contain %q: %#v", expected, issues)
 		}
@@ -615,7 +615,7 @@ func TestCheckAgentHarnessRequiresRepositorySkills(t *testing.T) {
 	if err := os.Remove(filepath.Join(root, ".agents", "skills", "add-capability", "SKILL.md")); err != nil {
 		t.Fatal(err)
 	}
-	if issues := checkAgentHarness(root); len(issues) != 1 || !strings.Contains(issues[0].Message, "required Codex harness file") {
+	if issues := checkAgentHarness(root); len(issues) != 1 || !strings.Contains(issues[0].Message, "required agent contribution harness file") {
 		t.Fatalf("missing skill issues = %#v", issues)
 	}
 }
@@ -624,7 +624,7 @@ func TestCheckPathRejectsParallelAgentPolicyFiles(t *testing.T) {
 	config := projectconfig.Config{Project: projectconfig.Project{BinaryName: "atr"}}
 	for _, path := range []string{"CLAUDE.md", "docs/Claude.md"} {
 		issues := checkWorkingTreeArtifact(path, config)
-		if len(issues) != 1 || !strings.Contains(issues[0].Message, "Claude-specific") {
+		if len(issues) != 1 || !strings.Contains(issues[0].Message, "CLAUDE.md is a parallel agent-policy file") {
 			t.Errorf("checkPath(%q) = %#v", path, issues)
 		}
 	}

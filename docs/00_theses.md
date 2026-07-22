@@ -5,8 +5,10 @@ but they govern implementation until evidence justifies another revision. ADR
 0005 corrects the authorization-centered interpretation introduced by ADR
 0004, ADR 0006 accepts the first compatibility-admitted transform runtime, and
 ADR 0007 prefers explicit RTK-backed optimizer defaults where Atsura maintains
-an exact compatibility contract. The vendor-neutral, compiled-bundle
-architecture remains authoritative.
+an exact compatibility contract. ADR 0008 corrects the agent-host boundary:
+coding-agent hosts consume an already generated host-neutral wrapper and are
+not Atsura adapters. The vendor-neutral, compiled-bundle architecture remains
+authoritative.
 
 ## North star
 
@@ -36,12 +38,18 @@ adopted bundle + attempted source invocation
      or
   -> when the adapter admits the runtime contract, apply one typed JSON-output
      stage around one identity-bound source invocation
+
+adopted bundle + explicit purpose binding
+  -> deterministically materialize a host-neutral wrapper implementation
+  -> caller-owned environment exposes it as the ordinary source command
+  -> maintainer or coding agent invokes that ordinary command
+  -> wrapper rebuilds and applies the same fresh plan
 ```
 
-Source-CLI inspectors and coding-agent hosts are adapters. They can extend
-tested compatibility or translate a host protocol, but cannot create a second
-surface model, add wrapper semantics, or turn Atsura into an authorization
-engine.
+Source-CLI inspectors and finite output processors are adapters. Coding-agent
+hosts are callers outside the product boundary. They may arrange command
+resolution, but cannot create a second surface model, add wrapper semantics, or
+turn Atsura into an authorization engine.
 
 ## Thesis 1: The tailored surface is a purpose-specific CLI
 
@@ -59,8 +67,8 @@ options visible for an included command.
 
 - Source catalog evidence is not a permission list.
 - Hiding improves the agent-facing capability surface; it is not an OS sandbox.
-- A host may encode surface absence as its protocol's `deny` response, but that
-  is transport mapping rather than a core authorization decision.
+- A caller may apply its own controls before invoking the wrapper, but those
+  controls are neither interpreted nor preserved by Atsura.
 - Source CLI, operating system, credential, and remote-provider authorization
   remain authoritative.
 
@@ -190,9 +198,9 @@ prompts, and downstream side effects.
 Atsura still owns the safety of its own behavior. Starting an identity-bound
 source process is declared honestly as source-owned execution, not disguised
 as an Atsura read. Atsura-owned local mutations—such as bundle trust-store
-writes and integration installation or removal—continue to require explicit
-effect, target, impact, central mutation invocation, and uncertain-outcome
-handling.
+writes and any future wrapper-artifact installation or replacement—continue to
+require explicit effect, target, impact, central mutation invocation, and
+uncertain-outcome handling.
 
 ### Mechanical enforcement target
 
@@ -241,17 +249,41 @@ mechanism. RTK's advertised support list is evidence to investigate, not the
 compatibility registry itself. This direction is accepted, but no RTK stage is
 implemented by the current schema or runtime.
 
-## Thesis 7: Agents propose; the deterministic core compiles
+## Thesis 7: Agents propose and invoke; the deterministic core compiles
 
 A coding agent may propose a tailoring specification from a role, purpose, or
 usage evidence. A user-controlled workflow adopts the exact compiled result.
 Runtime surface resolution, plan construction, argv transformation, and output
 processing are deterministic and attributable to the bundle.
 
-Host transports do not define core semantics. A Claude Code adapter may need
-to emit `allow`, `ask`, or `deny`, but it translates core states such as
-`rewrite`, `not_managed`, `command_not_in_surface`, `invalid_invocation`, or
-`interaction_required`. It does not decide source-operation permission.
+The routine agent experience begins after a caller-owned environment has made
+an Atsura-generated wrapper available under the ordinary source-command
+spelling. The agent simply invokes that command. The wrapper receives argv,
+revalidates its exact bundle, runtime, command, and source binding, constructs a
+fresh plan, and applies the same runtime used by the direct maintainer gateway.
+
+Production Atsura has no coding-agent-host adapter. It never discovers,
+inspects, starts, signals, or calls a host process, executable, service,
+session, transcript, or API; decodes a hook payload or shell command string;
+returns a host rewrite or permission decision; or owns host settings, hooks,
+trust, or permission rules. Those responsibilities stay in the caller's
+environment even if thin external glue makes the wrapper visible.
+
+The host-neutral wrapper binding contains only Atsura product facts: the exact
+adopted purpose bundle, source identity, wrapper contract, runtime identity,
+and ordinary command spelling. It contains no coding-agent host, hook, model,
+session, or host-permission field. A generated shell function's byte digest is
+reproducibility and review evidence; after caller-owned activation Atsura does
+not claim to attest the in-memory function bytes.
+
+Any coding-agent host may be an external consumer of this same argv contract.
+Atsura does not maintain vendor compatibility fixtures or claim that it
+installed the wrapper in a particular host. A downstream integration owns its
+activation and compatibility evidence outside the product repository.
+
+Output processing is orthogonal to the caller. A wrapper consumes the already
+reviewed bundle and never detects RTK, selects a filter, or inserts an output
+processor at invocation time.
 
 ## Thesis 8: Bundle trust adopts a surface and wrapper set
 
@@ -282,7 +314,7 @@ mechanism count. A result is supported only when it is discoverable, bounded,
 machine-interpretable without undeclared reconstruction, recoverable through
 declared faults, and verified against the same artifacts users install.
 
-The current implementation-quality slice is:
+The completed direct implementation-quality slice is:
 
 **A maintainer can create a catalog-bound specification with an explicit
 surface default, include one verified command with a typed JSON-transforming
@@ -295,6 +327,20 @@ runtime boundary without adding source authorization or a host dependency. It
 reaches release quality only after the same scenario is replayed with the exact
 artifacts on every platform for which runtime support will be claimed; archive
 reproducibility alone is not that evidence.
+
+The next accepted slice is:
+
+**A maintainer can materialize one exact adopted purpose bundle as a
+host-neutral wrapper, expose it through an explicitly chosen caller-owned
+command-resolution mechanism, and invoke the ordinary source-command spelling
+to reach the same fresh plan and transform runtime as the direct gateway. A
+missing, drifted, recursive, or mismatched binding starts no source process.**
+
+The release-quality proof uses a generic caller-owned activation fixture and
+the exact installed `atr` artifact. It verifies the wrapper bytes, binding,
+argv, plan, attempt, and tailored result without importing a coding-agent host
+protocol. Host independence follows from that host-neutral boundary; a
+downstream vendor integration is responsible for proving its own activation.
 
 ## Current non-goals
 
@@ -310,7 +356,12 @@ reproducibility alone is not that evidence.
 - Requiring a language model for routine execution.
 - Executing identity wrappers, argv-only transforms, nonempty successful
   stderr, or typed before/after actions in the initial transform runtime.
-- Source refresh, raw execution, or host adapters.
+- Source refresh or raw execution.
+- Coding-agent host adapters, host hook decoding or rewriting, host settings or
+  permission mutation, host process inspection, and vendor-specific lifecycle
+  commands.
+- Coding-agent-host compatibility, activation, installation, or enforcement
+  claims.
 - Publishing or releasing Atsura.
 
 ## Open questions
@@ -325,7 +376,16 @@ reproducibility alone is not that evidence.
   after an existing `--`, where the source will interpret them as positional?
 - Which source adapter should receive the next maintained runtime compatibility
   contract after the first GitHub CLI `issue list`/`pr list` evidence?
-- Which source and host adapters should follow the first compatibility fixtures?
+- Should the first wrapper materialization be a generated shell function, an
+  executable shim, or both, and which native command-resolution evidence
+  distinguishes their supported contracts?
+- How should multiple purpose profiles select distinct wrappers for the same
+  source command without ambient or host-specific state?
+- Which wrapper location, binding format, atomic replacement, and recursion
+  guard provide a reviewable lifecycle without giving repository content
+  authority?
+- Which generic caller-owned activation fixture best proves ordinary-command
+  resolution without becoming a product-managed lifecycle?
 - What stronger executable identity mechanism can close the remaining
   check-to-exec race on each supported platform?
 - Which exact RTK versions, pipe filters, source commands, and platforms satisfy

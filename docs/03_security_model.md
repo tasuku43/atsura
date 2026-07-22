@@ -12,8 +12,8 @@ failure when the core cannot evaluate its own contracts.
 Atsura must:
 
 - never treat a command, argument, help response, catalog, specification,
-  bundle, repository file, host payload, or source output as trusted merely
-  because it exists;
+  bundle, wrapper binding, repository file, caller environment, or source
+  output as trusted merely because it exists;
 - compile only complete, validated surface and wrapper definitions;
 - start no source process when surface resolution or wrapper construction
   fails;
@@ -34,9 +34,9 @@ Atsura does not:
 - replace source authentication, authorization, prompts, operating-system
   controls, or provider-side policy;
 - make an excluded command impossible to invoke through another binary, shell,
-  or integration path;
+  or command-resolution path;
 - turn an adopted bundle into a permission grant; or
-- claim that host `allow`, `ask`, or `deny` responses are universal security
+- interpret or preserve a coding-agent host's permission, trust, or sandbox
   decisions.
 
 ## Trust boundaries
@@ -91,17 +91,54 @@ relies on the user configuration directory's inherited operating-system ACL.
 A stronger Windows ACL guarantee requires a separate platform-specific policy
 and implementation.
 
-### Host adapters
+### Wrapper bindings and external activation
 
-Host payloads, shell-like strings, settings files, working directories, and
-environment values are untrusted. A future adapter may translate core states
-into transport values such as `allow`, `ask`, or `deny`, but it cannot broaden
-the compiled surface, authorize a source operation, or reinterpret absence as
-a core permission decision.
+A generated wrapper and its binding are untrusted until the exact bundle,
+adoption, wrapper contract, runtime identity, command spelling, and source
+identity validate. A path or familiar command name is only a locator.
+Repository content, ambient `PATH`, a shell environment, or a coding-agent host
+cannot create adoption, select another bundle, or replace the physical source
+authority.
 
-Project-local host installation must use exact ownership markers, preserve
-unrelated settings, and fail closed on malformed or conflicting state. Host
-work is outside the current transform-runtime milestone.
+The wrapper accepts argv, not a shell command string or agent-host payload. A
+generated shell form, if supported, comes only from a fixed Atsura template and
+forwards argv losslessly; the specification cannot inject shell source. An
+executable form must not rediscover the source by the wrapper's own ordinary
+name. It invokes only the exact physical path already bound into the adopted
+bundle so ambient command resolution cannot recurse into the wrapper.
+
+Before source start, invocation revalidates the wrapper contract, exact
+expected bundle digest, current adoption, runtime identity, source identity,
+and command spelling and builds a fresh plan. Missing, malformed, drifted, or
+mismatched state starts zero source processes. The wrapper never selects a
+different bundle or raw execution as fallback.
+
+For generated shell material, the rendered-byte digest proves deterministic
+generation and lets reviewers and release fixtures compare exact output. Once
+a caller sources or otherwise changes that function, Atsura cannot attest its
+in-memory bytes; activation integrity remains caller-owned. A future persisted
+executable wrapper needs explicit artifact ownership and drift checks before
+its bytes can become runtime authority.
+
+If Atsura persists wrapper artifacts, their create, replacement, status, and
+removal are Atsura-owned filesystem operations. They require bounded paths,
+exact ownership, regular-file and symlink checks, atomic replacement, safe
+permissions appropriate to the platform, central mutation invocation, and
+read-only reconciliation after uncertain outcomes. These operations never edit
+caller-owned shell startup, coding-agent settings, hooks, trust, or permission
+rules.
+
+External activation is outside Atsura's security claim. A shell, container,
+coding-agent hook, or other launcher may expose the wrapper, but Atsura neither
+inspects nor attests that setup. If activation is absent or bypassed, the source
+command may resolve elsewhere; this is not an Atsura fail-closed guarantee.
+Surface composition remains a capability boundary rather than a sandbox.
+
+Production Atsura contains no coding-agent-host protocol, hook payload,
+permission mapping, settings lifecycle, host process client, session, or
+transcript handling. Vendor-specific activation and conformance remain
+downstream responsibilities, not product input, persisted product state, test
+fixture authority, or a public compatibility schema.
 
 ## Surface composition is not isolation
 
@@ -111,8 +148,8 @@ no wrapper plan. That result means only that Atsura's tailored surface does not
 provide the command.
 
 Hiding a command or option is not a sandbox, ACL, or operating-system deny.
-Atsura documentation, faults, trust summaries, and host mappings must not imply
-otherwise. Users who require containment must apply source, credential,
+Atsura documentation, faults, trust summaries, and caller fixtures must not
+imply otherwise. Users who require containment must apply source, credential,
 provider, host, and operating-system controls independently.
 
 ## Wrapper integrity
@@ -166,8 +203,9 @@ probes remain separately bounded source execution.
 ## Atsura-owned mutations
 
 Only Atsura state changes use the create/write mutation contract. Examples are
-adoption receipt changes and future integration settings. Before the adapter
-acts, these operations require explicit intent, exact target binding, complete
+adoption receipt changes and future wrapper-artifact installation, replacement,
+or removal. Before infrastructure acts, these operations require explicit
+intent, exact target binding, complete
 impact, and the central mutation invoker. Structured known outcomes survive
 cancellation; unclassified results become non-retryable uncertain outcomes
 with a read-only reconciliation action.
@@ -209,7 +247,7 @@ working directory and minimal environment, with closed noninteractive stdin
 except for the bounded stage input and with finite time and output limits.
 
 The processor receives no separately supplied credential material, source
-stderr, environment snapshot, host payload, transcript, or authority to launch
+stderr, environment snapshot, caller payload, transcript, or authority to launch
 the source. Its admitted stage input is still untrusted source output and may
 itself contain secrets; original-output visibility is therefore a reviewed plan
 fact. Atsura disables telemetry, tee, project-filter lookup, and tracking
@@ -272,7 +310,7 @@ current recovery command, persist no state, and start zero source processes.
 ## Secrets and persistence
 
 Atsura does not persist source credentials, environment snapshots, raw source
-output, usage history, prompts, host transcripts, or agent reasoning. Canonical
+output, usage history, prompts, caller transcripts, or agent reasoning. Canonical
 catalogs and bundles contain only publishable structural evidence and exact
 source identity facts required by their contracts. Diagnostic output must not
 echo arbitrary secret-bearing environment values or unbounded hostile text.
@@ -353,8 +391,9 @@ job produced it.
 - Successful nonempty stderr is rejected without exposing it because the first
   result schema has no reviewed stderr meaning.
 - Identity/argv-only execution, before/after actions, richer argv transforms,
-  original-preserving optimizers, external output processors, raw, and host
-  adapters remain unimplemented.
+  original-preserving optimizers, external output processors, raw, and
+  host-neutral wrapper materialization remain unimplemented. ADR 0008 excludes
+  coding-agent-host adapters from the product boundary.
 
 ## Security claim for the current milestone
 
@@ -367,4 +406,4 @@ starts at most once without a shell, and returns only the complete typed
 selected JSON result. Pre-start contract failures start zero processes. Every post-start
 failure is non-retryable and exposes no raw source output. The milestone does
 not claim source-operation authorization, sandboxing, identity/raw execution,
-external-output-processor execution, or host integration.
+external-output-processor execution, or host-neutral wrapper materialization.

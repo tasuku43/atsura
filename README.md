@@ -37,8 +37,9 @@ source inspect -> spec init/validate -> bundle build -> bundle status/trust
   capabilities.
 
 Identity-wrapper execution, argv-only transforms, successful nonempty source
-stderr, source refresh, raw bypass, additional adapter contracts, and host
-adapters remain unimplemented.
+stderr, source refresh, raw bypass, additional source/output adapter contracts,
+and host-neutral wrapper materialization remain unimplemented. Coding-agent
+host adapters are outside the product boundary.
 
 The `atr` binary also contains the foundry's `doctor` and synthetic `sample`
 commands as executable architecture and harness examples. They are not
@@ -202,8 +203,8 @@ The following remain later research or vertical-slice decisions:
 - source refresh and command-discovery depth;
 - execution of identity wrappers, argv-only transforms, and nonempty successful
   stderr;
-- Claude Code and other host-adapter responsibilities;
-- wrapper installation or hook integration mechanisms;
+- host-neutral wrapper materialization and its artifact/runtime contract;
+- fixture evidence that caller-owned environments can expose the same wrapper;
 - raw tailoring bypass;
 - output transformations beyond the schema-3 built-ins;
 - usage-history collection; and
@@ -267,12 +268,15 @@ belong to the exact required installation.
 ## Safety and maturity
 
 Commands, arguments, help output, source output, generated catalogs,
-specifications, bundles, and hook payloads are untrusted. Repository-provided
+specifications, bundles, and wrapper bindings are untrusted. Repository-provided
 configuration is not implicitly user-adopted. Specification processing is
 limited to typed Atsura built-ins rather than arbitrary executable code. Atsura
 does not acquire or store provider credentials or persist source output. Source
 inspection starts the selected executable without a shell using adapter-owned,
 bounded offline probes; the source process inherits the caller's environment.
+Coding-agent hook payloads, settings, permissions, and lifecycle remain outside
+Atsura. External environments may expose and call the host-neutral wrapper;
+their host-specific mechanics remain external.
 
 No Atsura release has been published. See [Release Model](docs/06_release.md)
 for the reviewed packaging boundary and remaining first-tag controls.

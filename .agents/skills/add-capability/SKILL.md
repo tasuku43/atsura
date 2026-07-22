@@ -40,6 +40,10 @@ Confirm:
 - stdout, stderr, exit status, and machine-readable output are predictable;
 - all side effects and external destinations are named.
 - the command's stable capability ID is `public` in `.harness/capabilities.json`, or the upstream capability remains explicitly `internal`, `deferred`, or `excluded` with a reason.
+- an accepted ADR alone does not promote an unimplemented capability: keep a
+  planned public command and any planned internal transport `deferred` until
+  their catalog/internal reachability contracts and required evidence land;
+  then promote each status in the same implementation change.
 - routine success needs zero undeclared external-processing steps: extracting a
   declared JSON/TSV field is allowed, but an extra `jq`/`grep` join, custom
   parser, provider-notation decoder, source inspection, or exploratory API call
@@ -119,7 +123,7 @@ shell fragment, plugin, or program from the specification, and do not detect or
 insert an ambient processor at compile or runtime. Atsura starts the exact
 source itself; the processor receives only bounded admitted stage input and
 never receives source-selection authority, separately supplied credentials,
-source stderr, host payloads, or ambient configuration.
+source stderr, caller payloads, or ambient configuration.
 
 Bind and revalidate exact processor identity, compatibility contract, fixed
 argv, original-output allowance, limits, environment, and reason before source
@@ -136,9 +140,44 @@ after source start is non-retryable and exposes neither intermediate
 input/output nor processor stderr.
 
 Do not require or infer allow/confirm/deny, read/create/write, target, or impact
-for the downstream source operation. A host protocol may translate surface or
-interaction states into transport decisions, but those values do not enter the
-core source-wrapper model.
+for the downstream source operation. Coding-agent host permissions and
+rewrites are outside the product boundary and do not enter the core
+source-wrapper model.
+
+Do not add a coding-agent host adapter, lifecycle, settings codec, hook parser,
+permission mapper, process client, session, transcript, or vendor-specific
+binding to production Atsura. A coding agent is a caller of an already exposed
+host-neutral wrapper. Thin vendor glue, when useful, remains outside product
+packages, public commands, capabilities, reference kinds, schemas, and
+compatibility claims.
+
+For a host-neutral wrapper capability, bind the exact adopted purpose bundle,
+source identity, wrapper contract, runtime identity, and ordinary command
+spelling. Accept argv rather than a shell command string, and reuse the existing
+fresh plan constructor and source execution boundary. Do not create a second
+surface, plan, compatibility, fault, or executor registry.
+
+A generated shell form, if selected, must come from a fixed Atsura template and
+forward exact argv without configuration-authored source, `eval`, or `sh -c`.
+An executable form must invoke the exact physical bundle-bound source rather
+than rediscover the ordinary command through ambient `PATH`. Missing adoption,
+runtime or bundle mismatch, source drift, surface absence, and unsupported
+runtime must fail before source start. Wrapper failure never selects raw or
+another bundle as fallback. Treat a generated shell form's byte digest as
+deterministic review evidence, not attestation of the function after
+caller-owned activation; require stronger ownership and drift checks before a
+persisted executable artifact becomes runtime authority.
+
+Activation remains caller-owned. Do not edit or attest shell startup files,
+coding-agent settings, hooks, trust, or permission rules, and do not claim that
+an absent or bypassed activation fails closed. Atsura's guarantee begins only
+after the wrapper was actually selected.
+
+Consumer conformance uses a non-shipped generic caller-owned activation fixture
+and the exact installed artifact. Vendor-specific activation and compatibility
+evidence belongs to downstream integrations, not Atsura fixtures. Prove that
+production code, public help, capabilities, bundle, binding, plan, result, and
+release archives contain no coding-agent-host field or dependency.
 
 For every Atsura-owned create/write action, specify:
 
@@ -398,6 +437,15 @@ Add the smallest set that proves the capability:
   quotation, and indentation cannot create identity or relationships that are
   absent from typed semantic facts;
 - for setup or authentication UX, a work-packet scorecard comparing environment exports, fixed-value re-entry, terminal/browser transfers, clipboard/OS dependencies, non-selecting discover/act trips, first-run and steady-state commands, and ceremonial inputs; retain steps justified by safety or certainty.
+- for a host-neutral wrapper lifecycle, exact bundle/runtime/source binding,
+  deterministic bytes and digest, exact argv forwarding, fresh-plan parity,
+  zero/one source-attempt accounting, no raw fallback, and native exact-
+  installed-artifact evidence for every claimed platform; add ownership,
+  atomic replacement, and read-only drift reconciliation only when Atsura
+  persists the artifact;
+- for coding-agent consumption, prove the generic wrapper interface has no host
+  fields or dependencies and leave vendor activation/conformance to downstream
+  integrations;
 
 Tests must use temporary directories, fixed clocks, fake credentials, and local
 test servers. They must not require a developer account or live network.

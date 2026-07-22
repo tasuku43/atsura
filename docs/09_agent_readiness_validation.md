@@ -296,7 +296,7 @@ rebound. `spec init` is the executable route to a catalog-bound draft.
 This scenario validates artifact inspection, specification composition, and
 deterministic compilation. Scenario E separately owns wrapper-plan preview and
 Scenario F owns the first transform runtime. This scenario does not validate
-runtime output transformation, raw bypass, or host integration.
+runtime output transformation, raw bypass, or host-neutral wrapper materialization.
 
 ## Scenario D: Atsura bundle adoption
 
@@ -442,7 +442,7 @@ every plan field from the declared JSON contract, distinguish explicit from
 inherited surface origin without reconstructing policy, and select every
 recovery command from structured faults. Routine external processing and
 source-process attempts are both zero. This acceptance proves plan inspection,
-not runtime application, raw execution, or host integration.
+not runtime application, raw execution, or host-neutral wrapper materialization.
 
 ## Scenario F: Atsura compatibility-admitted JSON transform execution
 
@@ -530,7 +530,8 @@ runs the runner and recovery contracts before exact-archive replay.
 
 This scenario does not cover identity-wrapper execution, argv-only transforms,
 nonempty successful stderr, a source CLI beyond an accepted runtime adapter,
-raw execution, arbitrary shell/jq/RTK/plugin transformers, or host integration.
+raw execution, arbitrary shell/jq/RTK/plugin transformers, or host-neutral
+wrapper materialization.
 It does not claim that every GitHub CLI major-2 command is supported.
 The accepted major-2 range is a maintained compatibility decision rather than
 proof that one captured fixture predicts every future 2.x release.

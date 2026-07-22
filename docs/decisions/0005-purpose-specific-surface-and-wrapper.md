@@ -3,16 +3,18 @@
 - Status: Accepted
 - Date: 2026-07-21
 - Deciders: Repository maintainer and product owner
-- Scope: Product semantics, tailoring schema, bundle, plan, operation effects, trust, host adapters, migration, and release quality
+- Scope: Product semantics, tailoring schema, bundle, plan, operation effects, trust, wrapper consumers, migration, and release quality
 - Supersedes: docs/decisions/0002-v0.1-local-run-boundary.md and docs/decisions/0004-v1-compiled-tailoring-bundle.md
-- Superseded by: None
+- Superseded in part by:
+  docs/decisions/0008-keep-coding-agent-hosts-outside-atsura.md for the
+  coding-agent-host adapter boundary
 - Extended by: docs/decisions/0006-adapter-proven-transform-runtime.md and
   docs/decisions/0007-prefer-explicit-rtk-optimizer-defaults.md
 
 ## Context
 
-ADR 0004 correctly selected one deterministic bundle shared by gateways and
-host adapters, but it modeled source commands through allow/confirm/deny,
+ADR 0004 correctly selected one deterministic bundle shared by execution
+gateways, but it modeled source commands through allow/confirm/deny,
 read/create/write, target, and impact. That pulled Atsura toward an
 authorization engine.
 
@@ -102,9 +104,9 @@ At acceptance, an included command with a complete plan was only structurally
 applicable and preview did not apply it. ADR 0006 accepts the first narrow
 adapter-proven transform runtime. A command outside the surface still has no
 plan.
-Confirmation is not a universal source
-permission state; if evidence later requires interaction, it must be a typed
-wrapper stage or a host interaction request with its own contract.
+Confirmation is not a universal source permission state; if evidence later
+requires interaction, it must be a typed wrapper stage with its own product
+contract rather than a coding-agent-host transport value.
 
 Command resolution selects the longest prefix from the complete embedded
 catalog before evaluating command and option membership. This avoids treating
@@ -123,7 +125,7 @@ mutation target or impact and is never valid as a mutation reconciliation
 action.
 
 `EffectCreate` and `EffectWrite` remain reserved for mutations Atsura owns,
-including bundle trust-store changes and integration configuration. Those
+including bundle trust-store changes and future wrapper-artifact state. Those
 commands retain exact target binding, impact, central mutation invocation,
 complete-output handling, and uncertain-outcome rules. Unknown effects remain
 invalid.
@@ -139,19 +141,16 @@ option overrides, identity/transform wrapper counts, argv transformations,
 processing stages, output transformations, source identity, and digest. It
 does not show source effect or allow/confirm/deny counts.
 
-### Raw and host adapters
+### Raw and wrapper consumers
 
 Raw is a tailoring bypass. It revalidates bundle-bound source identity but
 applies no surface selection or wrapper transformation. It is explicit,
 manual, absent from the tailored surface, never an automatic fallback, and
 never a recovery suggestion.
 
-A host adapter translates core states into host protocol vocabulary. For
-example, Claude Code may require an `allow`, `ask`, or `deny` transport value,
-but its inputs are core states such as `rewrite`, `not_managed`,
-`command_not_in_surface`, `invalid_invocation`, `interaction_required`, or
-`wrapper_plan_available`. The transport does not create source authorization
-semantics.
+A host-neutral wrapper consumes the same adopted bundle and fresh plan as the
+direct gateway. Coding-agent hosts are external callers of that wrapper, not
+Atsura adapters. They do not translate, extend, or authorize core states.
 
 ### Migration and implementation pause
 
@@ -165,8 +164,8 @@ confirm/create/write rules cannot be mapped without inventing surface or source
 meaning. A maintainer creates and reviews a new schema-3 specification.
 
 The legacy `plan preview` path remains migration-only. At acceptance, source
-refresh, bundle runtime execution, raw, and host integration were unimplemented;
-ADR 0006 implements only the bounded transform-runtime subset.
+refresh, bundle runtime execution, raw, and wrapper materialization were
+unimplemented; ADR 0006 implements only the bounded transform-runtime subset.
 
 ## Consequences
 
@@ -178,7 +177,8 @@ ADR 0006 implements only the bounded transform-runtime subset.
 - Identity wrappers and transforming wrappers coexist without changing surface
   membership semantics.
 - Atsura-owned mutations retain their established safety boundary.
-- Vendor-neutral bundle and adapter architecture survives the correction.
+- Vendor-neutral bundle, source-adapter, and wrapper architecture survives the
+  correction.
 
 ### Negative
 
@@ -214,7 +214,9 @@ ADR 0006 implements only the bounded transform-runtime subset.
   canonical plan digests, complete ordered stages and process bounds, exactly
   one active matching structured-output selector when required, and zero
   source-process attempts.
-- Future host fixtures must test transport mapping separately from core state.
+- Generic caller conformance must invoke the same host-neutral wrapper and keep
+  coding-agent-host fields outside core state; vendor-specific evidence remains
+  downstream.
 - Focused, full, and security profiles decide completion of this correction.
 
 ## Reconsideration signals
@@ -222,4 +224,5 @@ ADR 0006 implements only the bounded transform-runtime subset.
 Create a successor ADR before adding a universal source permission taxonomy,
 claiming sandbox isolation, auto-converting retired authorization rules,
 allowing arbitrary executable specification code, weakening exact-digest
-adoption, or treating a host's protocol decision as core product semantics.
+adoption, or introducing a coding-agent-host protocol as core product
+semantics.

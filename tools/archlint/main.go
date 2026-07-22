@@ -204,6 +204,13 @@ func findViolationsWithCLIAllowlist(module string, packages []listedPackage, all
 		if fromLayer == "" || fromLayer == "tool" {
 			continue
 		}
+		if forbiddenProductionPackagePurpose(module, item.ImportPath) {
+			found = append(found, violation{
+				From:   item.ImportPath,
+				To:     item.ImportPath,
+				Reason: "coding-agent-host packages are outside production Atsura",
+			})
+		}
 		if fromLayer == "unknown" {
 			found = append(found, violation{
 				From:   item.ImportPath,
@@ -221,6 +228,20 @@ func findViolationsWithCLIAllowlist(module string, packages []listedPackage, all
 	}
 	sortViolations(found)
 	return found
+}
+
+func forbiddenProductionPackagePurpose(module, importPath string) bool {
+	relative := strings.TrimPrefix(importPath, module+"/")
+	if relative == importPath {
+		return false
+	}
+	for _, segment := range strings.Split(relative, "/") {
+		switch segment {
+		case "agenthost", "claudehook", "codexhook", "hostadapter", "hostintegration":
+			return true
+		}
+	}
+	return false
 }
 
 func sortViolations(found []violation) {

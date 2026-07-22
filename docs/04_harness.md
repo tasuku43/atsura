@@ -72,8 +72,8 @@ Contract tests must prove:
 - source identity and probe evidence are preserved in the catalog;
 - verified built-ins, observed extensions, and unverified dynamic entries stay
   distinct;
-- alternate synthetic adapters satisfy shared contracts without GitHub- or
-  host-specific fields; and
+- alternate synthetic source adapters satisfy shared contracts without
+  GitHub-specific or coding-agent-host fields; and
 - catalog evidence is never interpreted as allow/deny or source safety.
 
 Inspection command catalog entries declare `EffectExecute` because their
@@ -320,18 +320,62 @@ Catalog tests must prove:
 - root agent help remains a bounded capability index, with details reachable
   by exact command or namespace help.
 
-### Host mapping
+### Deferred host-neutral wrapper contract
 
-Host integration is outside the current milestone. Its future conformance
-tests must keep transport values separate from core meaning: host
-`allow`/`ask`/`deny` may map `rewrite`, `not_managed`,
-`command_not_in_surface`, `invalid_invocation`, or `interaction_required`, but
-must never become a source-operation permission model.
+ADR 0008 accepts wrapper materialization as the next product result, but
+acceptance does not make an unimplemented capability public. Until its catalog,
+runtime, security, and artifact evidence land together,
+`tailoring.wrapper.materialize` remains `deferred`, no wrapper lifecycle command
+appears in `cli.Catalog`, and the current direct gateway remains the only
+implemented entry point.
+
+The implementing slice must prove:
+
+- one exact adopted purpose bundle produces deterministic wrapper material and
+  a canonical rendered-byte digest;
+- the wrapper binding contains only wrapper contract, bundle identity, runtime
+  identity, source identity, and ordinary command spelling;
+- no bundle, binding, plan, result, help, or capability field names a
+  coding-agent host, hook event, permission value, settings path, session,
+  transcript, or model;
+- `tools/archlint` reserves the exact production package-path segments
+  `agenthost`, `hostadapter`, `hostintegration`, `claudehook`, and `codexhook`
+  for the out-of-product responsibility while allowing source/output adapters
+  and source vendor names;
+- default-catalog tests reject the exact retired Claude Code and Codex
+  integration/hook routes and capability identifiers without reserving a
+  generic `integration` namespace;
+- the wrapper accepts exact argv rather than a shell command string and reaches
+  the same plan constructor and source-execution boundary as the direct
+  gateway;
+- spaces, empty values, Unicode, dash-prefixed values, literal metacharacters,
+  and ordering survive wrapper forwarding without `eval`, `sh -c`, or shell
+  reconstruction;
+- missing adoption, runtime or bundle mismatch, source drift, absent surface
+  command, invalid option, or unsupported runtime
+  starts zero source processes;
+- admitted success starts the exact physical source once, applies the same
+  typed stages, emits only the plan-declared result, and never selects raw or
+  another bundle as fallback;
+- any persisted artifact lifecycle uses exact ownership, bounded regular-file
+  paths, symlink/special-file rejection, atomic replacement, central mutation
+  invocation, and read-only drift reconciliation without editing caller-owned
+  activation configuration; and
+- the exact installed release artifact replays the ordinary-command journey on
+  every claimed native target.
+
+Consumer conformance uses a non-shipped generic caller-owned activation fixture
+that invokes the exact installed `atr` artifact. It compares rendered bytes and
+digest, bundle, ordinary argv, transformed argv, plan, result, and zero/one-
+attempt evidence without importing any coding-agent-host protocol. Downstream
+vendor integrations own their own activation and compatibility tests outside
+Atsura. Failure to activate a wrapper is outside Atsura's fail-closed claim
+because the product boundary begins only after the wrapper was selected.
 
 ### External text and secrets
 
 Hostile fixtures must cover source help, catalog labels, YAML strings, source
-output, paths, and host payloads containing controls, Unicode separators,
+output, paths, and wrapper bindings containing controls, Unicode separators,
 prompt-like text, and secret-shaped values. Visible rendering must preserve
 terminal and JSON/TSV framing without filtering printable meaning. Persistent
 fixtures must assert that credentials, raw stdout/stderr, environment
@@ -345,9 +389,11 @@ snapshots, transcripts, and agent reasoning are absent.
   source identity assessment, mutation invocation, zero-attempt rejection,
   one-attempt execution, and post-start fault classification.
 - Infrastructure tests own bounded strict codecs, executable identity, process
-  limits, safe local persistence, and adapter protocol mechanics.
+  limits, safe local persistence, source/output adapter mechanics, wrapper
+  artifact encoding and ownership, and bounded argv forwarding.
 - CLI tests own catalog registration, typed argv, help, output schemas,
-  migration recovery, and stdout/stderr routing.
+  migration recovery, stdout/stderr routing, and any generic wrapper lifecycle,
+  invocation, output-authority, and mutation contracts.
 - CLI integration fixtures own clean-state specification through bundle status,
   adoption and preview, plus one synthetic GitHub-compatible transform that
   runs through the production compatibility verifier, identity-bound process
@@ -419,7 +465,7 @@ tree:
 8. exact scoped agent help publishes the finite source-catalog,
    specification-authoring, and runtime-admission contracts used by the
    installed-artifact journey;
-9. `task release:check` replays the host-native exact archive, and CI defines
+9. `task release:check` replays the platform-native exact archive, and CI defines
    required native jobs for Linux amd64/arm64, macOS amd64/arm64, and Windows
    amd64; a dependent aggregation job verifies the exact five evidence
    documents and five candidate archive hashes, and the release publish job
@@ -432,14 +478,14 @@ tree:
    explicit migration and superseded-history contexts.
 
 Local `task release:check` proves archive mechanics, workflow structure, and
-the current host's native replay. It cannot stand in for the other four native
+the current platform's native replay. It cannot stand in for the other four native
 jobs; an exact commit has complete platform evidence only after the required CI
 matrix succeeds. Emulation and cross-build metadata do not count as native
 runtime evidence.
 
 The gate does not claim identity-wrapper or argv-only-transform execution,
 original-preserving optimization, external-processor execution, raw execution,
-host installation, arbitrary transformer integration, support for a source CLI
+host-neutral wrapper materialization, arbitrary transformer integration, support for a source CLI
 beyond an accepted adapter contract, or publication authorization.
 
 ## Evidence discipline

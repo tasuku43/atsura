@@ -60,7 +60,7 @@ Use `example.com`, synthetic identifiers, fixed timestamps, and invented content
 
 `task public:check` scans publishable regular files and fails before reading repository-controlled content when a symbolic link or special file is present. Under a `ready` profile it also rejects runnable template identity anywhere except `tools/internal/projectconfig/defaults.go`, which remains as the bootstrap provenance record.
 
-Repository shape checks also reject Claude-specific policy paths, interrupted bootstrap residue, and root-level binary build artifacts. The template has one canonical `AGENTS.md` policy and a Codex harness; a parallel `CLAUDE.md` or `.claude/` tree is a failed hygiene check. The full-tree shape walk does not treat deliberately ignored local files such as `.env` as publishable content, but symbolic links and special files still fail closed.
+Repository shape checks also reject `CLAUDE.md`, `.claude/` paths, interrupted bootstrap residue, and root-level binary build artifacts. The repository has one canonical `AGENTS.md` contribution policy; `CLAUDE.md` is a parallel policy file, and `.claude/` is outside this repository's contribution harness. The full-tree shape walk does not treat deliberately ignored local files such as `.env` as publishable content, but symbolic links and special files still fail closed.
 
 Every local Markdown link must use a canonical repository-relative path that stays inside the repository and resolves to a publishable regular file without crossing a symbolic link. External URLs, `mailto:` links, same-document fragments, and examples inside fenced code blocks are outside this local-file check. External link availability still requires review because network state is not reproducible inside the repository gate.
 

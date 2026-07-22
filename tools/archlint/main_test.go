@@ -331,6 +331,40 @@ func issue() { _, _ = NewBindingID("ephemeral-binding") }
 	}
 }
 
+func TestFindViolationsRejectsExplicitCodingAgentHostPackages(t *testing.T) {
+	const module = "example.test/tool"
+	packages := []listedPackage{
+		{ImportPath: module + "/internal/infra/agenthost"},
+		{ImportPath: module + "/internal/infra/claudehook"},
+		{ImportPath: module + "/internal/infra/codexhook"},
+		{ImportPath: module + "/internal/infra/hostadapter"},
+		{ImportPath: module + "/internal/app/hostintegration"},
+	}
+	got := findViolations(module, packages)
+	if len(got) != len(packages) {
+		t.Fatalf("violations = %#v, want one explicit host-package violation per package", got)
+	}
+	for _, item := range got {
+		if item.Reason != "coding-agent-host packages are outside production Atsura" {
+			t.Fatalf("unexpected violation = %#v", item)
+		}
+	}
+}
+
+func TestFindViolationsAllowsSourceAndOutputAdapterPackages(t *testing.T) {
+	const module = "example.test/tool"
+	packages := []listedPackage{
+		{ImportPath: module + "/internal/infra/sourceadapter"},
+		{ImportPath: module + "/internal/infra/outputadapter"},
+		{ImportPath: module + "/internal/infra/claudecli"},
+		{ImportPath: module + "/internal/infra/codexcli"},
+		{ImportPath: module + "/internal/infra/localhostadapter"},
+	}
+	if got := findViolations(module, packages); len(got) != 0 {
+		t.Fatalf("violations = %#v, want source/output adapter packages allowed", got)
+	}
+}
+
 func TestFindSourceViolationsScansDomainAndCLIForBuiltinOutput(t *testing.T) {
 	const module = "example.test/tool"
 	root := t.TempDir()
