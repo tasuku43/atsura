@@ -7,7 +7,10 @@ tailoring inputs, exact artifact adoption, identity-bound no-shell process
 execution, controlled Atsura-owned mutations, bounded parsing, and explicit
 failure when the core cannot evaluate its own contracts.
 ADR 0016 adds one finite value-option-default transformation without adding a
-process, shell, secret, host, or vendor trust boundary.
+process, shell, secret, host, or vendor trust boundary. ADR 0017 adds one
+private user-local managed executable-shim boundary with exact ownership,
+non-replacing publication, read-only reconciliation, and exact removal; it
+does not make caller activation or the source operation trusted.
 
 ## Security objectives
 
@@ -180,19 +183,48 @@ the shell process, so this is not a generic zero-subprocess guarantee.
 For generated shell material, the rendered-byte digest proves deterministic
 generation and lets reviewers and release fixtures compare exact output. Once
 a caller sources or otherwise changes that function, Atsura cannot attest its
-in-memory bytes; activation integrity remains caller-owned. A future persisted
-executable wrapper needs explicit artifact ownership and drift checks before
-its bytes can become runtime authority.
+in-memory bytes; activation integrity remains caller-owned. ADR 0017's
+persisted executable shim adds private-store ownership and material drift
+checks before an honest managed shim can
+reach the bound runtime. It still cannot attest code that a same-user attacker
+has replaced and already caused the operating system to execute.
 
-The current renderer writes only to stdout and does not persist or install the
-function. If Atsura later persists wrapper artifacts, their create,
-replacement, status, and
-removal are Atsura-owned filesystem operations. They require bounded paths,
-exact ownership, regular-file and symlink checks, atomic replacement, safe
-permissions appropriate to the platform, central mutation invocation, and
-read-only reconciliation after uncertain outcomes. These operations never edit
-caller-owned shell startup, coding-agent settings, hooks, trust, or permission
-rules.
+`wrapper render` still writes only to stdout and does not persist or install
+the function. `wrapper install`, `wrapper status`, and `wrapper remove` form a
+separate Atsura-owned executable-shim lifecycle on Linux/macOS amd64/arm64.
+The lifecycle uses only one fixed private platform-configuration-root store,
+canonical immutable manifests, fixed executable material, effective-user and
+mode checks, create-exclusive staging, non-replacing atomic publication,
+bounded enumeration, exact hard-link identity, and read-only reconciliation.
+It never edits caller-owned `PATH`, shell startup, coding-agent settings,
+hooks, trust, or permission rules.
+
+The operating-system user is the local store's security principal. Owner-only
+modes, effective-UID checks, link counts, pinned directory identities, and the
+store lock protect against accidental drift, foreign shapes, and conflicting
+cooperating Atsura processes. They do not isolate mutually hostile processes
+running as the same user: such a process can modify that user's files or
+ignore Atsura's advisory lock. Atsura detects the bounded passive drift it can
+observe and refuses unknown state; it does not claim containment against a
+deliberate same-UID racer.
+
+Publication never falls back to a rename that can replace an entry created
+after an absence check. Supported Linux targets require
+`renameat2(RENAME_NOREPLACE)` and supported Darwin targets require
+`renameatx_np(RENAME_EXCL)` between pinned directory descriptors. If the
+kernel or filesystem cannot provide the exclusive primitive, installation
+fails without publishing a weaker claim. The first lifecycle has no replace
+operation.
+
+Crash residue is not ownership evidence. Status validates strictly shaped,
+bounded staging residue but performs no cleanup. A later mutation may remove
+only the exact nonrecursive files and directory whose identities it inspected;
+unknown names, nested content, hard links, replacements, or over-capacity
+state are preserved and rejected. Active removal first deletes and syncs the
+exact bin hard link, so a crash can leave a valid inactive record. It then
+exclusively quarantines and syncs the record before bounded cleanup, so a later
+crash leaves no public record and only validated residue. Any error after a
+mutation may have begun is non-retryable and points only to read-only status.
 
 External activation is outside Atsura's security claim. A shell, container,
 coding-agent hook, or other launcher may expose the wrapper, but Atsura neither
@@ -322,8 +354,8 @@ forwards separate argv and returns the plan-authoritative result variant.
 ## Atsura-owned mutations
 
 Only Atsura state changes use the create/write mutation contract. Examples are
-adoption receipt changes and future wrapper-artifact installation, replacement,
-or removal. Before infrastructure acts, these operations require explicit
+adoption receipt changes and managed wrapper-artifact installation or removal.
+Before infrastructure acts, these operations require explicit
 intent, exact target binding, complete
 impact, and the central mutation invoker. Structured known outcomes survive
 cancellation; unclassified results become non-retryable uncertain outcomes
@@ -513,6 +545,13 @@ catalogs and bundles contain only publishable structural evidence and exact
 source identity facts required by their contracts. Diagnostic output must not
 echo arbitrary secret-bearing environment values or unbounded hostile text.
 
+Managed-shim manifests persist the already reviewed wrapper binding, exact
+bundle locator/digest, runtime/source identities, compiled tailored help,
+material digest, size, and opaque reference. They persist no credential,
+environment snapshot, source/processor output, usage history, host session, or
+agent transcript. The executable shim is fixed template material derived from
+that binding; configuration cannot contribute shell source.
+
 ## Release-artifact security evidence
 
 The candidate archive and extracted `atr` are executable untrusted inputs to
@@ -585,7 +624,7 @@ wrapper binding digests or wrapper contract, zero wrapper attempts, and 10
 GitHub fixture attempts. Top-level journey identities remain required.
 Aggregate schema 2 is unchanged and does not carry per-case caller argv.
 
-Current evidence schema 8 succeeds that record. It binds specification schema
+Historical evidence schema 8 succeeds that record. It binds specification schema
 5, bundle schema 4, plan schema 6, generated-wrapper contract 3, exact source
 argv, the declared option defaults, and the exact applied subset. POSIX rows
 require ordered `default_applied`, `default_overridden`, `append_only`, and
@@ -596,6 +635,21 @@ and RTK contracts do not change. CI run
 passed these five native schema-8 rows, the canonical full/security/public
 gates, and aggregate schema 2 on 2026-07-22 for revision
 `99fbd0e97489b1f3b7a68e2617fa4056b2c12a1d`.
+
+Current evidence schema 9 retains schema 8 and adds the managed-shim lifecycle.
+Each Linux/Darwin amd64/arm64 native row installs exact GitHub and Go artifacts
+through the packaged `atr`, inspects canonical manifest and fixed material,
+selects ordinary commands using only the reported bin directory, proves static
+help has zero source/processor attempts, executes each source once through the
+fresh plan, passes both status references unchanged to removal, and observes an
+explicit empty final inventory. It also proves unknown-reference, tamper, and
+foreign/symlink/special collision faults leave the fixture-owned filesystem
+unchanged and start no source or processor. Collision status is exercised while
+another valid owned artifact exists, and its fault output must not expose that
+artifact's reference. Windows invokes install/status/remove, receives only
+structured unsupported faults, and leaves the store absent. Evidence retains
+only digests, references, public argv, counters, and booleans—not source or
+processor streams, paths, environment values, or secrets.
 
 Installed evidence does not claim processor-launch counts without an accepted
 external observer; controlled application and infrastructure tests own that
@@ -692,9 +746,14 @@ revision.
   `transformed_json`, but is returned exactly when the adopted plan declares
   `source_stream_passthrough`.
 - POSIX wrapper rendering and caller-owned function activation are limited to
-  Linux and macOS. Windows has structured unsupported behavior only. Atsura
-  does not persist/install the function, edit activation state, or provide an
-  executable/PATH shim.
+  Linux and macOS. Managed executable shims additionally claim only amd64 and
+  arm64. Windows has structured unsupported behavior only. Atsura can persist
+  the fixed shim in its private store and report its bin path, but does not
+  edit or attest activation state, replace an existing artifact, or provide a
+  Windows shim.
+- Managed-store checks assume the operating-system user is the security
+  principal. They detect passive drift and serialize cooperating Atsura
+  processes; they do not contain a malicious process running as the same UID.
 - Before/after actions, richer argv transforms, additional optimizer tuples,
   and raw execution remain unimplemented. The only external processor contract
   is the finite RTK Go-test pass tuple accepted by ADR 0012; arbitrary paths,
@@ -739,6 +798,17 @@ the current installed-artifact native evidence pass. Schema 8 passed in CI run
 29920148480 on 2026-07-22 for exact revision
 `99fbd0e97489b1f3b7a68e2617fa4056b2c12a1d`; every later candidate must
 repeat the matrix.
-The claim does not include executable attestation, caller activation
-integrity, Windows POSIX or optimizer support, source authorization,
-sandboxing, or a persistent wrapper lifecycle.
+
+The managed-shim implementation adds a further conditional claim: on the four
+Linux/Darwin amd64/arm64 targets, install publishes only exact fixed material
+without replacement inside the private store, status returns references only
+after complete bounded ownership validation, and remove consumes one reference
+unchanged and deletes only the revalidated owned artifact. Management starts no
+source or processor. Unknown, tampered, foreign, symlinked, special, crash-
+residue, or uncertain state never becomes deletion authority, and caller-owned
+activation remains outside Atsura.
+
+The claim does not include executable attestation, same-UID containment,
+caller activation integrity, Windows POSIX/managed-shim/optimizer support,
+source authorization, sandboxing, replacement, automatic update, or multiple
+purpose profiles.

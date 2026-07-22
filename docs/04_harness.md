@@ -611,13 +611,17 @@ source execution or host integration:
   reference. Replacement, automatic updates, multi-profile selection, and
   Windows shims remain outside this contract.
 
-Store and lifecycle tests must cover private-root ownership, create-exclusive
-staging, publication and directory synchronization, bounded enumeration,
-manifest/material/reference binding, exact removal, uncertainty recovery
-through status, and every foreign/symlink/special/tamper collision. Hostile-case
-snapshots prove the fixture-owned filesystem is unchanged while source and
-processor attempt logs remain unchanged; fixture cleanup is not attributed to
-the product operation.
+Store and lifecycle tests must cover the exact Linux/Darwin amd64/arm64 target
+set, effective-user ownership, owner-only modes, link counts, pinned directory
+identities, create-exclusive staging, required non-replacing publication with
+no weaker fallback, directory synchronization, bounded enumeration,
+manifest/material/reference binding, exact removal phases, crash residue, and
+complete read-only uncertainty recovery through status. They must exercise
+every foreign/symlink/special/tamper collision and state explicitly that the
+operating-system user—not the store—is the security principal; same-UID
+containment is not claimed. Hostile-case snapshots prove the fixture-owned
+filesystem is unchanged while source and processor attempt logs remain
+unchanged; fixture cleanup is not attributed to the product operation.
 
 ### External text and secrets
 
@@ -759,8 +763,10 @@ bytes in persisted or structured evidence.
   schema 9 adds no host, vendor, hook, settings, or activation field. Aggregate
   schema 2 remains the path-free `workflow_index_unattested` mechanism and does
   not project per-row paths, opaque references, or material/binding digests.
-  Schema 9 is the current acceptance mechanism; no exact five-row schema-9 CI
-  run has yet been observed for this tree.
+  Schema 9 is the current acceptance mechanism. A release-quality managed-shim
+  claim requires all five native schema-9 rows and the dependent aggregate to
+  pass on the exact candidate revision; historical schema-8 observations do
+  not satisfy that condition.
 - The four Linux/macOS optimizer targets must prove `optimized` and reachable
   `preserved_before_processor`; Windows records no optimizer case and no
   processor evidence. Installed evidence does not claim processor-launch

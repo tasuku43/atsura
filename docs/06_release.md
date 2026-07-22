@@ -38,8 +38,8 @@ contract-3 record and adds the persistent-shim lifecycle. They do not by
 themselves establish a release-quality optimizer, managed-shim, tailored-help,
 multi-command, or platform claim: that claim belongs only to the workflow
 result for one exact revision after all five required native rows and their
-aggregate pass. No exact five-row schema-9 CI observation exists yet for this
-tree. CI run 29910455312 supplied the historical schema-6 evidence on
+aggregate pass. Historical observations do not carry this schema-9 claim
+forward to another tree. CI run 29910455312 supplied the historical schema-6 evidence on
 2026-07-22 for revision
 `01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. No release was created, and
 that historical run did not establish schema-7 behavior. CI run 29914651542
@@ -624,8 +624,9 @@ Aggregate schema 2 remains unchanged. It validates exactly five strict schema-9
 rows and their candidate archive bindings, then emits only the path-free
 `workflow_index_unattested` digest index. Per-row paths, opaque artifact
 references, material digests, and bundle/plan identities do not enter the
-aggregate. This is the current acceptance mechanism, not a claim that an exact
-five-row schema-9 workflow has already been observed.
+aggregate. This is the current acceptance mechanism. It becomes evidence for a
+candidate only when that exact revision passes all five native rows and their
+aggregate.
 
 The credential-free in-process production-composition fixture supplies the
 complete phase evidence that a portable exact-archive journey cannot safely
@@ -703,10 +704,10 @@ option-default implementation claim for that revision only. It is not
 publication, independent executable attestation, or evidence for another
 commit or tag.
 
-There is no bounded five-target schema-9 observation yet. Schema 9 is the
-implemented acceptance mechanism for a future exact candidate, and the native
-workflow plus aggregate must pass on that exact revision before it becomes a
-release-quality managed-shim claim.
+Schema 9 is the implemented acceptance mechanism for an exact candidate. A
+bounded observation belongs only to the revision whose five native workflows
+and dependent aggregate passed; it must not be inferred from the historical
+schema-8 run or carried forward to a later revision.
 
 No public release has yet made the wrapper claim. A future candidate that
 passes the complete gates may claim only the fixed Linux/macOS POSIX

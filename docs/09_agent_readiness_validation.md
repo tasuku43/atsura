@@ -936,7 +936,8 @@ empty.
 This section defines the optimizer-, multi-command-, tailored-help-, option-
 default-, and persistent-shim-aware acceptance target. Evidence schema 9,
 unchanged aggregate schema 2, and the native workflow implement the current
-mechanism. No exact five-row schema-9 CI observation exists yet. CI run
+mechanism. The exact candidate must pass all five native rows and the dependent
+aggregate; historical runs do not carry that result forward. CI run
 29910455312 passed the
 historical schema-6 five-target matrix and aggregate on 2026-07-22 for revision
 `01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. That historical run established
@@ -1267,10 +1268,10 @@ the option-default-aware acceptance mechanism for this revision only; it does
 not authorize publication, independently attest the executables, or carry
 forward to another revision.
 
-No exact five-row schema-9 run has yet been observed. Schema 9 and aggregate
-schema 2 are the current acceptance mechanism; a future candidate must run all
-five native rows and the dependent aggregate on the same exact revision before
-the managed-shim lifecycle becomes release-quality evidence.
+Schema 9 and aggregate schema 2 are the current acceptance mechanism. A
+managed-shim lifecycle observation is release-quality evidence only for the
+exact revision that passes all five native rows and the dependent aggregate;
+it cannot be inherited from schema 8 or another commit.
 
 Exact scoped help is the public authoring contract: the source catalog exposes
 command paths, provenance, option grammar, structured output selector, and

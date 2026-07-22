@@ -18,8 +18,9 @@ into fixed wrapper material. ADR 0015 admits a non-empty, complete GitHub
 contract-2 surface with one or both maintained commands while retaining
 all-or-nothing runtime admission. ADR 0016 adds the first catalog-typed value-
 option default with caller precedence, plan explanation, and exact-command
-help disclosure. The vendor-neutral, compiled-bundle architecture remains
-authoritative.
+help disclosure. ADR 0017 adds one private user-local persistent executable-
+shim lifecycle without giving Atsura authority over caller activation. The
+vendor-neutral, compiled-bundle architecture remains authoritative.
 
 ## North star
 
@@ -67,6 +68,14 @@ adopted bundle + explicit purpose binding
   -> every other argv: fixed function calls `wrapper run` with its exact
      bundle/runtime closure
   -> wrapper run rebuilds and applies the same fresh plan
+
+adopted bundle + explicit managed installation
+  -> `wrapper install` publishes one fixed-template executable shim in the
+     private Atsura user-local store without replacing another command
+  -> caller places the reported `bin` directory first in command resolution
+  -> ordinary `gh` or `go` reaches the same help and fresh-plan runtime
+  -> `wrapper status` alone returns the exact owned artifact reference
+  -> `wrapper remove` consumes that reference unchanged and removes only it
 ```
 
 Source-CLI inspectors and finite output processors are adapters. Coding-agent
@@ -254,8 +263,8 @@ external process—whether the source CLI or an admitted output processor—is
 declared honestly as execution, not disguised as an Atsura read. The source CLI
 alone owns the downstream meaning of a source operation; a processor remains a
 separate untrusted process with no authority to select or start the source.
-Atsura-owned local mutations—such as bundle trust-store writes and any future
-wrapper-artifact installation or replacement—continue to require explicit
+Atsura-owned local mutations—such as bundle trust-store writes and managed
+wrapper-artifact installation or removal—continue to require explicit
 effect, target, impact, central mutation invocation, and uncertain-outcome
 handling.
 
@@ -396,6 +405,18 @@ optimizer runtime claim; this contract makes no Windows activation claim.
 Exact-command help discloses each configured default as a deterministic quoted
 value. Root and namespace views retain command membership only.
 
+The first persistent form is a fixed POSIX executable shim produced by
+`wrapper install` on Linux and macOS amd64/arm64. It contains the same exact
+bundle/runtime closure as `wrapper render`, lives only in a versioned private
+user-local Atsura store, and reaches only `wrapper run`. Atsura reports the
+store's `bin` directory; the caller decides whether it wins `PATH` resolution.
+Install is a fixed-target create and emits no reference. Read-only `wrapper
+status` is the sole producer of an immutable-material reference, and `wrapper
+remove` consumes that reference byte-for-byte. A collision or tampered record
+fails the complete status result rather than returning partial ownership.
+This slice performs no replacement, startup-file edit, hook edit, vendor
+configuration, or Windows installation.
+
 Production Atsura has no coding-agent-host adapter. It never discovers,
 inspects, starts, signals, or calls a host process, executable, service,
 session, transcript, or API; decodes a hook payload or shell command string;
@@ -530,6 +551,15 @@ same host-neutral wrapper, fresh-plan constructor, finite compatibility
 registry, and source-process boundary. Any additional Go argv starts no source
 process.**
 
+The persistent ordinary-command extension is:
+
+**A maintainer can install exact adopted GitHub and Go bundles as fixed
+executables in Atsura's private user-local store, put the reported directory
+first in caller-owned command resolution, and use ordinary help and execution
+through the same fresh plan. Status returns only complete valid ownership and
+the exact opaque references needed for removal; collision or tamper returns no
+references, and removal deletes only the selected revalidated artifact.**
+
 The first external-output-processor proof is:
 
 **A maintainer can explicitly inspect one official RTK v0.43.0 executable,
@@ -565,9 +595,9 @@ exact-artifact evidence and the required gates pass on the claimed targets.
   the direct JSON-transform evidence command; source-stream results belong to
   the finite ordinary-wrapper path in this slice.
 - Source refresh or raw execution.
-- Persisting, installing, replacing, selecting, or removing wrapper artifacts;
-  executable/PATH shims and multi-profile activation remain later lifecycle
-  work.
+- Replacing or automatically updating managed wrapper artifacts, selecting
+  multiple purpose profiles for one ordinary command, editing caller command-
+  resolution configuration, and Windows executable shims.
 - Coding-agent host adapters, host hook decoding or rewriting, host settings or
   permission mutation, host process inspection, and vendor-specific lifecycle
   commands.
@@ -600,9 +630,9 @@ exact-artifact evidence and the required gates pass on the claimed targets.
   grammar?
 - How should multiple purpose profiles select distinct wrappers for the same
   source command without ambient or host-specific state?
-- Which executable-shim format, location, ownership, binding, atomic
-  replacement, and recursion guard provide a reviewable persistent lifecycle
-  without giving repository content authority?
+- Which explicit replacement/update protocol can switch one owned shim to a
+  newly adopted bundle atomically without deleting foreign state or turning an
+  uncertain outcome into replay permission?
 - What stronger executable identity mechanism can close the remaining
   check-to-exec race on each supported platform?
 - Which later source, version, command, RTK version, or filter—if any—can meet

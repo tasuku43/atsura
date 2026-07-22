@@ -233,8 +233,20 @@ runtime or bundle mismatch, source drift, surface absence, and unsupported
 runtime must fail before source start. Wrapper failure never selects raw or
 another bundle as fallback. Treat a generated shell form's byte digest as
 deterministic review evidence, not attestation of the function after
-caller-owned activation; require stronger ownership and drift checks before a
-persisted executable artifact becomes runtime authority.
+caller-owned activation. A persisted executable artifact requires explicit
+ownership, material binding, bounded drift discovery, and native evidence
+before it becomes honest runtime authority.
+
+The current managed executable form is narrower than a general installer. On
+Linux/Darwin amd64/arm64, `wrapper install` writes only fixed-template material
+to the private platform-configuration-root store, publishes without
+replacement, and produces no reference because it is a fixed-target create.
+`wrapper status` is the sole reference producer and must fail the complete
+discovery on any collision or tamper. `wrapper remove` consumes one status
+reference unchanged and removes only the revalidated owned artifact. Keep
+`PATH`, startup files, hooks, vendor settings, and coding-agent-host state
+caller-owned. Do not add replacement, update, Windows shims, or multiple
+profiles without a successor decision and new crash/native evidence.
 
 Activation remains caller-owned. Do not edit or attest shell startup files,
 coding-agent settings, hooks, trust, or permission rules, and do not claim that
@@ -546,9 +558,10 @@ Add the smallest set that proves the capability:
 - for a host-neutral wrapper lifecycle, exact bundle/runtime/source binding,
   deterministic bytes and digest, exact argv forwarding, fresh-plan parity,
   zero/one source-attempt accounting, no raw fallback, and native exact-
-  installed-artifact evidence for every claimed platform; add ownership,
-  atomic replacement, and read-only drift reconciliation only when Atsura
-  persists the artifact;
+  installed-artifact evidence for every claimed platform; a persisted artifact
+  additionally requires effective-user ownership, bounded paths and inventory,
+  non-replacing publication, exact-link removal, crash-phase tests, complete
+  read-only drift reconciliation, and an explicit same-user trust boundary;
 - for coding-agent consumption, prove the generic wrapper interface has no host
   fields or dependencies and leave vendor activation/conformance to downstream
   integrations;
@@ -567,13 +580,17 @@ may set `GOTOOLCHAIN=local`, disable download, and isolate roots for
 determinism; never promote those fixture inputs to production toolchain
 guarantees.
 
-For the current option-default successor, installed evidence schema 8 binds
+Historical installed evidence schema 8 binds
 specification schema 5, bundle schema 4, plan schema 6, generated-wrapper
 contract 3, exact source argv, and complete declared/applied defaults. POSIX
 rows require `default_applied`, `default_overridden`, `append_only`, and
 `identity`; Windows retains structured unsupported behavior. Go and RTK remain
-unchanged. Do not claim release quality until the exact five native rows and
-aggregate pass for the candidate revision.
+unchanged. Current schema 9 retains that record and adds packaged
+install/status/ordinary-help/ordinary-execution/exact-remove evidence for
+GitHub and Go, all-or-nothing tamper/collision faults, final empty status, and
+structured zero-state unsupported management on Windows. Do not claim release
+quality until the exact five native rows and aggregate pass for the candidate
+revision.
 
 Tests must use temporary directories, fixed clocks, fake credentials, and local
 test servers. They must not require a developer account or live network.

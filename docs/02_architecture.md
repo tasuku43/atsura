@@ -24,7 +24,9 @@ admit one or both maintained GitHub contract-2 commands, all-or-nothing, without
 changing schemas or process boundaries. ADR 0016 then advances the tailoring
 specification to schema 5, bundle to schema 4, plan to schema 6, and generated
 wrapper to contract 3 for one finite catalog-typed value-option default. It
-adds no shell, processor, source, host, or vendor boundary.
+adds no shell, processor, source, host, or vendor boundary. ADR 0017 adds one
+private user-local executable-shim store and install/status/remove application
+lifecycle without changing caller-owned activation or source execution.
 
 The current runtime milestone extends strict schema-5 specification loading,
 schema-4 bundle compilation/adoption, and pure surface resolution through one
@@ -32,8 +34,9 @@ complete bundle-backed schema-6 wrapper plan into one compatibility-admitted
 JSON transform, source-stream result, or finite original-preserving optimizer.
 It exposes that same application path
 through a deterministic Linux/macOS POSIX function rendered from an exact
-bundle/runtime closure. Raw execution and persistent wrapper installation
-remain unimplemented.
+bundle/runtime closure, and through a fixed executable shim managed in the
+private store on Linux/macOS amd64/arm64. Raw execution, replacement, automatic
+updates, and multi-profile selection remain unimplemented.
 
 ## Dependency direction
 
@@ -99,6 +102,14 @@ adopted bundle + explicit purpose binding
   -> `wrapper run`: revalidate bundle/runtime/source binding
   -> same fresh plan constructor and compatibility-admitted execution path
   -> one plan-authoritative result, not a maintainer envelope
+
+adopted bundle + managed artifact request
+  -> application materializes the same exact wrapper binding
+  -> infrastructure publishes one fixed executable in the private store
+  -> status validates the complete bounded store and produces opaque refs
+  -> caller-owned PATH selection exposes the reported `bin` directory
+  -> ordinary invocation reaches the existing `wrapper run` path
+  -> exact-ref remove quarantines and deletes only revalidated owned material
 ```
 
 Surface membership and wrapper behavior are independent inputs to compilation.
@@ -191,6 +202,9 @@ source read/create/write effect, or source-operation target and impact.
 - a host-neutral wrapper binding containing an exact adopted purpose
   bundle, wrapper contract, runtime identity, source identity, ordinary
   command spelling, and typed tailored-help projection;
+- immutable managed-shim manifests, content-bound opaque references, bounded
+  canonical inventories, owned active/inactive states, and unowned collision
+  states;
 - finite vendor-neutral runtime-admission diagnostic categories; and
 - operation effects, including `EffectExecute` for starting an identity-bound
   external source or processor process and create/write contracts for
@@ -224,6 +238,9 @@ coding-agent-host protocol.
   construct one pure wrapper plan without starting the source;
 - coordinate Atsura-owned trust-store changes through the central mutation
   invoker;
+- install one exact wrapper binding into the fixed managed store through a
+  fixed-target create, discover only complete valid ownership, and remove one
+  exact status-produced reference through the central mutation invoker;
 - render one adopted bundle/runtime closure as deterministic POSIX function
   material through a narrow pure renderer port, and apply the render-produced
   runtime closure through the same fresh-plan application service as direct
@@ -283,10 +300,14 @@ never falls back to the source result.
 - run the exact admitted output processor with bounded stdin/stdout/stderr, an
   isolated environment and working directory, no shell, and separately counted
   attempts without giving it source-execution authority; and
-- identify the current `atr` executable and render a fixed bounded POSIX
-  function without accepting configuration-authored code; and
-- in a future persisted lifecycle, own bounded artifact encoding, identity,
-  and atomic replacement behind separate mutation ports.
+- identify the current `atr` executable and render fixed bounded POSIX
+  function or executable-shim material without accepting configuration-authored
+  code; and
+- own the Linux/Darwin amd64/arm64 private managed-shim store: bounded
+  manifest/material encoding, opened-root identity checks, create-exclusive
+  staging, non-replacing atomic publication, hard-link activation, bounded
+  read-only reconciliation, quarantine removal, and directory synchronization
+  behind the application-owned store port.
 
 Each source adapter owns its probe grammar, accepted version range, runtime
 argv contract, attempt and byte budgets, and conversion into the shared
@@ -352,11 +373,36 @@ implementation-specific function-name set. The runtime derives the same
 spelling from the strictly loaded bundle and reaches its bound physical source
 path rather than resolving the wrapper through ambient `PATH`.
 
-If materialization persists local artifacts, application owns the task and
-infrastructure owns bounded atomic file operations. The lifecycle exposes exact
-ownership and drift, preserves unrelated state, and routes create/write through
-the central mutation boundary. Caller-owned shell or agent settings remain
-outside that lifecycle.
+Persistent materialization follows the same division. `internal/app/wrappershimcmd`
+owns install/status/remove task semantics, mutation intent, all-or-nothing
+ownership results, and reference flow. `internal/infra/shimstore` owns only the
+fixed platform root and filesystem mechanics. `internal/infra/posixshim` emits
+the fixed executable template. The store never parses a bundle or chooses a
+surface, and the application never performs filesystem operations directly.
+Caller-owned shell, `PATH`, hook, and agent settings remain outside this
+lifecycle.
+
+On supported targets the store opens and pins the root plus `bin`, `records`,
+and `.staging` directories, validates effective-user ownership and exact modes,
+and serializes cooperating Atsura processes with an owner-only lock. It stages
+canonical manifest and executable files with exclusive creation, then uses the
+platform's non-replacing rename primitive to publish the record. Linux uses
+`renameat2(RENAME_NOREPLACE)` and Darwin uses
+`renameatx_np(RENAME_EXCL)` through pinned directory descriptors; absence of
+that primitive fails closed rather than falling back to a replacing rename.
+Activation is one create-exclusive hard link from immutable record material to
+the ordinary command name.
+
+Status is read-only even after a crash. It validates bounded staging residue
+without repairing it, then validates every record, active hard link, and bin
+entry before the application returns any reference. A later mutation may
+remove only a strictly shaped, identity-bound staging residue. Removal first
+deactivates the exact hard link when present, revalidates the now-single-link
+record, moves the record exclusively into staging quarantine, and performs
+nonrecursive identity-bound cleanup. A crash before quarantine leaves an
+inactive discoverable record; a crash after quarantine leaves no public record
+and only bounded cleanup residue. Uncertain post-action results are never safe
+to replay without status.
 
 At invocation, honest `wrapper run` code revalidates its exact runtime identity,
 the expected bundle digest and adoption, source identity, and command spelling
@@ -453,6 +499,8 @@ become plan output.
 - host-neutral `wrapper render` and `wrapper run` presentation, including the
   static review envelope, bundle-derived fixed help material, and
   fresh-plan-authoritative result union;
+- managed `wrapper install`, `wrapper status`, and exact-reference `wrapper
+  remove` composition, typed parsing, mutation output, and fault presentation;
 - explicit `processor inspect` presentation and bounded processor-evidence
   selection during specification initialization and bundle compilation;
 - stable migration diagnostics for retired policy and bundle schemas;
@@ -491,9 +539,10 @@ production identity reader, while the process runner's own tests induce native
 start, wait, limit, cancellation, timeout, and pre/post identity races. No
 fixture mode or test branch exists in the shipped composition.
 
-The wrapper entry point adds finite identity and argv-only execution but no raw
-execution or persisted installation lifecycle. ADR 0008 keeps caller
-activation outside Atsura.
+The wrapper entry point adds finite identity and argv-only execution plus ADR
+0017's separately controlled persisted-shim lifecycle, but no raw execution,
+replacement, or activation mutation. ADR 0008 keeps caller activation outside
+Atsura.
 Retired authorization command paths remain only as
 catalog-declared migration diagnostics and start zero source processes.
 
@@ -520,7 +569,7 @@ registry or plan.
 
 ### Atsura-owned mutation
 
-Trust receipts and any future wrapper artifacts or bindings are Atsura state.
+Trust receipts and managed wrapper artifacts are Atsura state.
 Their create/write tasks retain explicit intent, exact target binding, impact,
 central mutation invocation, and structured uncertain-outcome handling. Those
 contracts must not be projected onto source CLI commands or caller-owned
@@ -647,7 +696,7 @@ for this revision's optimizer, multi-command tailored-help, and platform
 contracts, not publication authorization, independent executable attestation,
 or evidence for a later candidate.
 
-Current evidence schema 8 succeeds schema 7. It binds specification schema 5,
+Historical evidence schema 8 succeeds schema 7. It binds specification schema 5,
 bundle schema 4, plan schema 6, generated-wrapper contract 3, exact source argv,
 the complete declared option-default list, and the exact applied subset. POSIX
 rows require four ordered wrapper cases: `default_applied`,
@@ -661,6 +710,18 @@ gates, and aggregate schema 2 on 2026-07-22 for revision
 `99fbd0e97489b1f3b7a68e2617fa4056b2c12a1d`. That is release-quality
 implementation evidence for this exact revision, not publication,
 independent executable attestation, or evidence for a later candidate.
+
+Current evidence schema 9 retains that complete record and adds one bounded
+`wrapper_lifecycle` object. On each Linux/Darwin amd64/arm64 row it executes
+the packaged `atr`, installs exact adopted GitHub and Go bundles, verifies
+fixed material and active hard-link identity, puts only the reported bin path
+first for ordinary help and execution, round-trips status references unchanged
+through removal, and ends with an explicit empty inventory. Tamper, unknown
+reference, and foreign/symlink/special collision fixtures preserve filesystem
+state and add no source or processor attempt; collision evidence coexists with
+a valid owned artifact and must expose none of its reference. Windows invokes
+all three lifecycle commands, receives only structured unsupported faults,
+and creates no store. Aggregate schema 2 remains unchanged.
 
 The inherited schema-5 optimizer evidence shape keeps the identity case in the
 outer `go_source` wrapper fields and the optimizer's distinct bundle, plan,
@@ -719,6 +780,26 @@ ordinary argv invocation
      independently validated processor output
 ```
 
+The managed-artifact slice composes around, rather than inside, that runtime:
+
+```text
+exact adopted purpose bundle
+  -> fixed-target `wrapper install`
+  -> same complete materialization closure
+  -> private-store exclusive record publication + hard-link activation
+  -> caller puts reported bin directory first
+  -> ordinary help/execution follows the existing wrapper contract
+
+read-only `wrapper status`
+  -> validate the complete bounded store or return no references
+  -> emit immutable-material references for owned active/inactive records
+
+exact-reference `wrapper remove`
+  -> revalidate selected record and link identity
+  -> deactivate -> quarantine -> bounded nonrecursive cleanup
+  -> uncertainty recovers only through status
+```
+
 For GitHub CLI contract 2, the bundle may include one or both maintained
 commands and may assign them different existing result modes. The same bundle
 still binds one source identity and adapter contract, and each ordinary argv
@@ -738,7 +819,7 @@ Go CLI contract 2 catalog (three probes, recorded Go 1.26.x observation)
   -> strict `test -json` admission and the isolated processor boundary
 ```
 
-The exact five-target schema-8 evidence above establishes the current
+The exact five-target schema-8 evidence above establishes the historical
 option-default milestone for revision
 `99fbd0e97489b1f3b7a68e2617fa4056b2c12a1d`. Every later release candidate
 must repeat the full gates and installed-artifact journeys. Windows exercises
@@ -773,8 +854,9 @@ milestones.
   adapter contract.
 - Streaming and output budgets beyond the current bounded buffered process
   boundary.
-- Which executable-shim format, artifact location, ownership, atomic
-  replacement, and recursion guard close a persistent wrapper lifecycle.
+- Which explicit no-loss replacement/update transaction should switch one
+  owned command to a newly adopted artifact, and how should status distinguish
+  the old, new, and uncertain phases without making replay safe?
 - How multiple purpose profiles select wrappers for one ordinary command
   without ambient or coding-agent-host state.
 - Which later source, command, source version, RTK version, package count, or

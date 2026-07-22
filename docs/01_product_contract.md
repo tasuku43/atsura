@@ -17,7 +17,9 @@ containing one or both maintained commands without changing the bundle or
 wrapper contract. One canonical vendor-neutral bundle remains the authority.
 ADR 0016 adds one finite catalog-typed value-option default with deterministic
 caller precedence, schema-6 plan explanation, contract-3 help disclosure, and
-no new process or host boundary.
+no new process or host boundary. ADR 0017 adds the first managed executable-
+shim install/status/remove lifecycle inside one private user-local store; it
+does not add a coding-agent-host or activation boundary.
 
 ## Product statement
 
@@ -84,6 +86,13 @@ caller-owned command resolution exposes the ordinary source command
         |
         v
 generated function -> `atr wrapper run` -> same fresh plan and execution path
+
+exact adopted bundle -> `atr wrapper install`
+        +--> fixed executable shim in private user-local Atsura store
+        +--> reported `bin` directory; caller alone changes command resolution
+ordinary source command -> executable shim -> same `atr wrapper run` contract
+`atr wrapper status` -> complete owned inventory + opaque artifact references
+`atr wrapper remove --artifact <reference>` -> exact owned artifact removal
 ```
 
 `bundle preview` implements the zero-execution branch of this flow. `bundle
@@ -452,10 +461,10 @@ select, authorize, or start the source CLI.
 ### Atsura-owned mutation
 
 Create/write effects remain for state Atsura owns: bundle trust receipts,
-future materialized wrapper artifacts or bindings, and future Atsura
-configuration persistence. These commands retain exact intent, target binding,
-impact, central mutation invocation, complete-output handling, and
-non-retryable uncertain-outcome rules.
+managed wrapper artifacts, and future Atsura configuration persistence. These
+commands retain exact intent, target binding, impact, central mutation
+invocation, complete-output handling, and non-retryable uncertain-outcome
+rules.
 
 ### Host-neutral wrapper materialization
 
@@ -541,12 +550,10 @@ fingerprint itself. An unchanged honest runtime detects a binding mismatch and
 starts no source process, but Atsura does not claim to constrain malicious code
 that has already replaced the executable at that path.
 
-The current renderer writes no Atsura-owned artifact and edits no activation
-configuration; stdout redirection or sourcing is caller-owned behavior. A
-future persisted wrapper or executable shim would create Atsura-owned local
-state and must add normal create/write mutation contracts, bounded ownership,
-atomic replacement, drift reporting, read-only reconciliation, and a separate
-platform contract.
+`wrapper render` writes no Atsura-owned artifact and edits no activation
+configuration; stdout redirection or sourcing is caller-owned behavior. The
+separate managed-shim lifecycle below persists only fixed executable material
+inside Atsura's private store and still leaves activation to the caller.
 
 The generated source removes any existing alias with the exact ordinary
 command name immediately before defining the function. This prevents alias
@@ -556,6 +563,49 @@ configuration; a caller that needs the old alias must restore it after removing
 the function. Supported activation requires the standard POSIX `unalias`
 utility not to be shadowed by a caller function; activation integrity beyond
 that precondition remains caller-owned.
+
+### Managed executable shim lifecycle
+
+On Linux and macOS amd64/arm64, the managed lifecycle is:
+
+```text
+atr wrapper install --bundle <absolute-adopted-bundle>
+atr wrapper status
+atr wrapper remove --artifact <opaque-status-reference>
+```
+
+Install reuses the exact adopted-bundle materialization and complete-surface
+checks, renders only Atsura's fixed executable template, and publishes one
+active shim for the bundle's ordinary `gh` or `go` command in the versioned
+private platform-configuration-root store. Its public result reports the exact
+shim and `bin` paths, whether the same artifact was already active, and zero
+source/processor attempts. Install is a command-bound fixed-target create: it
+has no reference input and emits no artifact reference. A different owned
+artifact or foreign bin entry is a conflict, never an implicit replacement.
+
+Status is the bounded read-only ownership authority. It emits an explicit
+ordered `artifacts` list containing only `owned_active` or `owned_inactive`
+records, each with the exact command, path, material digest, and opaque
+`wrapper-shim-artifact` reference. The reference binds the immutable manifest
+and shim material; callers pass it unchanged rather than decoding it. A
+foreign regular file, symlink, special entry, malformed staging residue, or
+tampered record fails the entire status operation, so a partial set of
+apparently removable references is never returned.
+
+Remove is a reference-bound write. It accepts one current status reference,
+revalidates the exact record and any active hard link, and removes only that
+owned artifact. Unknown references are `not_found`, not idempotent success.
+Tamper, collision, unsafe store shape, and uncertain post-action outcomes fail
+closed; reconciliation uses status and never recommends replaying a mutation.
+Install and remove start neither the source nor a processor.
+
+The managed `bin` path is output, not activation. Atsura never edits `PATH`, a
+shell startup file, a hook, vendor settings, or coding-agent-host state. If the
+caller places that directory first, ordinary `gh` or `go` starts the shim,
+whose only execution route is the existing bound `wrapper run` contract.
+Windows and other unclaimed target tuples return structured unsupported
+behavior and create no store state. Replacement, automatic update, and
+multiple purpose profiles remain separate decisions.
 
 ### Ordinary tailored help
 
@@ -665,6 +715,9 @@ atr wrapper render --bundle <absolute-bundle.json> [--format text|json]
 atr wrapper run --contract-version=3 --bundle=<absolute-bundle.json> \
   --bundle-digest=<sha256> --runtime-path=<absolute-atr> \
   --runtime-sha256=<sha256> --runtime-size=<bytes> -- <argv...>
+atr wrapper install --bundle <absolute-bundle.json>
+atr wrapper status
+atr wrapper remove --artifact <opaque-wrapper-shim-artifact-reference>
 ```
 
 `source inspect` selects one bounded adapter explicitly. `github-cli` contract
@@ -703,7 +756,8 @@ selects the optimizer, rejects unused or incompatible evidence, and binds the
 processor identity into bundle schema 4. `bundle status` recomputes all
 canonical bindings, observes exact-digest adoption, and compares current source
 and processor identity without starting either process. `bundle trust` is the
-only Atsura-owned mutation in this workflow.
+only Atsura-owned mutation in the bundle-compilation subflow; managed shim
+install/remove are the separate local lifecycle mutations below.
 
 `bundle preview` is a read-only, JSON-only utility. It admits only the exact
 requested executable spelling or resolved path recorded in an adopted current
@@ -746,6 +800,12 @@ post-start, processor, and final-output failures are non-retryable and expose
 no captured source or processor bytes through a fault. The generated function
 never selects raw execution, another bundle, an ambient source executable, or
 a runtime-discovered processor.
+
+`wrapper install` reuses that complete materialization closure and stores only
+fixed executable-shim material. `wrapper status` is its bounded read-only
+ownership and reference-discovery path. `wrapper remove` consumes one such
+reference unchanged. None starts a source or processor; only later ordinary
+shim execution reaches the existing `wrapper run` source boundary.
 
 The current compatibility admission is also available in exact `bundle
 execute` help: GitHub CLI adapter contract 2 and major 2, `issue list` or `pr
@@ -798,9 +858,10 @@ A deterministic generated shell form records its byte digest as review and
 release evidence, but invocation does not claim to attest a sourced function's
 in-memory bytes. Linux and macOS are the POSIX rendering and activation targets;
 Windows retains existing-command regression coverage and a structured
-unsupported result, not a POSIX activation claim. A future persisted executable
-artifact must add explicit artifact ownership and drift validation before
-receiving that stronger claim.
+unsupported result, not a POSIX activation claim. ADR 0017's managed shim adds
+private-store ownership, immutable material/reference binding, bounded drift
+discovery, and exact removal on Linux/macOS amd64/arm64. It does not strengthen
+the separate claim about caller activation or malicious runtime replacement.
 
 ## Migration contract
 
@@ -906,7 +967,9 @@ existing JSON-transform, identity, and append-argv-only source-stream modes,
 including different modes per command. The Go contract remains the exact
 singleton `test` identity source-stream surface or exact Go pass optimizer
 surface. Windows supports the existing portable commands but not POSIX wrapper
-rendering, activation, or the optimizer.
+rendering, activation, managed shims, or the optimizer. Managed shims share
+the four Linux/Darwin amd64/arm64 release targets, use no ambient source or
+processor registry, and add no source compatibility tuple.
 
 The current preview grammar is intentionally narrower than arbitrary source
 CLI grammar. Catalog evidence does not yet model short options, root/global
@@ -928,8 +991,9 @@ ordering differences, or selectors after `--` fail before source start.
 
 - Source refresh and catalog persistence.
 - Raw execution.
-- Persistent wrapper installation, replacement, removal, executable/PATH shims,
-  and multi-profile wrapper selection.
+- Managed-wrapper replacement or automatic update, Windows executable shims,
+  Atsura-owned `PATH`/startup/hook activation, and multi-profile wrapper
+  selection.
 - Coding-agent host adapters, vendor hook protocols, host settings or permission
   mutation, and vendor-specific integration lifecycle commands.
 - Any claim that Atsura installs, enables, or enforces wrapper activation in a

@@ -125,7 +125,8 @@ mutation target or impact and is never valid as a mutation reconciliation
 action.
 
 `EffectCreate` and `EffectWrite` remain reserved for mutations Atsura owns,
-including bundle trust-store changes and future wrapper-artifact state. Those
+including bundle trust-store changes and the managed wrapper-artifact state
+later bounded by ADR 0017. Those
 commands retain exact target binding, impact, central mutation invocation,
 complete-output handling, and uncertain-outcome rules. Unknown effects remain
 invalid.

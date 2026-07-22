@@ -41,14 +41,18 @@ active shim still matches the recorded artifact. Unknown, tampered, symlinked,
 special, multiply matched, or uncertain state is never deleted.
 
 Store mutation uses a private opened root, create-exclusive staging, identity
-revalidation, atomic publication where the platform contract supports it, and
-directory synchronization on POSIX. Post-action uncertainty is non-retryable
-and recovers only through status. Install and remove start no source or
-processor. Ordinary shim invocation retains the existing fresh-plan and
-zero/one process-attempt rules.
+revalidation, a required non-replacing atomic publication primitive, and
+directory synchronization on POSIX. There is no fallback to a rename that may
+replace a concurrently created target. Removal deactivates the exact active
+hard link, quarantines the revalidated record through the same exclusive move,
+and cleans only bounded identity-checked residue. Post-action uncertainty is
+non-retryable and recovers only through status. Install and remove start no
+source or processor. Ordinary shim invocation retains the existing fresh-plan
+and zero/one process-attempt rules.
 
-The first implementation is Linux/Darwin only. Windows returns a structured
-unsupported result and creates no store state.
+The first implementation claims Linux and Darwin on amd64 and arm64 only.
+Windows and other target tuples return a structured unsupported result and
+create no store state.
 
 ## Consequences
 
@@ -56,6 +60,10 @@ unsupported result and creates no store state.
   `go` without embedding an Atsura or vendor protocol.
 - Atsura gains a narrowly confined local filesystem mutation and must maintain
   exact ownership, write-phase, and output-failure tests.
+- The operating-system user is the store security principal. Atsura detects
+  bounded passive drift and coordinates cooperating processes; it does not
+  claim containment against a deliberate same-user process that ignores the
+  lock or mutates that user's files.
 - Activation absence or bypass remains caller-owned and is not fail closed.
 - Replacement, multi-profile selection, automatic updates, raw execution, and
   host integration remain separate future decisions.
@@ -65,7 +73,8 @@ unsupported result and creates no store state.
 - Catalog mutation contracts distinguish fixed-target create from exact
   reference-bound remove and expose status as the reference producer.
 - Domain and store tests bound references, records, enumeration, bytes, names,
-  modes, and every symlink/special/collision case.
+  effective-user ownership, modes, link counts, crash residue, and every
+  symlink/special/collision case.
 - Renderer tests prove deterministic bytes, exact argv forwarding, no `eval`,
   no `sh -c`, and no ambient source lookup.
 - Native artifact journeys prove install, ordinary help/execution, status, and
