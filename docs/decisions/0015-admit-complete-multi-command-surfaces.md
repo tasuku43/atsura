@@ -95,11 +95,11 @@ help argv already reaches the shared fresh-plan path where the longest catalog
 command prefix selects one command. Installed-artifact evidence may advance
 separately only if recording the new journey changes that document's shape.
 
-Whole-surface admission remains a pure application/domain compatibility check
-selected by the bundle's exact adapter kind. It performs no source or processor
-probe, starts no process, consults no ambient executable, and creates no host-
-specific state. The existing source and processor process ports remain the only
-runtime execution boundaries.
+Whole-surface admission remains a pure compatibility check dispatched by the
+application registry to the infrastructure verifier selected by the bundle's
+exact adapter kind. It performs no source or processor probe, starts no process,
+consults no ambient executable, and creates no host-specific state. The existing
+source and processor process ports remain the only runtime execution boundaries.
 
 ## Consequences
 
@@ -126,9 +126,10 @@ runtime execution boundaries.
 
 ## Mechanical enforcement
 
-- Registry and GitHub adapter contract tests cover canonical one-command and
-  two-command surfaces and mixed existing result modes.
-- Negative tests prove empty, duplicate, unsupported, partially admitted, and
+- Registry forwarding and GitHub adapter contract tests cover canonical one-
+  command and two-command surfaces and mixed existing result modes.
+- Canonical specification tests reject duplicate command entries. Complete-
+  surface negative tests prove empty, unsupported, partially admitted, and
   invalid-option surfaces emit no wrapper bytes and start zero source and
   processor attempts.
 - Go adapter tests retain the exact singleton `test` contract and reject an

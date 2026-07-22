@@ -63,7 +63,10 @@ func TestRegistryDispatchesExactEvidenceByAdapterKind(t *testing.T) {
 
 	bundle := tailoringbundle.Bundle{
 		Catalog: tailoringbundleCatalog("atsura.source.github_cli"),
-		Surface: []tailoringbundle.SurfaceEntry{{Command: []string{"issue", "list"}}},
+		Surface: []tailoringbundle.SurfaceEntry{
+			{Command: []string{"issue", "list"}},
+			{Command: []string{"pr", "list"}},
+		},
 	}
 	if err := registry.VerifySurface(bundle); err != nil {
 		t.Fatalf("VerifySurface() error = %v", err)

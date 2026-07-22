@@ -231,6 +231,9 @@ func TestSpecificationRejectsInvalidMembershipOptionsAndWrappers(t *testing.T) {
 	}{
 		{name: "invalid default", mutate: func(s *Specification) { s.Surface.Default = "future" }},
 		{name: "missing commands list", mutate: func(s *Specification) { s.Commands = nil }},
+		{name: "duplicate command", mutate: func(s *Specification) {
+			s.Commands = append(s.Commands, s.Commands[0])
+		}},
 		{name: "unverified command", mutate: func(s *Specification) { s.Commands[0].Command = []string{"plugin", "run"} }},
 		{name: "excluded with wrapper", mutate: func(s *Specification) { s.Commands[0].Presence = PresenceExclude; s.Commands[0].Options = nil }},
 		{name: "included without options", mutate: func(s *Specification) { s.Commands[0].Options = nil }},
