@@ -951,10 +951,12 @@ extracted `atr` non-executable and requires byte-exact `["--help"]`,
 bundle digest and empty stderr. After restoring the runtime, hidden
 `["api","--help"]` must yield `command_not_in_surface` and
 `["unknown","--help"]` must yield `invalid_invocation`; none may add a
-source or processor attempt. Every wrapper/preview schema-5 plan identity must
-match in bounded fixture evidence and the append-only log must add exactly one
-source attempt per ordinary execution case. The transformed result must equal
-its compact JSON value; the append-only and identity cases must match their
+source or processor attempt. Each wrapper case records the preview-derived
+schema-5 plan digest for its exact bundle and caller argv; the ordinary result
+and attempt log must match that plan's declared result mode. The append-only
+log must add exactly one source attempt per ordinary execution case. The
+transformed result must equal its compact JSON value; the append-only and
+identity cases must match their
 exact bounded stdout/stderr digests and conventional status without storing
 either stream. POSIX retains three wrapper source attempts and 13 GitHub
 fixture attempts. Windows must instead receive

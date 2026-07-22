@@ -825,6 +825,59 @@ func TestWithNonExecutableRuntimeRestoresOriginalMode(t *testing.T) {
 			t.Fatalf("restored mode=%v", info.Mode())
 		}
 	}
+	err := withNonExecutableRuntime(path, func() error {
+		return os.Chmod(path, originalMode)
+	})
+	if err == nil || !strings.Contains(err.Error(), "changed during action") {
+		t.Fatalf("runtime execution-bit drift error = %v", err)
+	}
+	info, statErr := os.Stat(path)
+	if statErr != nil || info.Mode().Perm() != originalMode {
+		t.Fatalf("mode after rejected drift = %v, %v", info, statErr)
+	}
+}
+
+func TestRegularFileSnapshotRejectsContentAndFileReplacement(t *testing.T) {
+	t.Run("content", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "wrapper.sh")
+		if err := os.WriteFile(path, []byte("first material"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		snapshot, err := snapshotRegularFile(path)
+		if err != nil || snapshot.verify(path) != nil {
+			t.Fatalf("initial snapshot = %+v, %v", snapshot, err)
+		}
+		if err := os.WriteFile(path, []byte("other material"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := snapshot.verify(path); err == nil {
+			t.Fatal("content drift was accepted")
+		}
+	})
+
+	t.Run("replacement", func(t *testing.T) {
+		root := t.TempDir()
+		path := filepath.Join(root, "wrapper.sh")
+		replacement := filepath.Join(root, "replacement.sh")
+		for _, candidate := range []string{path, replacement} {
+			if err := os.WriteFile(candidate, []byte("same material"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		snapshot, err := snapshotRegularFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(replacement, path); err != nil {
+			t.Fatal(err)
+		}
+		if err := snapshot.verify(path); err == nil {
+			t.Fatal("same-byte file replacement was accepted")
+		}
+	})
 }
 
 type archiveTestMember struct {

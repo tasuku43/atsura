@@ -733,6 +733,13 @@ func verifyPackagedWrappers(
 	if err := writePrivate(sharedWrapperPath, sharedSource); err != nil {
 		return packagedWrapperEvidence{}, fmt.Errorf("multi-command caller-owned fixture write failed")
 	}
+	sharedFile, err := snapshotRegularFile(sharedWrapperPath)
+	if err != nil || sharedFile.sha256 != sharedDigest || sharedFile.size != int64(len(sharedSource)) {
+		return packagedWrapperEvidence{}, fmt.Errorf("multi-command caller-owned fixture identity is invalid")
+	}
+	if err := sharedFile.verify(sharedWrapperPath); err != nil {
+		return packagedWrapperEvidence{}, fmt.Errorf("multi-command caller-owned fixture changed before help")
+	}
 	tailoredHelp, boundaries, helpErr := verifyPackagedTailoredHelp(
 		ctx, runner, help, executablePath, sharedWrapperPath, inputs[0].journey.bundleDigest,
 		sharedDigest, attemptLog, existingAttempts,
@@ -740,13 +747,22 @@ func verifyPackagedWrappers(
 	if helpErr != nil {
 		return packagedWrapperEvidence{}, helpErr
 	}
+	if err := sharedFile.verify(sharedWrapperPath); err != nil {
+		return packagedWrapperEvidence{}, fmt.Errorf("multi-command caller-owned fixture changed during help")
+	}
 	result.tailoredHelp = tailoredHelp
 	result.boundaries = append(result.boundaries, boundaries...)
 
-	invoke := func(input packagedWrapperInput, wrapperPath, sourceDigest string, wantedAttempts int) error {
+	invoke := func(input packagedWrapperInput, wrapperPath, sourceDigest string, file regularFileSnapshot, wantedAttempts int) error {
+		if err := file.verify(wrapperPath); err != nil {
+			return fmt.Errorf("wrapper %s caller-owned fixture changed before invocation", input.name)
+		}
 		invocation, invokeErr := runPOSIXCaller(ctx, runner, "gh", wrapperPath, input.callerArgs, input.wantExitCode)
 		if invokeErr != nil {
 			return fmt.Errorf("wrapper %s caller-owned invocation failed", input.name)
+		}
+		if err := file.verify(wrapperPath); err != nil {
+			return fmt.Errorf("wrapper %s caller-owned fixture changed during invocation", input.name)
 		}
 		if !bytes.Equal(invocation.stdout, input.wantStdout) || !bytes.Equal(invocation.stderr, input.wantStderr) || invocation.exitCode != input.wantExitCode {
 			return fmt.Errorf("wrapper %s caller-owned result is invalid", input.name)
@@ -765,10 +781,10 @@ func verifyPackagedWrappers(
 		result.boundaries = append(result.boundaries, invocation.stdout, invocation.stderr)
 		return nil
 	}
-	if err := invoke(inputs[0], sharedWrapperPath, sharedDigest, existingAttempts+1); err != nil {
+	if err := invoke(inputs[0], sharedWrapperPath, sharedDigest, sharedFile, existingAttempts+1); err != nil {
 		return packagedWrapperEvidence{}, err
 	}
-	if err := invoke(inputs[1], sharedWrapperPath, sharedDigest, existingAttempts+2); err != nil {
+	if err := invoke(inputs[1], sharedWrapperPath, sharedDigest, sharedFile, existingAttempts+2); err != nil {
 		return packagedWrapperEvidence{}, err
 	}
 
@@ -783,7 +799,11 @@ func verifyPackagedWrappers(
 	if err := writePrivate(identityWrapperPath, identitySource); err != nil {
 		return packagedWrapperEvidence{}, fmt.Errorf("identity caller-owned fixture write failed")
 	}
-	if err := invoke(inputs[2], identityWrapperPath, identityDigest, existingAttempts+3); err != nil {
+	identityFile, err := snapshotRegularFile(identityWrapperPath)
+	if err != nil || identityFile.sha256 != identityDigest || identityFile.size != int64(len(identitySource)) {
+		return packagedWrapperEvidence{}, fmt.Errorf("identity caller-owned fixture identity is invalid")
+	}
+	if err := invoke(inputs[2], identityWrapperPath, identityDigest, identityFile, existingAttempts+3); err != nil {
 		return packagedWrapperEvidence{}, err
 	}
 	return result, nil
@@ -944,7 +964,12 @@ func withNonExecutableRuntime(path string, action func() error) error {
 	if err != nil || !os.SameFile(before, disabled) || !disabled.Mode().IsRegular() || disabled.Mode().Perm()&0o111 != 0 {
 		return restore(fmt.Errorf("runtime non-executable identity is invalid"))
 	}
-	return restore(action())
+	actionErr := action()
+	after, afterErr := root.Lstat(name)
+	if afterErr != nil || !os.SameFile(before, after) || !after.Mode().IsRegular() || after.Mode().Perm()&0o111 != 0 {
+		actionErr = errors.Join(actionErr, fmt.Errorf("runtime non-executable identity changed during action"))
+	}
+	return restore(actionErr)
 }
 
 func verifyGoSourceJourney(
@@ -1580,21 +1605,43 @@ func decodeWrapperRender(value []byte) (wrapperRenderDocument, error) {
 	return document, nil
 }
 
-func regularFileIdentity(path string) (string, int64, error) {
+type regularFileSnapshot struct {
+	info   os.FileInfo
+	sha256 string
+	size   int64
+}
+
+func snapshotRegularFile(path string) (regularFileSnapshot, error) {
 	file, info, err := openRegularInput(path)
 	if err != nil {
-		return "", 0, err
+		return regularFileSnapshot{}, err
 	}
 	defer file.Close()
 	if info.Size() <= 0 || info.Size() > maxMemberBytes {
-		return "", 0, fmt.Errorf("file size is invalid")
+		return regularFileSnapshot{}, fmt.Errorf("file size is invalid")
 	}
 	hash := sha256.New()
 	written, err := io.Copy(hash, io.LimitReader(file, maxMemberBytes+1))
 	if err != nil || written != info.Size() {
-		return "", 0, fmt.Errorf("file digest failed")
+		return regularFileSnapshot{}, fmt.Errorf("file digest failed")
 	}
-	return fmt.Sprintf("%x", hash.Sum(nil)), info.Size(), nil
+	return regularFileSnapshot{info: info, sha256: fmt.Sprintf("%x", hash.Sum(nil)), size: info.Size()}, nil
+}
+
+func (s regularFileSnapshot) verify(path string) error {
+	current, err := snapshotRegularFile(path)
+	if err != nil || s.info == nil || !os.SameFile(s.info, current.info) || s.sha256 != current.sha256 || s.size != current.size {
+		return fmt.Errorf("regular file identity changed")
+	}
+	return nil
+}
+
+func regularFileIdentity(path string) (string, int64, error) {
+	snapshot, err := snapshotRegularFile(path)
+	if err != nil {
+		return "", 0, err
+	}
+	return snapshot.sha256, snapshot.size, nil
 }
 
 func differentDigest(value string) string {
