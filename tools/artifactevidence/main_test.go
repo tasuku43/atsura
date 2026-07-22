@@ -211,7 +211,7 @@ func TestDecodeEvidenceRejectsUnknownDuplicateAndTrailingJSON(t *testing.T) {
 		unknown,
 		duplicate,
 		append(append([]byte{}, valid...), []byte(` {}`)...),
-		[]byte(`{"schema_version":1,"artifact_journey":`),
+		[]byte(`{"schema_version":2,"artifact_journey":`),
 	} {
 		if _, err := decodeEvidence(value); err == nil {
 			t.Fatalf("invalid JSON was accepted: %s", value)
@@ -226,7 +226,7 @@ func TestValidateEvidenceRejectsInvalidContracts(t *testing.T) {
 		name   string
 		mutate func(*evidenceDocument)
 	}{
-		{"schema", func(value *evidenceDocument) { value.SchemaVersion = 2 }},
+		{"schema", func(value *evidenceDocument) { value.SchemaVersion = 3 }},
 		{"target", func(value *evidenceDocument) { value.ArtifactJourney.Target = "linux/arm64" }},
 		{"observed host", func(value *evidenceDocument) { value.ArtifactJourney.ObservedHost = "linux/arm64" }},
 		{"archive name", func(value *evidenceDocument) { value.ArtifactJourney.ArchiveName = "other.tar.gz" }},
@@ -239,6 +239,9 @@ func TestValidateEvidenceRejectsInvalidContracts(t *testing.T) {
 			value.ArtifactJourney.IssueBundleDigest = strings.Repeat("X", digestLength)
 		}},
 		{"issue plan digest", func(value *evidenceDocument) { value.ArtifactJourney.IssuePlanDigest = "abc" }},
+		{"wrapper outcome", func(value *evidenceDocument) { value.ArtifactJourney.WrapperOutcome = "other" }},
+		{"wrapper source digest", func(value *evidenceDocument) { value.ArtifactJourney.WrapperSourceSHA256 = "abc" }},
+		{"wrapper source attempts", func(value *evidenceDocument) { value.ArtifactJourney.WrapperSourceAttempts++ }},
 		{"help count", func(value *evidenceDocument) { value.ArtifactJourney.HelpContractsVerified-- }},
 		{"inspection count", func(value *evidenceDocument) { value.ArtifactJourney.SourceInspectionAttempts-- }},
 		{"rejection count", func(value *evidenceDocument) { value.ArtifactJourney.ZeroAttemptRejections-- }},
@@ -294,8 +297,8 @@ func writeValidEvidenceSet(t *testing.T, directory, archives string) []string {
 }
 
 func validEvidence(target, archiveName, archiveDigest string) evidenceDocument {
-	return evidenceDocument{
-		SchemaVersion: 1,
+	result := evidenceDocument{
+		SchemaVersion: 2,
 		ArtifactJourney: artifactJourneyEvidence{
 			Target: target, ObservedHost: target, ArchiveName: archiveName, ArchiveSHA256: archiveDigest,
 			Version: testVersion, Revision: testRevision,
@@ -304,10 +307,22 @@ func validEvidence(target, archiveName, archiveDigest string) evidenceDocument {
 			BundleDigest:          strings.Repeat("a", digestLength), PlanDigest: strings.Repeat("b", digestLength),
 			IssueBundleDigest: strings.Repeat("c", digestLength), IssuePlanDigest: strings.Repeat("d", digestLength),
 			SourceInspectionAttempts: wantedInspections, ZeroAttemptRejections: wantedRejections,
-			PostStartFaults: append([]string{}, wantedFaults...), FixtureAttempts: wantedAttempts,
+			PostStartFaults:             append([]string{}, wantedFaults...),
 			CredentialEnvironmentAbsent: true, SecretCanariesAbsent: true,
 		},
 	}
+	if target == "windows/amd64" {
+		result.ArtifactJourney.WrapperOutcome = "platform_not_supported"
+		result.ArtifactJourney.WrapperSourceSHA256 = ""
+		result.ArtifactJourney.WrapperSourceAttempts = 0
+		result.ArtifactJourney.FixtureAttempts = wantedWindowsAttempts
+	} else {
+		result.ArtifactJourney.WrapperOutcome = "ordinary_command_verified"
+		result.ArtifactJourney.WrapperSourceSHA256 = strings.Repeat("e", digestLength)
+		result.ArtifactJourney.WrapperSourceAttempts = 1
+		result.ArtifactJourney.FixtureAttempts = wantedPOSIXAttempts
+	}
+	return result
 }
 
 func marshalEvidence(t *testing.T, value evidenceDocument) []byte {

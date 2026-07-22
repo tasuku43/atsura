@@ -64,7 +64,7 @@ commands:
 			}
 			for _, required := range []string{
 				"kind: transform", `append_args: ["--json=number,title,state"]`,
-				"select: [number, title, state]", "from: number", "to: id", "render: compact_json",
+				"default: exclude", "include: [--limit]", "select: [number, title, state]", "from: number", "to: id", "render: compact_json",
 			} {
 				if !bytes.Contains(result, []byte(required)) {
 					t.Fatalf("transform missing %q:\n%s", required, result)
@@ -130,6 +130,36 @@ func TestExtractReleaseArchiveRejectsUnsafeMembers(t *testing.T) {
 	}
 }
 
+func TestStageSourceFixtureUsesOrdinaryCommandSpellingInIsolatedPath(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "native-fixture")
+	if err := os.WriteFile(source, []byte("native fixture bytes"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	workRoot := filepath.Join(root, "work")
+	if err := os.Mkdir(workRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	staged, binPath, err := stageSourceFixture(source, "linux", workRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if staged != filepath.Join(binPath, "gh") {
+		t.Fatalf("staged path = %q", staged)
+	}
+	value, err := os.ReadFile(staged)
+	if err != nil || string(value) != "native fixture bytes" {
+		t.Fatalf("staged value = %q, %v", value, err)
+	}
+	trustPath, environment, err := isolatedEnvironment(workRoot, binPath, filepath.Join(workRoot, "attempts.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if trustPath == "" || !strings.Contains(strings.Join(environment, "\n"), "PATH="+binPath) {
+		t.Fatalf("isolated environment = %q", environment)
+	}
+}
+
 func TestAttemptsFaultsAndCanariesAreStrict(t *testing.T) {
 	root := t.TempDir()
 	logPath := filepath.Join(root, "attempts.jsonl")
@@ -161,17 +191,25 @@ func TestAttemptsFaultsAndCanariesAreStrict(t *testing.T) {
 		{SchemaVersion: 1, Kind: "runtime", Mode: "missing_field", Argv: []string{"pr", "list", "--limit=1", "--json=number,title,state"}},
 		{SchemaVersion: 1, Kind: "runtime", Mode: "success", Argv: []string{"pr", "list", "--limit=1", "--json=number,title,state"}},
 		{SchemaVersion: 1, Kind: "runtime", Mode: "success", Argv: []string{"issue", "list", "--limit=1", "--json=number,title,state"}},
+		{SchemaVersion: 1, Kind: "runtime", Mode: "success", Argv: []string{"pr", "list", "--limit=1", "--json=number,title,state"}},
 	} {
 		if err := json.NewEncoder(&sequence).Encode(record); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := validateAttemptSequence(sequence.Bytes()); err != nil {
+	if err := validateAttemptSequence(sequence.Bytes(), "linux"); err != nil {
+		t.Fatal(err)
+	}
+	windowsSequence := bytes.TrimSuffix(sequence.Bytes(), []byte(`{"schema_version":1,"kind":"runtime","mode":"success","argv":["pr","list","--limit=1","--json=number,title,state"]}`+"\n"))
+	if err := validateAttemptSequence(windowsSequence, "windows"); err != nil {
 		t.Fatal(err)
 	}
 	changed := bytes.Replace(sequence.Bytes(), []byte(`"mode":"stderr"`), []byte(`"mode":"success"`), 1)
-	if err := validateAttemptSequence(changed); err == nil {
+	if err := validateAttemptSequence(changed, "linux"); err == nil {
 		t.Fatal("changed attempt sequence was accepted")
+	}
+	if err := validateAttemptSequence(windowsSequence, "plan9"); err == nil {
+		t.Fatal("unsupported attempt platform was accepted")
 	}
 
 	declaration := helpFaultDeclaration{Code: "source_command_failed", Kind: "rejected", Retryable: false, NextActions: []helpNextAction{{Command: "help bundle execute", Reason: "Inspect independently."}}}
@@ -246,6 +284,8 @@ func TestBundleRuntimeHelpFaultMatricesAreExact(t *testing.T) {
 	}{
 		{path: "bundle preview", count: 27, faults: bundlePreviewHelpFaults},
 		{path: "bundle execute", count: 41, faults: bundleExecuteHelpFaults},
+		{path: "wrapper render", count: 27, faults: wrapperRenderHelpFaults},
+		{path: "wrapper run", count: 45, faults: wrapperRunHelpFaults},
 	}
 	for _, test := range tests {
 		t.Run(test.path, func(t *testing.T) {

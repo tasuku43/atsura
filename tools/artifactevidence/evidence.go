@@ -14,15 +14,16 @@ import (
 )
 
 const (
-	revisionLength       = 40
-	digestLength         = 64
-	maxEvidenceFileBytes = 16 * 1024
-	maxArchiveBytes      = int64(256 * 1024 * 1024)
-	maxAggregateBytes    = 4 * 1024
-	wantedHelpContracts  = 6
-	wantedInspections    = 4
-	wantedRejections     = 7
-	wantedAttempts       = 10
+	revisionLength        = 40
+	digestLength          = 64
+	maxEvidenceFileBytes  = 16 * 1024
+	maxArchiveBytes       = int64(256 * 1024 * 1024)
+	maxAggregateBytes     = 4 * 1024
+	wantedHelpContracts   = 8
+	wantedInspections     = 4
+	wantedRejections      = 8
+	wantedPOSIXAttempts   = 11
+	wantedWindowsAttempts = 10
 )
 
 var releaseTagPattern = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$`)
@@ -77,6 +78,9 @@ type artifactJourneyEvidence struct {
 	PlanDigest                  string   `json:"plan_digest"`
 	IssueBundleDigest           string   `json:"issue_bundle_digest"`
 	IssuePlanDigest             string   `json:"issue_plan_digest"`
+	WrapperOutcome              string   `json:"wrapper_outcome"`
+	WrapperSourceSHA256         string   `json:"wrapper_source_sha256"`
+	WrapperSourceAttempts       int      `json:"wrapper_source_process_attempts"`
 	SourceInspectionAttempts    int      `json:"source_inspection_attempts"`
 	ZeroAttemptRejections       int      `json:"zero_attempt_rejections"`
 	PostStartFaults             []string `json:"post_start_faults"`
@@ -358,7 +362,7 @@ func requireJSONEOF(decoder *json.Decoder) error {
 
 func validateEvidence(document evidenceDocument, target, archiveName, version, revision string) error {
 	journey := document.ArtifactJourney
-	if document.SchemaVersion != 1 {
+	if document.SchemaVersion != 2 {
 		return fmt.Errorf("evidence schema version is invalid")
 	}
 	if journey.Target != target || journey.ObservedHost != target || journey.ArchiveName != archiveName || journey.Version != version || journey.Revision != revision {
@@ -371,8 +375,15 @@ func validateEvidence(document evidenceDocument, target, archiveName, version, r
 		!lowercaseHex(journey.IssuePlanDigest, digestLength) {
 		return fmt.Errorf("evidence digest is invalid")
 	}
-	if journey.HelpContractsVerified != wantedHelpContracts || journey.SourceInspectionAttempts != wantedInspections || journey.ZeroAttemptRejections != wantedRejections || journey.FixtureAttempts != wantedAttempts {
+	if journey.HelpContractsVerified != wantedHelpContracts || journey.SourceInspectionAttempts != wantedInspections || journey.ZeroAttemptRejections != wantedRejections {
 		return fmt.Errorf("evidence counters are invalid")
+	}
+	if target == "windows/amd64" {
+		if journey.WrapperOutcome != "platform_not_supported" || journey.WrapperSourceSHA256 != "" || journey.WrapperSourceAttempts != 0 || journey.FixtureAttempts != wantedWindowsAttempts {
+			return fmt.Errorf("Windows wrapper evidence is invalid")
+		}
+	} else if journey.WrapperOutcome != "ordinary_command_verified" || !lowercaseHex(journey.WrapperSourceSHA256, digestLength) || journey.WrapperSourceAttempts != 1 || journey.FixtureAttempts != wantedPOSIXAttempts {
+		return fmt.Errorf("POSIX wrapper evidence is invalid")
 	}
 	if !equalStrings(journey.PostStartFaults, wantedFaults) {
 		return fmt.Errorf("evidence fault sequence is invalid")

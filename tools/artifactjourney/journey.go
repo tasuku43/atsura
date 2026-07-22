@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -52,6 +53,9 @@ type artifactJourneyEvidence struct {
 	PlanDigest                  string   `json:"plan_digest"`
 	IssueBundleDigest           string   `json:"issue_bundle_digest"`
 	IssuePlanDigest             string   `json:"issue_plan_digest"`
+	WrapperOutcome              string   `json:"wrapper_outcome"`
+	WrapperSourceSHA256         string   `json:"wrapper_source_sha256"`
+	WrapperSourceAttempts       int      `json:"wrapper_source_process_attempts"`
 	CommandsVerified            []string `json:"commands_verified"`
 	SourceInspectionAttempts    int      `json:"source_inspection_attempts"`
 	ZeroAttemptRejections       int      `json:"zero_attempt_rejections"`
@@ -98,7 +102,7 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 	if err != nil {
 		return evidenceDocument{}, fmt.Errorf("archive input is invalid")
 	}
-	sourcePath, err := prepareInputFile(configuration.source)
+	sourceInputPath, err := prepareInputFile(configuration.source)
 	if err != nil {
 		return evidenceDocument{}, fmt.Errorf("source input is invalid")
 	}
@@ -122,9 +126,17 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 	if err != nil {
 		return evidenceDocument{}, fmt.Errorf("release archive extraction failed")
 	}
+	executablePath, err = filepath.EvalSymlinks(executablePath)
+	if err != nil || !filepath.IsAbs(executablePath) || filepath.Clean(executablePath) != executablePath {
+		return evidenceDocument{}, fmt.Errorf("release executable identity is invalid")
+	}
 
+	sourcePath, sourceBin, err := stageSourceFixture(sourceInputPath, configuration.goos, workRoot)
+	if err != nil {
+		return evidenceDocument{}, fmt.Errorf("source fixture staging failed")
+	}
 	attemptLog := filepath.Join(workRoot, "fixture-attempts.jsonl")
-	trustPath, environment, err := isolatedEnvironment(workRoot, attemptLog)
+	trustPath, environment, err := isolatedEnvironment(workRoot, sourceBin, attemptLog)
 	if err != nil {
 		return evidenceDocument{}, err
 	}
@@ -144,12 +156,13 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 	}
 
 	catalogPath := filepath.Join(workRoot, "catalog.json")
-	inspection, err := runner.success(ctx, "success", "source", "inspect", "--adapter", "github-cli", "--executable", sourcePath)
+	inspection, err := runner.success(ctx, "success", "source", "inspect", "--adapter", "github-cli", "--executable", "gh")
 	if err != nil {
 		return evidenceDocument{}, fmt.Errorf("source inspection failed")
 	}
 	inspectionPayload, err := decodeInspection(inspection.stdout)
-	if err != nil || inspectionPayload.SourceProcessAttempts != 4 || !digestValue(inspectionPayload.CatalogDigest) {
+	if err != nil || inspectionPayload.SourceProcessAttempts != 4 || !digestValue(inspectionPayload.CatalogDigest) ||
+		inspectionPayload.Catalog.Source.RequestedExecutable != "gh" || inspectionPayload.Catalog.Source.ResolvedPath != sourcePath {
 		return evidenceDocument{}, fmt.Errorf("source inspection evidence is invalid")
 	}
 	if err := writePrivate(catalogPath, inspection.stdout); err != nil {
@@ -159,20 +172,20 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 		return evidenceDocument{}, fmt.Errorf("source inspection attempt evidence is invalid")
 	}
 
-	prJourney, err := prepareCommandJourney(ctx, runner, helpEvidence, workRoot, catalogPath, inspectionPayload.CatalogDigest, sourcePath, trustPath, attemptLog, 4, []string{"pr", "list"})
+	prJourney, err := prepareCommandJourney(ctx, runner, helpEvidence, workRoot, catalogPath, inspectionPayload.CatalogDigest, "gh", trustPath, attemptLog, 4, []string{"pr", "list"})
 	if err != nil {
 		return evidenceDocument{}, fmt.Errorf("pull-request journey preparation failed: %w", err)
 	}
 	zeroAttemptRejections := prJourney.zeroAttemptRejections
 
 	for _, conflict := range []string{"--web", "--jq=.[]", "--template={{.number}}"} {
-		declaration, declarationErr := helpEvidence.fault("bundle execute", "wrapper_runtime_not_supported")
-		if declarationErr != nil || declaration.Kind != "unsupported" || declaration.Retryable {
+		declaration, declarationErr := helpEvidence.fault("bundle execute", "option_not_in_surface")
+		if declarationErr != nil || declaration.Kind != "not_found" || declaration.Retryable {
 			return evidenceDocument{}, fmt.Errorf("runtime conflict help contract is invalid")
 		}
 		arguments := append([]string{"--error-format=json", "bundle", "execute"}, prJourney.baseInvocation...)
 		arguments = append(arguments, conflict)
-		failure, err := runner.failure(ctx, "success", 12, declaration, arguments...)
+		failure, err := runner.failure(ctx, "success", 6, declaration, arguments...)
 		if err != nil {
 			return evidenceDocument{}, fmt.Errorf("runtime conflict rejection evidence is invalid")
 		}
@@ -234,7 +247,7 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 		return evidenceDocument{}, fmt.Errorf("successful execution one-attempt evidence is invalid")
 	}
 
-	issueJourney, err := prepareCommandJourney(ctx, runner, helpEvidence, workRoot, catalogPath, inspectionPayload.CatalogDigest, sourcePath, trustPath, attemptLog, wantedAttempts, []string{"issue", "list"})
+	issueJourney, err := prepareCommandJourney(ctx, runner, helpEvidence, workRoot, catalogPath, inspectionPayload.CatalogDigest, "gh", trustPath, attemptLog, wantedAttempts, []string{"issue", "list"})
 	if err != nil {
 		return evidenceDocument{}, fmt.Errorf("issue journey preparation failed: %w", err)
 	}
@@ -258,6 +271,13 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 		return evidenceDocument{}, fmt.Errorf("command-specific bundle or plan identity was not distinct")
 	}
 
+	wrapperEvidence, err := verifyPackagedWrapper(ctx, runner, helpEvidence, configuration.goos, executablePath, prJourney, attemptLog, wantedAttempts, workRoot)
+	if err != nil {
+		return evidenceDocument{}, err
+	}
+	zeroAttemptRejections += wrapperEvidence.zeroAttemptRejections
+	wantedAttempts += wrapperEvidence.sourceProcessAttempts
+
 	trustBytes, err := readBoundedFile(trustPath, maxAttemptLogBytes)
 	if err != nil {
 		return evidenceDocument{}, fmt.Errorf("isolated receipt evidence is unreadable")
@@ -267,22 +287,25 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 		return evidenceDocument{}, fmt.Errorf("fixture attempt evidence is unreadable")
 	}
 	canaryBoundaries := [][]byte{inspection.stdout, prExecution.stdout, issueExecution.stdout, trustBytes, attemptBytes}
+	canaryBoundaries = append(canaryBoundaries, wrapperEvidence.boundaries...)
 	canaryBoundaries = append(canaryBoundaries, prJourney.boundaries...)
 	canaryBoundaries = append(canaryBoundaries, issueJourney.boundaries...)
 	canaryBoundaries = append(canaryBoundaries, helpEvidence.outputs...)
 	if err := scanCanaries(canaryBoundaries...); err != nil {
 		return evidenceDocument{}, err
 	}
-	if err := validateAttemptSequence(attemptBytes); err != nil {
+	if err := validateAttemptSequence(attemptBytes, configuration.goos); err != nil {
 		return evidenceDocument{}, fmt.Errorf("fixture attempt sequence is invalid")
 	}
 
-	return evidenceDocument{SchemaVersion: 1, ArtifactJourney: artifactJourneyEvidence{
+	return evidenceDocument{SchemaVersion: 2, ArtifactJourney: artifactJourneyEvidence{
 		Target: configuration.goos + "/" + configuration.goarch, ObservedHost: runtime.GOOS + "/" + runtime.GOARCH,
 		ArchiveName: filepath.Base(archivePath), ArchiveSHA256: digest,
 		Version: strings.TrimPrefix(configuration.tag, "v"), Revision: configuration.revision, HelpContractsVerified: len(helpEvidence.outputs),
 		BundleDigest: prJourney.bundleDigest, PlanDigest: prJourney.planDigest,
 		IssueBundleDigest: issueJourney.bundleDigest, IssuePlanDigest: issueJourney.planDigest,
+		WrapperOutcome: wrapperEvidence.outcome, WrapperSourceSHA256: wrapperEvidence.sourceSHA256,
+		WrapperSourceAttempts:    wrapperEvidence.sourceProcessAttempts,
 		CommandsVerified:         []string{"issue list", "pr list"},
 		SourceInspectionAttempts: 4, ZeroAttemptRejections: zeroAttemptRejections,
 		PostStartFaults: faultCodes, FixtureAttempts: wantedAttempts,
@@ -296,6 +319,232 @@ type preparedCommandJourney struct {
 	baseInvocation        []string
 	zeroAttemptRejections int
 	boundaries            [][]byte
+}
+
+type packagedWrapperEvidence struct {
+	outcome               string
+	sourceSHA256          string
+	sourceProcessAttempts int
+	zeroAttemptRejections int
+	boundaries            [][]byte
+}
+
+type wrapperRenderDocument struct {
+	SchemaVersion int `json:"schema_version"`
+	Wrapper       struct {
+		Source       string `json:"source"`
+		SourceSHA256 string `json:"source_sha256"`
+		Command      string `json:"command"`
+		Contract     struct {
+			Shell   string `json:"shell"`
+			Version int    `json:"version"`
+		} `json:"contract"`
+		Bundle struct {
+			Digest  string `json:"digest"`
+			Locator string `json:"locator"`
+		} `json:"bundle"`
+		Runtime struct {
+			ResolvedPath string `json:"resolved_path"`
+			SHA256       string `json:"sha256"`
+			Size         int64  `json:"size"`
+		} `json:"runtime"`
+		SourceProcessAttempts int `json:"source_process_attempts"`
+	} `json:"wrapper"`
+}
+
+func verifyPackagedWrapper(
+	ctx context.Context,
+	runner journeyRunner,
+	help packagedHelpEvidence,
+	goos, executablePath string,
+	journey preparedCommandJourney,
+	attemptLog string,
+	existingAttempts int,
+	workRoot string,
+) (packagedWrapperEvidence, error) {
+	if goos == "windows" {
+		declaration, err := help.fault("wrapper render", "wrapper_platform_not_supported")
+		if err != nil || declaration.Kind != "unsupported" || declaration.Retryable {
+			return packagedWrapperEvidence{}, fmt.Errorf("wrapper platform help contract is invalid")
+		}
+		failure, err := runner.failure(ctx, "success", 12, declaration,
+			"--error-format=json", "wrapper", "render", "--bundle", journey.bundlePath(), "--format", "json")
+		if err != nil {
+			return packagedWrapperEvidence{}, fmt.Errorf("unsupported wrapper platform evidence is invalid")
+		}
+		if err := requireAttempts(attemptLog, existingAttempts); err != nil {
+			return packagedWrapperEvidence{}, fmt.Errorf("unsupported wrapper platform started the source fixture")
+		}
+		return packagedWrapperEvidence{
+			outcome: "platform_not_supported", zeroAttemptRejections: 1,
+			boundaries: [][]byte{failure.stdout, failure.stderr},
+		}, nil
+	}
+	if goos != "linux" && goos != "darwin" {
+		return packagedWrapperEvidence{}, fmt.Errorf("wrapper journey target is unsupported")
+	}
+
+	jsonRender, err := runner.success(ctx, "success", "wrapper", "render", "--bundle", journey.bundlePath(), "--format", "json")
+	if err != nil {
+		return packagedWrapperEvidence{}, fmt.Errorf("wrapper JSON rendering failed")
+	}
+	document, err := decodeWrapperRender(jsonRender.stdout)
+	if err != nil {
+		return packagedWrapperEvidence{}, fmt.Errorf("wrapper JSON evidence is invalid")
+	}
+	textRender, err := runner.success(ctx, "success", "wrapper", "render", "--bundle", journey.bundlePath())
+	if err != nil {
+		return packagedWrapperEvidence{}, fmt.Errorf("wrapper text rendering failed")
+	}
+	if string(textRender.stdout) != document.Wrapper.Source {
+		return packagedWrapperEvidence{}, fmt.Errorf("wrapper text and JSON source differ")
+	}
+	sourceDigest := fmt.Sprintf("%x", sha256.Sum256(textRender.stdout))
+	runtimeDigest, runtimeSize, err := regularFileIdentity(executablePath)
+	if err != nil {
+		return packagedWrapperEvidence{}, fmt.Errorf("packaged runtime identity is unreadable")
+	}
+	if err := validateWrapperRenderEvidence(document, journey, executablePath, runtimeDigest, runtimeSize, sourceDigest); err != nil {
+		return packagedWrapperEvidence{}, fmt.Errorf("wrapper render binding evidence is invalid: %w", err)
+	}
+	if err := requireAttempts(attemptLog, existingAttempts); err != nil {
+		return packagedWrapperEvidence{}, fmt.Errorf("wrapper rendering started the source fixture")
+	}
+
+	declaration, err := help.fault("wrapper run", "bundle_binding_mismatch")
+	if err != nil || declaration.Kind != "rejected" || declaration.Retryable {
+		return packagedWrapperEvidence{}, fmt.Errorf("wrapper binding help contract is invalid")
+	}
+	badDigest := differentDigest(document.Wrapper.Bundle.Digest)
+	rejected, err := runner.failure(ctx, "success", 10, declaration,
+		"--error-format=json", "wrapper", "run",
+		"--contract-version=1",
+		"--bundle="+document.Wrapper.Bundle.Locator,
+		"--bundle-digest="+badDigest,
+		"--runtime-path="+document.Wrapper.Runtime.ResolvedPath,
+		"--runtime-sha256="+document.Wrapper.Runtime.SHA256,
+		fmt.Sprintf("--runtime-size=%d", document.Wrapper.Runtime.Size),
+		"--", "pr", "list", "--limit=1",
+	)
+	if err != nil {
+		return packagedWrapperEvidence{}, fmt.Errorf("wrapper binding rejection evidence is invalid")
+	}
+	if err := requireAttempts(attemptLog, existingAttempts); err != nil {
+		return packagedWrapperEvidence{}, fmt.Errorf("wrapper binding rejection started the source fixture")
+	}
+
+	wrapperPath := filepath.Join(workRoot, "caller-owned-wrapper.sh")
+	if err := writePrivate(wrapperPath, textRender.stdout); err != nil {
+		return packagedWrapperEvidence{}, fmt.Errorf("caller-owned wrapper fixture write failed")
+	}
+	invocation, err := runPOSIXCaller(ctx, runner, wrapperPath)
+	if err != nil {
+		return packagedWrapperEvidence{}, fmt.Errorf("caller-owned wrapper invocation failed")
+	}
+	wantedOutput := []byte("[{\"id\":101,\"title\":\"Review policy\",\"state\":\"OPEN\"}]\n")
+	if !bytes.Equal(invocation.stdout, wantedOutput) || len(invocation.stderr) != 0 {
+		return packagedWrapperEvidence{}, fmt.Errorf("caller-owned wrapper output is invalid")
+	}
+	if err := requireAttempts(attemptLog, existingAttempts+1); err != nil {
+		return packagedWrapperEvidence{}, fmt.Errorf("caller-owned wrapper attempt evidence is invalid")
+	}
+
+	return packagedWrapperEvidence{
+		outcome: "ordinary_command_verified", sourceSHA256: sourceDigest,
+		sourceProcessAttempts: 1, zeroAttemptRejections: 1,
+		boundaries: [][]byte{jsonRender.stdout, textRender.stdout, rejected.stdout, rejected.stderr, invocation.stdout, invocation.stderr},
+	}, nil
+}
+
+func validateWrapperRenderEvidence(document wrapperRenderDocument, journey preparedCommandJourney, executablePath, runtimeDigest string, runtimeSize int64, sourceDigest string) error {
+	if document.SchemaVersion != 1 || document.Wrapper.Command != "gh" || document.Wrapper.Contract.Version != 1 || document.Wrapper.Contract.Shell != "posix" {
+		return fmt.Errorf("contract identity mismatch")
+	}
+	if document.Wrapper.Bundle.Locator != journey.bundlePath() || document.Wrapper.Bundle.Digest != journey.bundleDigest {
+		return fmt.Errorf("bundle identity mismatch")
+	}
+	if document.Wrapper.Runtime.ResolvedPath != executablePath || document.Wrapper.Runtime.SHA256 != runtimeDigest || document.Wrapper.Runtime.Size != runtimeSize {
+		return fmt.Errorf("runtime identity mismatch")
+	}
+	if document.Wrapper.SourceSHA256 != sourceDigest || document.Wrapper.SourceProcessAttempts != 0 {
+		return fmt.Errorf("rendered source identity mismatch")
+	}
+	return nil
+}
+
+func (j preparedCommandJourney) bundlePath() string {
+	if len(j.baseInvocation) < 2 || j.baseInvocation[0] != "--bundle" {
+		return ""
+	}
+	return j.baseInvocation[1]
+}
+
+func decodeWrapperRender(value []byte) (wrapperRenderDocument, error) {
+	decoder := json.NewDecoder(bytes.NewReader(value))
+	decoder.DisallowUnknownFields()
+	var document wrapperRenderDocument
+	if err := decoder.Decode(&document); err != nil {
+		return wrapperRenderDocument{}, err
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return wrapperRenderDocument{}, fmt.Errorf("wrapper render contains trailing JSON")
+	}
+	return document, nil
+}
+
+func regularFileIdentity(path string) (string, int64, error) {
+	file, info, err := openRegularInput(path)
+	if err != nil {
+		return "", 0, err
+	}
+	defer file.Close()
+	if info.Size() <= 0 || info.Size() > maxMemberBytes {
+		return "", 0, fmt.Errorf("file size is invalid")
+	}
+	hash := sha256.New()
+	written, err := io.Copy(hash, io.LimitReader(file, maxMemberBytes+1))
+	if err != nil || written != info.Size() {
+		return "", 0, fmt.Errorf("file digest failed")
+	}
+	return fmt.Sprintf("%x", hash.Sum(nil)), info.Size(), nil
+}
+
+func differentDigest(value string) string {
+	if strings.HasPrefix(value, "0") {
+		return "1" + value[1:]
+	}
+	return "0" + value[1:]
+}
+
+func runPOSIXCaller(ctx context.Context, runner journeyRunner, wrapperPath string) (commandOutcome, error) {
+	runContext, cancel := context.WithTimeout(ctx, commandTimeout)
+	defer cancel()
+	// #nosec G204 -- /bin/sh is the fixed generic caller fixture; the validated
+	// wrapper path is one positional value and generated source is read by dot.
+	command := exec.CommandContext(runContext, "/bin/sh", "-s", "--", wrapperPath)
+	command.Dir = runner.directory
+	command.Env = replaceEnvironment(runner.environment, map[string]string{fixtureModeEnv: "success"})
+	command.Stdin = strings.NewReader("set -eu\n. \"$1\"\ngh pr list --limit=1\n")
+	command.WaitDelay = 2 * time.Second
+	stdout := &boundedBuffer{limit: maxCommandOutputBytes}
+	stderr := &boundedBuffer{limit: maxCommandOutputBytes}
+	command.Stdout = stdout
+	command.Stderr = stderr
+	err := command.Run()
+	outcome := commandOutcome{stdout: stdout.Bytes(), stderr: stderr.Bytes(), exitCode: -1}
+	if stdout.exceeded || stderr.exceeded || runContext.Err() != nil {
+		return commandOutcome{}, fmt.Errorf("generic caller exceeded its bound")
+	}
+	if command.ProcessState != nil {
+		outcome.exitCode = command.ProcessState.ExitCode()
+	}
+	if err != nil || outcome.exitCode != 0 {
+		return commandOutcome{}, fmt.Errorf("generic caller did not succeed")
+	}
+	if err := scanCanaries(outcome.stdout, outcome.stderr); err != nil {
+		return commandOutcome{}, err
+	}
+	return outcome, nil
 }
 
 func prepareCommandJourney(
@@ -505,6 +754,82 @@ var bundleExecuteHelpFaults = []helpFaultDeclaration{
 	expectedHelpFault("operation_canceled", "canceled", true, "bundle execute", "Retry only because cancellation occurred before a source attempt."),
 }
 
+func wrapperBundleFileHelpFaults(command, invalidReason string) []helpFaultDeclaration {
+	return []helpFaultDeclaration{
+		expectedHelpFault("invalid_arguments", "invalid_input", false, "help "+command, invalidReason),
+		expectedHelpFault("bundle_file_not_found", "not_found", false, "bundle build", "Build and select a canonical bundle document."),
+		expectedHelpFault("bundle_file_permission_denied", "permission", false, "bundle status", "Correct bundle file permissions."),
+		expectedHelpFault("unsafe_bundle_file", "invalid_input", false, "bundle build", "Use a stable regular bundle file."),
+		expectedHelpFault("bundle_file_too_large", "invalid_input", false, "bundle build", "Build a bundle within the 2 MiB limit."),
+		expectedHelpFault("bundle_file_read_failed", "unavailable", true, "bundle status", "Retry after the bundle file is readable."),
+		expectedHelpFault("invalid_bundle_file", "invalid_input", false, "bundle build", "Rebuild and review strict canonical bundle JSON."),
+		expectedHelpFault("legacy_tailoring_schema", "invalid_input", false, "help bundle build", "Rebuild with a schema-3 specification and bundle schema 2."),
+		expectedHelpFault("bundle_digest_mismatch", "rejected", false, "bundle build", "Rebuild and review the changed bundle content."),
+	}
+}
+
+var wrapperRenderHelpFaults = append(
+	wrapperBundleFileHelpFaults("wrapper render", "Pass one exact absolute bundle path and choose text or JSON output."),
+	expectedHelpFault("invalid_wrapper_binding", "invalid_input", false, "help wrapper render", "Use an absolute clean bundle path whose requested executable is one portable POSIX command name."),
+	expectedHelpFault("wrapper_platform_not_supported", "unsupported", false, "help wrapper render", "Render the POSIX function on a supported Linux or macOS runtime."),
+	expectedHelpFault("invalid_bundle_trust_store", "rejected", false, "bundle status", "Repair or reconcile invalid user-local adoption state."),
+	expectedHelpFault("bundle_not_adopted", "rejected", false, "bundle trust", "Review and adopt the exact bundle digest before rendering a wrapper."),
+	expectedHelpFault("bundle_source_drift", "rejected", false, "bundle status", "Rebuild and adopt current source evidence before rendering a wrapper."),
+	expectedHelpFault("source_executable_not_found", "not_found", false, "bundle status", "Reconcile the missing bundle-bound source executable."),
+	expectedHelpFault("source_identity_unavailable", "unavailable", true, "bundle status", "Retry after the bundle-bound source identity can be read."),
+	expectedHelpFault("unsafe_source_executable", "invalid_input", false, "bundle status", "Select and inspect a supported regular source executable."),
+	expectedHelpFault("source_identity_changed", "rejected", false, "bundle status", "Rebuild from stable current source identity evidence."),
+	expectedHelpFault("invalid_source_identity", "contract", false, "bundle status", "Repair invalid source identity evidence."),
+	expectedHelpFault("wrapper_runtime_not_supported", "unsupported", false, "help wrapper render", "Use one complete transforming surface admitted by the maintained source runtime."),
+	expectedHelpFault("wrapper_runtime_unavailable", "unavailable", false, "help wrapper render", "Retry only after the current Atsura executable identity is readable and stable."),
+	expectedHelpFault("wrapper_render_failed", "contract", false, "help wrapper render", "Repair the fixed POSIX renderer or its validated product binding."),
+	expectedHelpFault("output_contract_exceeded", "contract", false, "help wrapper render", "Reduce the bounded generated wrapper output."),
+	expectedHelpFault("output_encoding_failed", "contract", false, "help wrapper render", "Repair deterministic wrapper review JSON."),
+	expectedHelpFault("internal_error", "internal", false, "bundle status", "Inspect bundle, adoption, source, runtime, and renderer wiring."),
+	expectedHelpFault("output_write_failed", "internal", true, "wrapper render", "Retry with a writable output stream."),
+	expectedHelpFault("operation_canceled", "canceled", true, "wrapper render", "Retry when the caller is ready."),
+)
+
+var wrapperRunHelpFaults = append(
+	wrapperBundleFileHelpFaults("wrapper run", "Use only the complete render-produced binding flags and forward argv after --."),
+	expectedHelpFault("invalid_wrapper_binding", "invalid_input", false, "wrapper render", "Render a complete binding from the exact current bundle and Atsura runtime."),
+	expectedHelpFault("wrapper_runtime_unavailable", "unavailable", false, "wrapper render", "Render again only after the current Atsura executable identity is readable and stable."),
+	expectedHelpFault("wrapper_runtime_drift", "rejected", false, "wrapper render", "Render a new binding from the exact current Atsura runtime."),
+	expectedHelpFault("bundle_binding_mismatch", "rejected", false, "wrapper render", "Render a new wrapper from the exact current bundle bytes."),
+	expectedHelpFault("invalid_bundle_trust_store", "rejected", false, "bundle status", "Repair or reconcile invalid user-local adoption state."),
+	expectedHelpFault("bundle_not_adopted", "rejected", false, "bundle trust", "Review and adopt the exact bundle digest before execution."),
+	expectedHelpFault("bundle_source_drift", "rejected", false, "bundle status", "Rebuild and adopt current source evidence before execution."),
+	expectedHelpFault("source_executable_not_found", "not_found", false, "bundle status", "Reconcile the missing bundle-bound source executable."),
+	expectedHelpFault("source_identity_unavailable", "unavailable", true, "bundle status", "Retry after the bundle-bound source identity can be read."),
+	expectedHelpFault("unsafe_source_executable", "invalid_input", false, "bundle status", "Select and inspect a supported regular source executable."),
+	expectedHelpFault("source_identity_changed", "rejected", false, "bundle status", "Rebuild from stable current source identity evidence; do not replay a started operation."),
+	expectedHelpFault("invalid_source_identity", "contract", false, "bundle status", "Repair invalid source identity evidence."),
+	expectedHelpFault("source_executable_mismatch", "invalid_input", false, "wrapper render", "Render a new wrapper whose command spelling comes from the exact bundle."),
+	expectedHelpFault("invalid_invocation", "invalid_input", false, "help wrapper run", "Use a cataloged command path and deterministic observed long-option grammar."),
+	expectedHelpFault("command_not_in_surface", "not_found", false, "help wrapper run", "Use a command present in the compiled tailored surface."),
+	expectedHelpFault("option_not_in_surface", "not_found", false, "help wrapper run", "Use only options present in the matched command's tailored option surface."),
+	expectedHelpFault("invalid_wrapper_plan", "contract", false, "bundle preview", "Inspect the fresh plan and repair incomplete wrapper construction."),
+	expectedHelpFault("wrapper_runtime_not_supported", "unsupported", false, "help wrapper run", "Use a transform wrapper and source adapter contract with accepted JSON selector behavior."),
+	expectedHelpFault("invalid_source_process_request", "contract", false, "bundle preview", "Inspect the exact plan-derived source request before execution."),
+	expectedHelpFault("source_process_start_failed", "unavailable", true, "wrapper run", "Retry the exact generated invocation only when the result proves no source process started."),
+	expectedHelpFault("source_stdout_too_large", "contract", false, "help wrapper run", "Reduce source output within the declared bound; the source was not retried."),
+	expectedHelpFault("source_stderr_too_large", "contract", false, "help wrapper run", "Reduce source stderr within the declared bound; the source was not retried."),
+	expectedHelpFault("source_execution_canceled", "canceled", false, "bundle status", "Reconcile source-owned effects before considering another invocation."),
+	expectedHelpFault("source_command_timeout", "unavailable", false, "bundle status", "Reconcile source-owned effects after the timed-out attempt."),
+	expectedHelpFault("source_command_failed", "rejected", false, "help wrapper run", "Inspect the source command independently; Atsura does not expose raw failure output or retry it."),
+	expectedHelpFault("source_process_wait_failed", "unavailable", false, "bundle status", "Reconcile source-owned effects after the unclassified wait outcome."),
+	expectedHelpFault("source_stderr_not_supported", "contract", false, "help wrapper run", "Use a successful source invocation with empty stderr for this initial transform runtime."),
+	expectedHelpFault("source_output_processing_canceled", "canceled", false, "bundle status", "The source already ran; reconcile before considering another invocation."),
+	expectedHelpFault("source_json_invalid", "contract", false, "bundle preview", "Repair the source output selector or adapter contract; raw output is not a fallback."),
+	expectedHelpFault("output_transform_failed", "contract", false, "bundle preview", "Repair selected fields and typed transform expectations; raw output is not a fallback."),
+	expectedHelpFault("unclassified_source_execution_outcome", "contract", false, "bundle status", "Reconcile source-owned effects before considering another invocation."),
+	expectedHelpFault("output_contract_exceeded", "contract", false, "bundle preview", "Reduce the bounded transformed result; the source was not retried."),
+	expectedHelpFault("output_encoding_failed", "contract", false, "bundle preview", "Repair deterministic compact wrapper JSON; the source was not retried."),
+	expectedHelpFault("internal_error", "internal", false, "bundle status", "Inspect wrapper execution wiring without replaying the source."),
+	expectedHelpFault("execute_output_write_failed", "internal", false, "bundle status", "The source completed; reconcile before considering another invocation."),
+	expectedHelpFault("operation_canceled", "canceled", true, "wrapper run", "Retry only because cancellation occurred before a source attempt."),
+)
+
 func validateHelpFaultMatrix(got, wanted []helpFaultDeclaration) error {
 	if len(got) != len(wanted) {
 		return fmt.Errorf("fault inventory length is invalid")
@@ -535,6 +860,13 @@ type helpOutputFieldProjection struct {
 	Schema *helpSchemaProjection `json:"schema"`
 }
 
+type helpOutputSchemaReference struct {
+	Command string `json:"command"`
+	Field   string `json:"field"`
+	ID      string `json:"id"`
+	Version int    `json:"version"`
+}
+
 type helpInputProjection struct {
 	Name          string   `json:"name"`
 	Source        string   `json:"source"`
@@ -552,7 +884,18 @@ type helpCommandProjection struct {
 		Outcome string                `json:"outcome"`
 		Inputs  []helpInputProjection `json:"inputs"`
 		Output  struct {
-			Fields []helpOutputFieldProjection `json:"fields"`
+			Authority          string                      `json:"authority"`
+			Formats            []string                    `json:"formats"`
+			DefaultFormat      string                      `json:"default_format"`
+			Fields             []helpOutputFieldProjection `json:"fields"`
+			Delivery           string                      `json:"delivery"`
+			CollectionCoverage string                      `json:"collection_coverage"`
+			JSONEnvelope       string                      `json:"json_envelope"`
+			JSONSchemaVersion  int                         `json:"json_schema_version"`
+			PlanSchema         *helpOutputSchemaReference  `json:"plan_schema"`
+			JSONShape          string                      `json:"json_shape"`
+			JSONRendering      string                      `json:"json_rendering"`
+			JSONFraming        string                      `json:"json_framing"`
 		} `json:"output"`
 		Prerequisites []string               `json:"prerequisites"`
 		Errors        []helpFaultDeclaration `json:"errors"`
@@ -564,6 +907,13 @@ func input(name, source, cardinality string, allowed ...string) helpInputProject
 		allowed = []string{}
 	}
 	return helpInputProjection{Name: name, Source: source, Required: true, ValueKind: "text", Cardinality: cardinality, AllowedValues: allowed}
+}
+
+func typedInput(name, source, valueKind, cardinality string, required bool, allowed ...string) helpInputProjection {
+	if allowed == nil {
+		allowed = []string{}
+	}
+	return helpInputProjection{Name: name, Source: source, Required: required, ValueKind: valueKind, Cardinality: cardinality, AllowedValues: allowed}
 }
 
 type packagedHelpEvidence struct {
@@ -688,6 +1038,68 @@ func validateOutputSchema(command helpCommandProjection, fieldName, schemaID str
 	return nil
 }
 
+func validateWrapperRenderOutput(command helpCommandProjection) error {
+	output := command.Contract.Output
+	if output.Authority != "catalog" || strings.Join(output.Formats, ",") != "text,json" || output.DefaultFormat != "text" ||
+		output.Delivery != "complete" || output.CollectionCoverage != "not_applicable" ||
+		output.JSONEnvelope != "wrapper" || output.JSONSchemaVersion != 1 || output.PlanSchema != nil ||
+		output.JSONShape != "" || output.JSONRendering != "" || output.JSONFraming != "" || len(output.Fields) != 7 {
+		return fmt.Errorf("wrapper render output contract is invalid")
+	}
+	wanted := []struct {
+		name, fieldType, schemaID string
+		fields                    []helpSchemaFieldProjection
+	}{
+		{name: "source", fieldType: "string"},
+		{name: "source_sha256", fieldType: "string"},
+		{name: "command", fieldType: "string"},
+		{name: "contract", fieldType: "object", schemaID: "wrapper-contract", fields: []helpSchemaFieldProjection{
+			schemaField("/shell", "string", true), schemaField("/version", "integer", true),
+		}},
+		{name: "bundle", fieldType: "object", schemaID: "wrapper-bundle-binding", fields: []helpSchemaFieldProjection{
+			schemaField("/digest", "string", true), schemaField("/locator", "string", true),
+		}},
+		{name: "runtime", fieldType: "object", schemaID: "wrapper-runtime-binding", fields: []helpSchemaFieldProjection{
+			schemaField("/resolved_path", "string", true), schemaField("/sha256", "string", true), schemaField("/size", "integer", true),
+		}},
+		{name: "source_process_attempts", fieldType: "integer"},
+	}
+	for index, expected := range wanted {
+		actual := output.Fields[index]
+		if actual.Name != expected.name || actual.Type != expected.fieldType {
+			return fmt.Errorf("wrapper render output field %d is invalid", index)
+		}
+		if expected.schemaID == "" {
+			if actual.Schema != nil {
+				return fmt.Errorf("wrapper render scalar field has a schema")
+			}
+			continue
+		}
+		if actual.Schema == nil || actual.Schema.ID != expected.schemaID || actual.Schema.Version != 1 ||
+			len(actual.Schema.Fields) != len(expected.fields) {
+			return fmt.Errorf("wrapper render nested schema is invalid")
+		}
+		for fieldIndex := range expected.fields {
+			if actual.Schema.Fields[fieldIndex] != expected.fields[fieldIndex] {
+				return fmt.Errorf("wrapper render nested schema field is invalid")
+			}
+		}
+	}
+	return nil
+}
+
+func validateWrapperRunOutput(command helpCommandProjection) error {
+	output := command.Contract.Output
+	wantedReference := helpOutputSchemaReference{Command: "bundle preview", Field: "plan", ID: "wrapper-plan", Version: 3}
+	if output.Authority != "fresh_wrapper_plan" || strings.Join(output.Formats, ",") != "json" || output.DefaultFormat != "json" ||
+		len(output.Fields) != 0 || output.Delivery != "complete" || output.CollectionCoverage != "not_applicable" ||
+		output.JSONEnvelope != "" || output.JSONSchemaVersion != 0 || output.PlanSchema == nil || *output.PlanSchema != wantedReference ||
+		output.JSONShape != "object_or_array" || output.JSONRendering != "compact_json" || output.JSONFraming != "one_value_lf" {
+		return fmt.Errorf("wrapper run output authority is invalid")
+	}
+	return nil
+}
+
 func validateInputs(got, wanted []helpInputProjection) error {
 	if len(got) != len(wanted) {
 		return fmt.Errorf("input inventory length is invalid")
@@ -705,7 +1117,7 @@ func verifyPackagedHelp(ctx context.Context, runner journeyRunner) (packagedHelp
 	if err != nil {
 		return packagedHelpEvidence{}, fmt.Errorf("packaged root help verification failed")
 	}
-	wanted := []string{"source inspect", "spec init", "spec validate", "bundle preview", "bundle execute"}
+	wanted := []string{"source inspect", "spec init", "spec validate", "bundle preview", "bundle execute", "wrapper render", "wrapper run"}
 	if err := validateRootHelp(root.stdout, wanted); err != nil {
 		return packagedHelpEvidence{}, fmt.Errorf("packaged root help contract is invalid")
 	}
@@ -724,6 +1136,10 @@ func verifyPackagedHelp(ctx context.Context, runner journeyRunner) (packagedHelp
 			faultErr = validateHelpFaultMatrix(command.Contract.Errors, bundlePreviewHelpFaults)
 		case "bundle execute":
 			faultErr = validateHelpFaultMatrix(command.Contract.Errors, bundleExecuteHelpFaults)
+		case "wrapper render":
+			faultErr = validateHelpFaultMatrix(command.Contract.Errors, wrapperRenderHelpFaults)
+		case "wrapper run":
+			faultErr = validateHelpFaultMatrix(command.Contract.Errors, wrapperRunHelpFaults)
 		}
 		if faultErr != nil {
 			return packagedHelpEvidence{}, fmt.Errorf("packaged scoped help fault contract is invalid for %s: %w", path, faultErr)
@@ -814,6 +1230,35 @@ func validateScopedHelp(path string, value []byte) (helpCommandProjection, error
 				return helpCommandProjection{}, fmt.Errorf("runtime admission marker is missing")
 			}
 		}
+	case "wrapper render":
+		if command.Usage != "atr wrapper render --bundle <absolute-path> [--format text|json]" || validateInputs(command.Contract.Inputs, []helpInputProjection{
+			typedInput("--bundle", "flag", "text", "single", true),
+			typedInput("--format", "flag", "text", "single", false, "text", "json"),
+		}) != nil || validateWrapperRenderOutput(command) != nil {
+			return helpCommandProjection{}, fmt.Errorf("wrapper render contract is incomplete")
+		}
+		for _, marker := range []string{"Linux or macOS", "portable non-reserved POSIX Name", "complete included surface", "caller-owned"} {
+			if !strings.Contains(prerequisites, marker) {
+				return helpCommandProjection{}, fmt.Errorf("wrapper render admission marker is missing")
+			}
+		}
+	case "wrapper run":
+		if command.Usage != "atr wrapper run --contract-version=1 --bundle=<absolute-path> --bundle-digest=<sha256> --runtime-path=<absolute-path> --runtime-sha256=<sha256> --runtime-size=<bytes> -- [argv]" || validateInputs(command.Contract.Inputs, []helpInputProjection{
+			typedInput("--contract-version", "flag", "integer", "single", true, "1"),
+			typedInput("--bundle", "flag", "text", "single", true),
+			typedInput("--bundle-digest", "flag", "text", "single", true),
+			typedInput("--runtime-path", "flag", "text", "single", true),
+			typedInput("--runtime-sha256", "flag", "text", "single", true),
+			typedInput("--runtime-size", "flag", "integer", "single", true),
+			typedInput("argv", "argument", "text", "repeatable", false),
+		}) != nil || validateWrapperRunOutput(command) != nil {
+			return helpCommandProjection{}, fmt.Errorf("wrapper run contract is incomplete")
+		}
+		for _, marker := range []string{"complete closure emitted by wrapper render", "exact bundle to remain adopted", "compact JSON object or array followed by LF", "without a shell"} {
+			if !strings.Contains(prerequisites, marker) {
+				return helpCommandProjection{}, fmt.Errorf("wrapper run admission marker is missing")
+			}
+		}
 	default:
 		return helpCommandProjection{}, fmt.Errorf("unsupported help contract")
 	}
@@ -885,7 +1330,57 @@ func (r journeyRunner) command(ctx context.Context, mode string, arguments ...st
 	return commandOutcome{}, fmt.Errorf("command could not be started or collected")
 }
 
-func isolatedEnvironment(workRoot, attemptLog string) (string, []string, error) {
+func stageSourceFixture(sourcePath, goos, workRoot string) (string, string, error) {
+	source, info, err := openRegularInput(sourcePath)
+	if err != nil {
+		return "", "", err
+	}
+	defer source.Close()
+	if info.Size() <= 0 || info.Size() > maxMemberBytes {
+		return "", "", fmt.Errorf("source fixture size is invalid")
+	}
+
+	binPath := filepath.Join(workRoot, "source-bin")
+	if err := os.Mkdir(binPath, 0o700); err != nil {
+		return "", "", err
+	}
+	root, err := os.OpenRoot(binPath)
+	if err != nil {
+		return "", "", err
+	}
+	defer root.Close()
+	name := "gh"
+	if goos == "windows" {
+		name = "gh.exe"
+	}
+	target, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o700)
+	if err != nil {
+		return "", "", err
+	}
+	written, copyErr := io.CopyN(target, source, info.Size())
+	closeErr := target.Close()
+	if copyErr != nil || closeErr != nil || written != info.Size() {
+		return "", "", fmt.Errorf("source fixture copy failed")
+	}
+	var trailing [1]byte
+	if count, readErr := source.Read(trailing[:]); count != 0 || (readErr != nil && readErr != io.EOF) {
+		return "", "", fmt.Errorf("source fixture changed while copying")
+	}
+	if err := root.Chmod(name, 0o700); err != nil {
+		return "", "", err
+	}
+	staged, err := root.Stat(name)
+	if err != nil || !staged.Mode().IsRegular() || staged.Size() != info.Size() {
+		return "", "", fmt.Errorf("staged source fixture is invalid")
+	}
+	resolvedBin, err := filepath.EvalSymlinks(binPath)
+	if err != nil || !filepath.IsAbs(resolvedBin) || filepath.Clean(resolvedBin) != resolvedBin {
+		return "", "", fmt.Errorf("staged source directory identity is invalid")
+	}
+	return filepath.Join(resolvedBin, name), resolvedBin, nil
+}
+
+func isolatedEnvironment(workRoot, sourceBin, attemptLog string) (string, []string, error) {
 	home := filepath.Join(workRoot, "home")
 	config := filepath.Join(workRoot, "config")
 	if runtime.GOOS == "darwin" {
@@ -900,6 +1395,7 @@ func isolatedEnvironment(workRoot, attemptLog string) (string, []string, error) 
 	environment := replaceEnvironment(minimalChildEnvironment(os.Environ()), map[string]string{
 		"HOME": home, "USERPROFILE": home, "XDG_CONFIG_HOME": config,
 		"APPDATA": config, "LOCALAPPDATA": config,
+		"PATH":            sourceBin,
 		fixtureAttemptEnv: attemptLog, fixtureModeEnv: "success",
 	})
 	return filepath.Join(config, "atsura", "bundle-trust.json"), environment, nil
@@ -1029,7 +1525,7 @@ type fixtureAttemptRecord struct {
 	Argv          []string `json:"argv"`
 }
 
-func validateAttemptSequence(value []byte) error {
+func validateAttemptSequence(value []byte, goos string) error {
 	expected := []fixtureAttemptRecord{
 		{SchemaVersion: 1, Kind: "probe", Mode: "success", Argv: []string{"version"}},
 		{SchemaVersion: 1, Kind: "probe", Mode: "success", Argv: []string{"help", "reference"}},
@@ -1046,6 +1542,16 @@ func validateAttemptSequence(value []byte) error {
 		SchemaVersion: 1, Kind: "runtime", Mode: "success",
 		Argv: []string{"issue", "list", "--limit=1", "--json=number,title,state"},
 	})
+	switch goos {
+	case "linux", "darwin":
+		expected = append(expected, fixtureAttemptRecord{
+			SchemaVersion: 1, Kind: "runtime", Mode: "success",
+			Argv: []string{"pr", "list", "--limit=1", "--json=number,title,state"},
+		})
+	case "windows":
+	default:
+		return fmt.Errorf("attempt sequence platform is unsupported")
+	}
 	scanner := bufio.NewScanner(bytes.NewReader(value))
 	scanner.Buffer(make([]byte, 4096), maxAttemptLogBytes)
 	actual := make([]fixtureAttemptRecord, 0, len(expected))
@@ -1090,6 +1596,8 @@ func transformDraft(value []byte, command []string) ([]byte, error) {
 	text := string(value)
 	replacements := [][2]string{
 		{"reason: Include this verified command without transformation.", "reason: Return one reviewed compact result."},
+		{"default: inherit", "default: exclude"},
+		{"include: []", "include: [--limit]"},
 		{"kind: identity", "kind: transform"},
 		{"append_args: []", `append_args: ["--json=number,title,state"]`},
 	}
@@ -1133,8 +1641,14 @@ func transformDraft(value []byte, command []string) ([]byte, error) {
 }
 
 type inspectionEvidence struct {
-	CatalogDigest         string `json:"catalog_digest"`
-	SourceProcessAttempts int    `json:"source_process_attempts"`
+	CatalogDigest string `json:"catalog_digest"`
+	Catalog       struct {
+		Source struct {
+			RequestedExecutable string `json:"requested_executable"`
+			ResolvedPath        string `json:"resolved_path"`
+		} `json:"source"`
+	} `json:"catalog"`
+	SourceProcessAttempts int `json:"source_process_attempts"`
 }
 
 func decodeInspection(value []byte) (inspectionEvidence, error) {
