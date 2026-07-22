@@ -180,7 +180,7 @@ zero-execution plan boundary. Tests must prove:
   `plan_digest` values;
 - the schema-2 preview envelope contains exactly `plan_digest`, `plan`, and
   `source_process_attempts`, with the attempt count always zero;
-- exact schema-8 agent help publishes the versioned `wrapper-plan` inventory,
+- exact schema-9 agent help publishes the versioned `wrapper-plan` inventory,
   including nested JSON-pointer paths, scalar/object/array types, array element
   types, requiredness, and nullable object states; and
 - wrapper stages contain no allow/confirm/deny or source
@@ -313,6 +313,15 @@ Catalog tests must prove:
 - help, routing, typed parsing, capabilities, effects, outputs, faults, and
   recovery paths derive from that catalog;
 - current output uses `specification`, `surface`, and `wrapper` vocabulary;
+- every command selects exactly one authority for result interpretation and
+  presentation; all current commands are explicitly `catalog` authoritative
+  and retain their static field, envelope, and schema-version contracts, with
+  help's tested root-index/scoped-contract variants kept explicit;
+- `fresh_wrapper_plan` authority is accepted only for JSON-only complete
+  object-or-array compact output with no static fields, envelope, or result
+  schema version; source JSON supplies admitted container/value types, while
+  whole-catalog validation resolves the exact `bundle preview`
+  `plan`/`wrapper-plan` transformation-plan schema reference;
 - retired `policy` vocabulary appears only in migration diagnostics or
   historical superseded documents;
 - exact output schemas reject undeclared fields and preserve absent versus
@@ -357,6 +366,11 @@ The implementing slice must prove:
 - admitted success starts the exact physical source once, applies the same
   typed stages, emits only the plan-declared result, and never selects raw or
   another bundle as fallback;
+- wrapper success uses the exclusive `fresh_wrapper_plan` interpretation and
+  presentation authority and emits no maintainer evidence envelope; source
+  JSON supplies the admitted container/value types, while exact scoped schema-9
+  help points to the `bundle preview` wrapper-plan schema governing selection,
+  rename, and rendering;
 - any persisted artifact lifecycle uses exact ownership, bounded regular-file
   paths, symlink/special-file rejection, atomic replacement, central mutation
   invocation, and read-only drift reconciliation without editing caller-owned
@@ -415,7 +429,7 @@ snapshots, transcripts, and agent reasoning are absent.
 - Artifact-journey fixtures own execution of the exact `atr` file extracted
   from a release archive. They use a native credential- and provider-network-
   free source fixture, an isolated user-config root, and an append-only attempt
-  log. Before source inspection they verify schema-8 root help and five exact
+  log. Before source inspection they verify schema-9 root help and five exact
   scoped authoring/runtime contracts, including complete nested field
   inventories and the complete ordered 27-fault preview and 41-fault execute
   recovery signatures. The non-shipped harness may seed an exact

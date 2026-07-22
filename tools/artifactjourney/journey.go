@@ -743,7 +743,7 @@ func validateRootHelp(value []byte, wanted []string) error {
 			Path string `json:"path"`
 		} `json:"commands"`
 	}
-	if err := json.Unmarshal(value, &document); err != nil || document.SchemaVersion != 8 || document.View != "index" || document.Program != "atr" {
+	if err := json.Unmarshal(value, &document); err != nil || document.SchemaVersion != 9 || document.View != "index" || document.Program != "atr" {
 		return fmt.Errorf("invalid root agent help")
 	}
 	paths := make(map[string]struct{}, len(document.Commands))
@@ -769,7 +769,7 @@ func validateScopedHelp(path string, value []byte) (helpCommandProjection, error
 		} `json:"scope"`
 		Commands []helpCommandProjection `json:"commands"`
 	}
-	if err := json.Unmarshal(value, &document); err != nil || document.SchemaVersion != 8 || document.View != "scope" || document.Program != "atr" || document.Scope.Selector != path || document.Scope.Kind != "command" || len(document.Commands) != 1 || document.Commands[0].Path != path {
+	if err := json.Unmarshal(value, &document); err != nil || document.SchemaVersion != 9 || document.View != "scope" || document.Program != "atr" || document.Scope.Selector != path || document.Scope.Kind != "command" || len(document.Commands) != 1 || document.Commands[0].Path != path {
 		return helpCommandProjection{}, fmt.Errorf("invalid scoped agent help")
 	}
 	command := document.Commands[0]

@@ -249,6 +249,57 @@ type OutputSchemaField struct {
 	Nullable    bool            `json:"nullable"`
 }
 
+// OutputAuthority identifies the exclusive contract that governs how one
+// command interprets and presents a successful result. Catalog authority
+// publishes static fields and, for JSON, a versioned envelope. Fresh-wrapper-
+// plan authority applies the selection, rename, and rendering rules in the
+// freshly rebuilt plan; source JSON still supplies the container and value
+// types admitted by that plan.
+type OutputAuthority string
+
+const (
+	OutputAuthorityUnknown          OutputAuthority = ""
+	OutputAuthorityCatalog          OutputAuthority = "catalog"
+	OutputAuthorityFreshWrapperPlan OutputAuthority = "fresh_wrapper_plan"
+)
+
+func (a OutputAuthority) validate() error {
+	switch a {
+	case OutputAuthorityCatalog, OutputAuthorityFreshWrapperPlan:
+		return nil
+	default:
+		return fmt.Errorf("output authority is missing or invalid: %q", a)
+	}
+}
+
+// OutputSchemaReference points to one exact structured field schema published
+// by another catalog command. The reference is resolved during whole-catalog
+// validation rather than copied into a competing schema declaration.
+type OutputSchemaReference struct {
+	Command string `json:"command"`
+	Field   string `json:"field"`
+	ID      string `json:"id"`
+	Version int    `json:"version"`
+}
+
+// OutputJSONShape bounds the top-level semantic JSON value supplied by the
+// source. It does not claim that the plan determines the source value's shape.
+type OutputJSONShape string
+
+const (
+	OutputJSONShapeUnknown       OutputJSONShape = ""
+	OutputJSONShapeObjectOrArray OutputJSONShape = "object_or_array"
+)
+
+// OutputJSONRendering describes the exact JSON byte representation promised
+// by a plan-governed output authority.
+type OutputJSONRendering string
+
+const (
+	OutputJSONRenderingUnknown OutputJSONRendering = ""
+	OutputJSONRenderingCompact OutputJSONRendering = "compact_json"
+)
+
 // OutputDelivery states whether one invocation returns its complete selected
 // result or one page in a public cursor protocol. It makes no claim about how
 // much of an external collection the task selected.
@@ -293,15 +344,24 @@ func (c CollectionCoverage) validate() error {
 }
 
 // CommandOutput is the stable logical result and its supported presentations.
-// Fields describe values inside JSONEnvelope, never top-level metadata.
+// Catalog-authoritative Fields describe values inside JSONEnvelope, never
+// top-level metadata. Fresh-wrapper-plan-authoritative output has no static
+// fields or JSON envelope; the schema of its governing plan is referenced
+// through PlanSchema. Help remains a deliberate selector-dependent command:
+// its catalog fields describe the root index while scoped help projects the
+// selected catalog contract.
 type CommandOutput struct {
-	Formats            []OutputFormat     `json:"formats"`
-	DefaultFormat      OutputFormat       `json:"default_format"`
-	Fields             []OutputField      `json:"fields"`
-	Delivery           OutputDelivery     `json:"delivery"`
-	CollectionCoverage CollectionCoverage `json:"collection_coverage"`
-	JSONEnvelope       string             `json:"json_envelope,omitempty"`
-	JSONSchemaVersion  int                `json:"json_schema_version,omitempty"`
+	Authority          OutputAuthority        `json:"authority"`
+	Formats            []OutputFormat         `json:"formats"`
+	DefaultFormat      OutputFormat           `json:"default_format"`
+	Fields             []OutputField          `json:"fields"`
+	Delivery           OutputDelivery         `json:"delivery"`
+	CollectionCoverage CollectionCoverage     `json:"collection_coverage"`
+	JSONEnvelope       string                 `json:"json_envelope,omitempty"`
+	JSONSchemaVersion  int                    `json:"json_schema_version,omitempty"`
+	PlanSchema         *OutputSchemaReference `json:"plan_schema,omitempty"`
+	JSONShape          OutputJSONShape        `json:"json_shape,omitempty"`
+	JSONRendering      OutputJSONRendering    `json:"json_rendering,omitempty"`
 }
 
 // PaginationCompletion states the one machine-readable condition that marks
@@ -737,12 +797,36 @@ func wrapperPlanOutputSchema() *OutputSchema {
 	return &OutputSchema{ID: "wrapper-plan", Version: 3, Fields: fields}
 }
 
+// freshWrapperPlanAuthoritativeOutput declares the one dynamic success-output
+// variant currently supported by the catalog. Its bytes are the compact JSON
+// value produced by the freshly rebuilt plan, so the static catalog does not
+// duplicate a field list, envelope, or result schema version.
+func freshWrapperPlanAuthoritativeOutput() CommandOutput {
+	planSchema := wrapperPlanOutputSchema()
+	return CommandOutput{
+		Authority:          OutputAuthorityFreshWrapperPlan,
+		Formats:            []OutputFormat{OutputFormatJSON},
+		DefaultFormat:      OutputFormatJSON,
+		Fields:             []OutputField{},
+		Delivery:           OutputDeliveryComplete,
+		CollectionCoverage: CollectionCoverageNotApplicable,
+		PlanSchema: &OutputSchemaReference{
+			Command: "bundle preview",
+			Field:   "plan",
+			ID:      planSchema.ID,
+			Version: planSchema.Version,
+		},
+		JSONShape:     OutputJSONShapeObjectOrArray,
+		JSONRendering: OutputJSONRenderingCompact,
+	}
+}
+
 func legacyMigrationCommand(path, summary, args, outcome, recovery string, inputs []CommandInput, handler commandHandler) CommandSpec {
 	return CommandSpec{
 		Path: path, Summary: summary, Args: args, Effect: operation.EffectRead, Role: RoleUtility,
 		Agent: AgentContract{
 			CapabilityID: "tailoring.schema.migrate", Outcome: outcome, Inputs: inputs,
-			Output:        CommandOutput{Formats: []OutputFormat{OutputFormatNone}, DefaultFormat: OutputFormatNone, Fields: []OutputField{}, Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable},
+			Output:        CommandOutput{Authority: OutputAuthorityCatalog, Formats: []OutputFormat{OutputFormatNone}, DefaultFormat: OutputFormatNone, Fields: []OutputField{}, Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable},
 			Prerequisites: []string{"This deprecated path exists only to return a deterministic migration diagnostic and never reads the retired file or starts a source process."},
 			Errors: []CommandError{
 				declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help "+path, "Use the deprecated command's exact historical syntax to obtain migration guidance."),
@@ -775,6 +859,7 @@ func DefaultCatalog() Catalog {
 					},
 				},
 				Output: CommandOutput{
+					Authority:     OutputAuthorityCatalog,
 					Formats:       []OutputFormat{OutputFormatTSV, OutputFormatJSON},
 					DefaultFormat: OutputFormatTSV,
 					Fields: []OutputField{
@@ -823,6 +908,7 @@ func DefaultCatalog() Catalog {
 					},
 				},
 				Output: CommandOutput{
+					Authority:     OutputAuthorityCatalog,
 					Formats:       []OutputFormat{OutputFormatText, OutputFormatJSON},
 					DefaultFormat: OutputFormatText,
 					Fields: []OutputField{
@@ -837,7 +923,7 @@ func DefaultCatalog() Catalog {
 					Delivery:           OutputDeliveryComplete,
 					CollectionCoverage: CollectionCoverageExhaustive,
 					JSONEnvelope:       "commands",
-					JSONSchemaVersion:  8,
+					JSONSchemaVersion:  9,
 				},
 				Prerequisites: []string{},
 				Errors: []CommandError{
@@ -888,7 +974,8 @@ func DefaultCatalog() Catalog {
 					{Name: "command", Source: InputSourceArgument, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalityRepeatable, Description: "Select one exact verified source command path after the positional-only marker.", AllowedValues: []string{}},
 				},
 				Output: CommandOutput{
-					Formats: []OutputFormat{OutputFormatText}, DefaultFormat: OutputFormatText,
+					Authority: OutputAuthorityCatalog,
+					Formats:   []OutputFormat{OutputFormatText}, DefaultFormat: OutputFormatText,
 					Fields: []OutputField{
 						{Name: "specification", Type: OutputFieldTypeObject, Description: "Complete schema-3 YAML tailoring specification authoring baseline; its identity wrapper is previewable but is not executable by the current transform-only runtime.", Schema: tailoringSpecificationOutputSchema()},
 					},
@@ -935,7 +1022,8 @@ func DefaultCatalog() Catalog {
 					{Name: "--spec", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read one bounded strict schema-3 tailoring specification.", AllowedValues: []string{}},
 				},
 				Output: CommandOutput{
-					Formats: []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
+					Authority: OutputAuthorityCatalog,
+					Formats:   []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
 					Fields: []OutputField{
 						{Name: "valid", Type: OutputFieldTypeBoolean, Description: "True only after strict syntax and catalog-bound semantic validation."},
 						{Name: "catalog_digest", Type: OutputFieldTypeString, Description: "Exact canonical catalog digest required by the specification."},
@@ -972,7 +1060,8 @@ func DefaultCatalog() Catalog {
 					{Name: "--spec", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read one bounded strict schema-3 tailoring specification.", AllowedValues: []string{}},
 				},
 				Output: CommandOutput{
-					Formats: []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
+					Authority: OutputAuthorityCatalog,
+					Formats:   []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
 					Fields: []OutputField{
 						{Name: "bundle_digest", Type: OutputFieldTypeString, Description: "SHA-256 identity of the canonical embedded bundle JSON."},
 						{Name: "bundle", Type: OutputFieldTypeObject, Description: "Canonical catalog, normalized specification, recomputable digests, and purpose-specific surface with wrappers."},
@@ -998,7 +1087,8 @@ func DefaultCatalog() Catalog {
 					{Name: "--bundle", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read the exact bounded JSON document emitted by bundle build.", AllowedValues: []string{}},
 				},
 				Output: CommandOutput{
-					Formats: []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
+					Authority: OutputAuthorityCatalog,
+					Formats:   []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
 					Fields: []OutputField{
 						{Name: "bundle_digest", Type: OutputFieldTypeString, Description: "Exact canonical bundle identity."},
 						{Name: "catalog_digest", Type: OutputFieldTypeString, Description: "Recomputed catalog identity embedded in the bundle."},
@@ -1040,7 +1130,8 @@ func DefaultCatalog() Catalog {
 					{Name: "argv", Source: InputSourceArgument, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalityRepeatable, Description: "Pass the source command path, options, and positional values as separate argv elements; dash-prefixed values require the published positional-only or equals grammar.", AllowedValues: []string{}},
 				},
 				Output: CommandOutput{
-					Formats: []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
+					Authority: OutputAuthorityCatalog,
+					Formats:   []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
 					Fields: []OutputField{
 						{Name: "plan_digest", Type: OutputFieldTypeString, Description: "SHA-256 identity of the complete canonical wrapper plan."},
 						{Name: "plan", Type: OutputFieldTypeObject, Description: "Complete schema-3 tailored plan binding source, artifacts, surface, specification entry, argv, stages, process framing, and runtime bounds.", Schema: wrapperPlanOutputSchema()},
@@ -1069,7 +1160,8 @@ func DefaultCatalog() Catalog {
 					{Name: "argv", Source: InputSourceArgument, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalityRepeatable, Description: "Pass the source command path, options, and positional values as separate argv elements; dash-prefixed values require the published positional-only or equals grammar.", AllowedValues: []string{}},
 				},
 				Output: CommandOutput{
-					Formats: []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
+					Authority: OutputAuthorityCatalog,
+					Formats:   []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
 					Fields: []OutputField{
 						{Name: "bundle_digest", Type: OutputFieldTypeString, Description: "Exact canonical bundle identity used to rebuild runtime authority."},
 						{Name: "plan_digest", Type: OutputFieldTypeString, Description: "SHA-256 identity of the freshly rebuilt schema-3 wrapper plan; it equals preview for identical current inputs."},
@@ -1105,7 +1197,8 @@ func DefaultCatalog() Catalog {
 				Outcome:      "Display one current bundle's exact source, surface, and wrapper summary on a controlling terminal and record its digest as user-adopted after exact confirmation",
 				Inputs:       []CommandInput{{Name: "--bundle", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read the exact bounded JSON document emitted by bundle build.", AllowedValues: []string{}}},
 				Output: CommandOutput{
-					Formats: []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
+					Authority: OutputAuthorityCatalog,
+					Formats:   []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
 					Fields: []OutputField{
 						{Name: "bundle_digest", Type: OutputFieldTypeString, Description: "Exact digest whose user-local adoption was confirmed."},
 						{Name: "adopted", Type: OutputFieldTypeBoolean, Description: "True after the exact adoption receipt is present."},
@@ -1179,6 +1272,7 @@ func DefaultCatalog() Catalog {
 					},
 				},
 				Output: CommandOutput{
+					Authority:     OutputAuthorityCatalog,
 					Formats:       []OutputFormat{OutputFormatTSV, OutputFormatJSON},
 					DefaultFormat: OutputFormatTSV,
 					Fields: []OutputField{
@@ -1230,6 +1324,7 @@ func DefaultCatalog() Catalog {
 					},
 				},
 				Output: CommandOutput{
+					Authority:     OutputAuthorityCatalog,
 					Formats:       []OutputFormat{OutputFormatTSV, OutputFormatJSON},
 					DefaultFormat: OutputFormatTSV,
 					Fields: []OutputField{
@@ -1269,7 +1364,8 @@ func DefaultCatalog() Catalog {
 					{Name: "--executable", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Resolve and inspect this source executable path or PATH name.", AllowedValues: []string{}},
 				},
 				Output: CommandOutput{
-					Formats: []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
+					Authority: OutputAuthorityCatalog,
+					Formats:   []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
 					Fields: []OutputField{
 						{Name: "catalog_digest", Type: OutputFieldTypeString, Description: "SHA-256 identity of the canonical catalog bytes."},
 						{Name: "catalog", Type: OutputFieldTypeObject, Description: "Vendor-neutral source identity, adapter, provenance, probe, command, option, and structured-output evidence with a complete versioned field inventory.", Schema: sourceCatalogOutputSchema()},
@@ -1317,6 +1413,7 @@ func DefaultCatalog() Catalog {
 				Outcome:      "Read the executable version and optional source commit identity",
 				Inputs:       []CommandInput{},
 				Output: CommandOutput{
+					Authority:     OutputAuthorityCatalog,
 					Formats:       []OutputFormat{OutputFormatText},
 					DefaultFormat: OutputFormatText,
 					Fields: []OutputField{
@@ -1424,6 +1521,9 @@ func (c Catalog) Validate() error {
 			paginationKindOwners[command.Agent.Pagination.CursorOutput.ReferenceKind] = command.Path
 		}
 	}
+	if err := validateOutputAuthorityReferences(c.commands); err != nil {
+		return err
+	}
 	for kind, owner := range paginationKindOwners {
 		producers := producedKinds[kind]
 		consumers := consumedKinds[kind]
@@ -1459,6 +1559,41 @@ func (c Catalog) Validate() error {
 					return fmt.Errorf("catalog command %q error %q must point to a read-only reconciliation command", command.Path, declaredError.Code)
 				}
 			}
+		}
+	}
+	return nil
+}
+
+func validateOutputAuthorityReferences(commands []CommandSpec) error {
+	byPath := make(map[string]CommandSpec, len(commands))
+	for _, command := range commands {
+		byPath[command.Path] = command
+	}
+	for _, command := range commands {
+		output := command.Agent.Output
+		if output.Authority != OutputAuthorityFreshWrapperPlan {
+			continue
+		}
+		reference := output.PlanSchema
+		if reference == nil {
+			continue // Per-command validation reports the governing error.
+		}
+		source, exists := byPath[reference.Command]
+		if !exists {
+			return fmt.Errorf("catalog command %q output authority references missing command %q", command.Path, reference.Command)
+		}
+		var schema *OutputSchema
+		for _, field := range source.Agent.Output.Fields {
+			if field.Name == reference.Field {
+				schema = field.Schema
+				break
+			}
+		}
+		if schema == nil {
+			return fmt.Errorf("catalog command %q output authority references missing structured field %q on command %q", command.Path, reference.Field, reference.Command)
+		}
+		if schema.ID != reference.ID || schema.Version != reference.Version {
+			return fmt.Errorf("catalog command %q output authority schema %q version %d does not match command %q field %q schema %q version %d", command.Path, reference.ID, reference.Version, reference.Command, reference.Field, schema.ID, schema.Version)
 		}
 	}
 	return nil
@@ -1659,6 +1794,9 @@ func validateAgentContract(command CommandSpec) error {
 		}
 	}
 
+	if err := contract.Output.Authority.validate(); err != nil {
+		return err
+	}
 	if contract.Output.Formats == nil || len(contract.Output.Formats) == 0 {
 		return fmt.Errorf("agent output formats are unknown")
 	}
@@ -1688,7 +1826,7 @@ func validateAgentContract(command CommandSpec) error {
 		if len(contract.Output.Fields) != 0 {
 			return fmt.Errorf("none output format must not declare fields")
 		}
-	} else if len(contract.Output.Fields) == 0 {
+	} else if contract.Output.Authority == OutputAuthorityCatalog && len(contract.Output.Fields) == 0 {
 		return fmt.Errorf("agent output must declare at least one field")
 	}
 	seenFields := make(map[string]struct{}, len(contract.Output.Fields))
@@ -1727,16 +1865,8 @@ func validateAgentContract(command CommandSpec) error {
 	if _, none := seenFormats[OutputFormatNone]; none && contract.Output.CollectionCoverage != CollectionCoverageNotApplicable {
 		return fmt.Errorf("none output format requires collection coverage %q", CollectionCoverageNotApplicable)
 	}
-	_, supportsJSON := seenFormats[OutputFormatJSON]
-	if supportsJSON {
-		if err := validateOutputFieldName(contract.Output.JSONEnvelope); err != nil {
-			return fmt.Errorf("agent JSON envelope: %w", err)
-		}
-		if contract.Output.JSONSchemaVersion <= 0 {
-			return fmt.Errorf("agent JSON schema version must be positive")
-		}
-	} else if contract.Output.JSONEnvelope != "" || contract.Output.JSONSchemaVersion != 0 {
-		return fmt.Errorf("agent JSON metadata requires JSON output support")
+	if err := validateOutputAuthority(contract.Output, seenFormats); err != nil {
+		return err
 	}
 	if err := validatePaginationContract(contract.Output, contract.Pagination, inputsByName); err != nil {
 		return err
@@ -1983,6 +2113,58 @@ func validateMutationBinding(name string, targetInputs []string, inputs map[stri
 		}
 	}
 	return CommandInput{}, fmt.Errorf("input %q is not included in target_inputs", name)
+}
+
+func validateOutputAuthority(output CommandOutput, formats map[OutputFormat]struct{}) error {
+	switch output.Authority {
+	case OutputAuthorityCatalog:
+		if output.PlanSchema != nil || output.JSONShape != OutputJSONShapeUnknown || output.JSONRendering != OutputJSONRenderingUnknown {
+			return fmt.Errorf("catalog-authoritative output must not declare dynamic output metadata")
+		}
+		_, supportsJSON := formats[OutputFormatJSON]
+		if supportsJSON {
+			if err := validateOutputFieldName(output.JSONEnvelope); err != nil {
+				return fmt.Errorf("agent JSON envelope: %w", err)
+			}
+			if output.JSONSchemaVersion <= 0 {
+				return fmt.Errorf("agent JSON schema version must be positive")
+			}
+		} else if output.JSONEnvelope != "" || output.JSONSchemaVersion != 0 {
+			return fmt.Errorf("agent JSON metadata requires JSON output support")
+		}
+		return nil
+	case OutputAuthorityFreshWrapperPlan:
+		if len(output.Formats) != 1 || output.Formats[0] != OutputFormatJSON || output.DefaultFormat != OutputFormatJSON {
+			return fmt.Errorf("fresh-wrapper-plan-authoritative output must support only JSON and use JSON as its default format")
+		}
+		if len(output.Fields) != 0 {
+			return fmt.Errorf("fresh-wrapper-plan-authoritative output must not declare static fields")
+		}
+		if output.Delivery != OutputDeliveryComplete {
+			return fmt.Errorf("fresh-wrapper-plan-authoritative output must use complete delivery")
+		}
+		if output.CollectionCoverage != CollectionCoverageNotApplicable {
+			return fmt.Errorf("fresh-wrapper-plan-authoritative output requires collection coverage %q", CollectionCoverageNotApplicable)
+		}
+		if output.JSONEnvelope != "" || output.JSONSchemaVersion != 0 {
+			return fmt.Errorf("fresh-wrapper-plan-authoritative output must not declare a static JSON envelope or schema version")
+		}
+		if output.PlanSchema == nil {
+			return fmt.Errorf("fresh-wrapper-plan-authoritative output must reference the bundle preview wrapper-plan schema")
+		}
+		if output.PlanSchema.Command != "bundle preview" || output.PlanSchema.Field != "plan" || output.PlanSchema.ID != "wrapper-plan" || output.PlanSchema.Version <= 0 {
+			return fmt.Errorf("fresh-wrapper-plan-authoritative output must reference bundle preview field plan with a positive wrapper-plan schema version")
+		}
+		if output.JSONShape != OutputJSONShapeObjectOrArray {
+			return fmt.Errorf("fresh-wrapper-plan-authoritative output JSON shape must be %q", OutputJSONShapeObjectOrArray)
+		}
+		if output.JSONRendering != OutputJSONRenderingCompact {
+			return fmt.Errorf("fresh-wrapper-plan-authoritative output JSON rendering must be %q", OutputJSONRenderingCompact)
+		}
+		return nil
+	default:
+		return nil // Authority validation reports the governing error.
+	}
 }
 
 func validatePaginationContract(output CommandOutput, pagination *PaginationContract, inputs map[string]CommandInput) error {
@@ -2788,6 +2970,10 @@ func cloneAgentContract(contract AgentContract) AgentContract {
 			schema.Fields = cloneSlice(schema.Fields)
 			contract.Output.Fields[index].Schema = &schema
 		}
+	}
+	if contract.Output.PlanSchema != nil {
+		reference := *contract.Output.PlanSchema
+		contract.Output.PlanSchema = &reference
 	}
 	if contract.Pagination != nil {
 		pagination := *contract.Pagination

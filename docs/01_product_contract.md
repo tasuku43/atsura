@@ -251,7 +251,7 @@ The plan does not contain a universal permission decision, source effect,
 authorization target/impact, or confirmation requirement. A command absent
 from the surface produces no plan. The preview envelope is schema version 2 and
 contains `plan_digest`, `plan`, and `source_process_attempts`; the last field is
-always zero. Exact schema-8 agent help publishes the `wrapper-plan` schema
+always zero. Exact schema-9 agent help publishes the `wrapper-plan` schema
 version and a typed JSON-pointer inventory for every nested plan field.
 
 Resolution first chooses the longest matching command path from the complete
@@ -361,6 +361,31 @@ uses the normal create/write mutation contracts, atomic ownership, drift
 reporting, and read-only reconciliation. The exact first lifecycle and whether
 its artifact is a generated shell function, an executable shim, or both remain
 part of the next implementation slice rather than this current public runtime.
+
+### Wrapper result authority
+
+Every command output declares exactly one authority for interpreting and
+presenting a successful result. `catalog` authority keeps the existing static
+contract: declared logical fields and, when JSON is supported, one named
+envelope and positive result schema version. `help` remains the deliberate
+selector-dependent exception: its catalog fields describe the root index while
+scoped help projects the selected catalog contract. All currently implemented
+public commands use catalog authority, and their task-result renderers keep
+their existing bytes. Agent help advances to schema 9 to publish the new
+authority discriminator without reinterpreting an older machine contract.
+
+The host-neutral wrapper execution entry point uses the exclusive
+`fresh_wrapper_plan` authority. That variant is JSON-only, complete, and has no
+catalog-static fields, result envelope, or result schema version. Source JSON
+supplies the admitted object or array and its value types; the freshly rebuilt
+plan governs selection, rename, and compact JSON rendering. The agent contract's
+`plan_schema` points to the exact `plan` field on `bundle preview`, including the
+`wrapper-plan` schema ID and version. It describes the governing transformation
+plan, not a schema that wrapper stdout itself must match, and avoids copying a
+second plan registry. Whole-catalog validation resolves that reference and
+rejects drift. The runtime must rebuild and validate the plan for the current
+invocation before applying it; an old preview document is never input or
+authority.
 
 ### External activation and coding-agent consumers
 

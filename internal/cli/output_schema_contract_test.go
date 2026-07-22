@@ -11,8 +11,9 @@ import (
 	"testing"
 )
 
-// TestJSONOutputMatchesCatalogContract couples the executable renderers to the
-// schema version, envelope, and logical item fields published by CommandOutput.
+// TestJSONOutputMatchesCatalogContract couples catalog-authoritative executable
+// renderers to the schema version, envelope, and logical item fields published
+// by CommandOutput.
 // It fails whether a renderer drifts alone or its catalog declaration drifts
 // without a matching public output change.
 func TestJSONOutputMatchesCatalogContract(t *testing.T) {
@@ -66,6 +67,9 @@ func TestJSONOutputMatchesCatalogContract(t *testing.T) {
 			}
 			if !containsOutputFormat(spec.Agent.Output.Formats, OutputFormatJSON) {
 				t.Fatalf("%q does not declare JSON output", current.path)
+			}
+			if spec.Agent.Output.Authority != OutputAuthorityCatalog {
+				t.Fatalf("%q fixture requires catalog-authoritative output, got %q", current.path, spec.Agent.Output.Authority)
 			}
 			if code := runCLI(command, current.args); code != ExitOK {
 				t.Fatalf("Run(%v) code = %d, stderr = %q", current.args, code, stderr.String())

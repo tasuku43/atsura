@@ -233,7 +233,7 @@ The current executable runtime claim is limited to all of the following:
 The credential- and provider-network-free synthetic GitHub-compatible native
 fixture runs through the exact archived `atr`, production composition,
 verifier, runner, parser, transformer, and renderer and is the canonical
-automated artifact gate. It first verifies schema-8 root help and five exact
+automated artifact gate. It first verifies schema-9 root help and five exact
 scoped authoring/runtime contracts, including the complete nested catalog and
 specification field inventories and the complete ordered 27-fault preview and
 41-fault execute recovery signatures. Every induced fault must then equal its

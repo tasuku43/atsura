@@ -29,6 +29,7 @@ func utilitySpec(path string) CommandSpec {
 			Outcome:      "Complete a bounded test outcome",
 			Inputs:       []CommandInput{},
 			Output: CommandOutput{
+				Authority:          OutputAuthorityCatalog,
 				Formats:            []OutputFormat{OutputFormatText},
 				DefaultFormat:      OutputFormatText,
 				Fields:             []OutputField{{Name: "result", Type: OutputFieldTypeString, Description: "Stable test result."}},
@@ -205,6 +206,161 @@ func TestDefaultCatalogSeparatesDeliveryFromCollectionCoverage(t *testing.T) {
 			command.Agent.Output.CollectionCoverage != coverage {
 			t.Errorf("%s output = %+v, want delivery complete and coverage %q", path, command.Agent.Output, coverage)
 		}
+	}
+}
+
+func TestDefaultCatalogOutputsRemainCatalogAuthoritative(t *testing.T) {
+	for _, command := range DefaultCatalog().Commands() {
+		output := command.Agent.Output
+		if output.Authority != OutputAuthorityCatalog {
+			t.Errorf("%s output authority = %q, want %q", command.Path, output.Authority, OutputAuthorityCatalog)
+		}
+		if output.PlanSchema != nil || output.JSONShape != OutputJSONShapeUnknown || output.JSONRendering != OutputJSONRenderingUnknown {
+			t.Errorf("%s catalog-authoritative output has dynamic metadata: %+v", command.Path, output)
+		}
+	}
+}
+
+func freshWrapperPlanAuthorityCatalog(t *testing.T) Catalog {
+	t.Helper()
+	preview := utilitySpec("bundle preview")
+	preview.Agent.Output = CommandOutput{
+		Authority:     OutputAuthorityCatalog,
+		Formats:       []OutputFormat{OutputFormatJSON},
+		DefaultFormat: OutputFormatJSON,
+		Fields: []OutputField{{
+			Name: "plan", Type: OutputFieldTypeObject,
+			Description: "Fresh wrapper plan.", Schema: wrapperPlanOutputSchema(),
+		}},
+		Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable,
+		JSONEnvelope: "preview", JSONSchemaVersion: 2,
+	}
+	wrapper := utilitySpec("wrapper run")
+	wrapper.Agent.Output = freshWrapperPlanAuthoritativeOutput()
+	return NewCatalog(preview, wrapper)
+}
+
+func TestCatalogAcceptsFreshWrapperPlanAuthoritativeOutput(t *testing.T) {
+	catalog := freshWrapperPlanAuthorityCatalog(t)
+	if err := catalog.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	wrapper, found := catalog.Lookup("wrapper run")
+	if !found {
+		t.Fatal("wrapper run is missing")
+	}
+	output := wrapper.Agent.Output
+	if output.Authority != OutputAuthorityFreshWrapperPlan ||
+		!reflect.DeepEqual(output.Formats, []OutputFormat{OutputFormatJSON}) ||
+		output.DefaultFormat != OutputFormatJSON || len(output.Fields) != 0 ||
+		output.Delivery != OutputDeliveryComplete || output.CollectionCoverage != CollectionCoverageNotApplicable ||
+		output.JSONEnvelope != "" || output.JSONSchemaVersion != 0 ||
+		output.JSONShape != OutputJSONShapeObjectOrArray || output.JSONRendering != OutputJSONRenderingCompact {
+		t.Fatalf("fresh wrapper output = %+v", output)
+	}
+	wantReference := &OutputSchemaReference{Command: "bundle preview", Field: "plan", ID: "wrapper-plan", Version: 3}
+	if !reflect.DeepEqual(output.PlanSchema, wantReference) {
+		t.Fatalf("plan schema = %+v, want %+v", output.PlanSchema, wantReference)
+	}
+
+	encoded, err := json.Marshal(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &document); err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"json_envelope", "json_schema_version"} {
+		if _, exists := document[forbidden]; exists {
+			t.Fatalf("dynamic output contains static metadata %q: %s", forbidden, encoded)
+		}
+	}
+	var fields []OutputField
+	if err := json.Unmarshal(document["fields"], &fields); err != nil || len(fields) != 0 {
+		t.Fatalf("dynamic static fields = %+v, error = %v", fields, err)
+	}
+
+	output.PlanSchema.Version = 99
+	fresh, found := catalog.Lookup("wrapper run")
+	if !found || fresh.Agent.Output.PlanSchema.Version != 3 {
+		t.Fatal("catalog lookup returned an aliased output plan schema")
+	}
+}
+
+func TestCatalogRejectsInvalidFreshWrapperPlanOutputAuthority(t *testing.T) {
+	tests := map[string]func(*CommandOutput){
+		"unknown authority": func(output *CommandOutput) { output.Authority = OutputAuthorityUnknown },
+		"extra format":      func(output *CommandOutput) { output.Formats = []OutputFormat{OutputFormatJSON, OutputFormatText} },
+		"non JSON default":  func(output *CommandOutput) { output.DefaultFormat = OutputFormatText },
+		"unknown fields":    func(output *CommandOutput) { output.Fields = nil },
+		"static field": func(output *CommandOutput) {
+			output.Fields = []OutputField{{Name: "result", Type: OutputFieldTypeObject, Description: "Static result."}}
+		},
+		"paged delivery":         func(output *CommandOutput) { output.Delivery = OutputDeliveryPaged },
+		"collection coverage":    func(output *CommandOutput) { output.CollectionCoverage = CollectionCoverageExhaustive },
+		"static envelope":        func(output *CommandOutput) { output.JSONEnvelope = "result" },
+		"static schema version":  func(output *CommandOutput) { output.JSONSchemaVersion = 1 },
+		"missing schema":         func(output *CommandOutput) { output.PlanSchema = nil },
+		"wrong schema command":   func(output *CommandOutput) { output.PlanSchema.Command = "bundle execute" },
+		"wrong schema field":     func(output *CommandOutput) { output.PlanSchema.Field = "preview" },
+		"wrong schema ID":        func(output *CommandOutput) { output.PlanSchema.ID = "other-plan" },
+		"invalid schema version": func(output *CommandOutput) { output.PlanSchema.Version = 0 },
+		"wrong JSON shape":       func(output *CommandOutput) { output.JSONShape = OutputJSONShapeUnknown },
+		"wrong JSON rendering":   func(output *CommandOutput) { output.JSONRendering = OutputJSONRenderingUnknown },
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			catalog := freshWrapperPlanAuthorityCatalog(t)
+			commands := catalog.Commands()
+			mutate(&commands[1].Agent.Output)
+			if err := NewCatalog(commands...).Validate(); err == nil {
+				t.Fatal("invalid fresh-wrapper-plan output authority passed validation")
+			}
+		})
+	}
+}
+
+func TestCatalogRejectsPaginationOnFreshWrapperPlanOutput(t *testing.T) {
+	catalog := freshWrapperPlanAuthorityCatalog(t)
+	commands := catalog.Commands()
+	commands[1].Agent.Pagination = &PaginationContract{}
+	if err := NewCatalog(commands...).Validate(); err == nil || !strings.Contains(err.Error(), "complete output must not declare a pagination binding") {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestCatalogResolvesFreshWrapperPlanSchemaExactly(t *testing.T) {
+	catalog := freshWrapperPlanAuthorityCatalog(t)
+	commands := catalog.Commands()
+	commands[0].Agent.Output.Fields[0].Schema.Version++
+	err := NewCatalog(commands...).Validate()
+	if err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("schema mismatch error = %v", err)
+	}
+
+	wrapperOnly := commands[1]
+	err = NewCatalog(wrapperOnly).Validate()
+	if err == nil || !strings.Contains(err.Error(), `references missing command "bundle preview"`) {
+		t.Fatalf("missing schema source error = %v", err)
+	}
+}
+
+func TestCatalogRejectsDynamicMetadataOnCatalogAuthoritativeOutput(t *testing.T) {
+	for name, mutate := range map[string]func(*CommandOutput){
+		"authority schema": func(output *CommandOutput) {
+			output.PlanSchema = &OutputSchemaReference{Command: "bundle preview", Field: "plan", ID: "wrapper-plan", Version: 3}
+		},
+		"JSON shape":     func(output *CommandOutput) { output.JSONShape = OutputJSONShapeObjectOrArray },
+		"JSON rendering": func(output *CommandOutput) { output.JSONRendering = OutputJSONRenderingCompact },
+	} {
+		t.Run(name, func(t *testing.T) {
+			spec := utilitySpec("test")
+			mutate(&spec.Agent.Output)
+			if err := NewCatalog(spec).Validate(); err == nil || !strings.Contains(err.Error(), "must not declare dynamic output metadata") {
+				t.Fatalf("Validate() error = %v", err)
+			}
+		})
 	}
 }
 

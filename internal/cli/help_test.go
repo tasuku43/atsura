@@ -150,7 +150,7 @@ func TestRootAgentHelpIsACompactProjectionOfTheCatalog(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &document); err != nil {
 		t.Fatalf("agent help is not JSON: %v\n%s", err, stdout.String())
 	}
-	if document.SchemaVersion != 8 || agentHelpSchemaVersion != 8 || document.View != "index" || document.Program != ProgramName {
+	if document.SchemaVersion != 9 || agentHelpSchemaVersion != 9 || document.View != "index" || document.Program != ProgramName {
 		t.Fatalf("agent document header = %+v", document)
 	}
 	if document.ScopeRequest.InvocationTemplate != "atr help <command-or-namespace> --format agent" ||
@@ -220,6 +220,58 @@ func TestScopedAgentHelpIsACompleteProjectionOfEveryCatalogCommand(t *testing.T)
 				t.Errorf("agent command %q has incomplete output metadata: %+v", got.Path, got.Contract.Output)
 			}
 		})
+	}
+}
+
+func TestScopedAgentHelpPublishesFreshWrapperPlanOutputAuthority(t *testing.T) {
+	catalog := freshWrapperPlanAuthorityCatalog(t)
+	commands, exact := catalog.Select("wrapper run")
+	if !exact || len(commands) != 1 {
+		t.Fatalf("wrapper selection exact=%t commands=%+v", exact, commands)
+	}
+	encoded, err := (&CLI{catalog: catalog}).renderAgentHelp("wrapper run", true, commands)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &document); err != nil {
+		t.Fatal(err)
+	}
+	var scopedCommands []map[string]json.RawMessage
+	if err := json.Unmarshal(document["commands"], &scopedCommands); err != nil || len(scopedCommands) != 1 {
+		t.Fatalf("commands = %+v, error = %v", scopedCommands, err)
+	}
+	var contract map[string]json.RawMessage
+	if err := json.Unmarshal(scopedCommands[0]["contract"], &contract); err != nil {
+		t.Fatal(err)
+	}
+	var output map[string]json.RawMessage
+	if err := json.Unmarshal(contract["output"], &output); err != nil {
+		t.Fatal(err)
+	}
+	assertJSONKeys(t, output, []string{
+		"authority", "collection_coverage", "default_format", "delivery", "fields", "formats", "json_rendering", "json_shape", "plan_schema",
+	})
+	var authority OutputAuthority
+	var reference OutputSchemaReference
+	var shape OutputJSONShape
+	var rendering OutputJSONRendering
+	if err := json.Unmarshal(output["authority"], &authority); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(output["plan_schema"], &reference); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(output["json_shape"], &shape); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(output["json_rendering"], &rendering); err != nil {
+		t.Fatal(err)
+	}
+	if authority != OutputAuthorityFreshWrapperPlan ||
+		reference != (OutputSchemaReference{Command: "bundle preview", Field: "plan", ID: "wrapper-plan", Version: 3}) ||
+		shape != OutputJSONShapeObjectOrArray || rendering != OutputJSONRenderingCompact {
+		t.Fatalf("dynamic output authority = %q %+v %q %q", authority, reference, shape, rendering)
 	}
 }
 
@@ -315,7 +367,7 @@ func TestAgentHelpRootAndScopedShapeSnapshots(t *testing.T) {
 				t.Fatal(err)
 			}
 			assertJSONKeys(t, output, []string{
-				"collection_coverage", "default_format", "delivery", "fields", "formats", "json_envelope", "json_schema_version",
+				"authority", "collection_coverage", "default_format", "delivery", "fields", "formats", "json_envelope", "json_schema_version",
 			})
 			if _, legacy := output["completeness"]; legacy {
 				t.Fatal("scoped agent help retained the ambiguous output completeness field")
@@ -818,7 +870,7 @@ func TestDerivedScaleScopedAgentHelpFitsWholeResponseBudget(t *testing.T) {
 	if err := json.Unmarshal(encoded, &document); err != nil {
 		t.Fatal(err)
 	}
-	if document.SchemaVersion != 8 || len(document.Commands) != len(selected) || len(document.Workflows) != 1 ||
+	if document.SchemaVersion != 9 || len(document.Commands) != len(selected) || len(document.Workflows) != 1 ||
 		len(document.Workflows[0].Producers) != 18 || len(document.Workflows[0].Consumers) != 18 {
 		t.Fatalf("derived-scale grouped document = schema %d commands %d workflows %+v", document.SchemaVersion, len(document.Commands), document.Workflows)
 	}

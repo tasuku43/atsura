@@ -162,7 +162,7 @@ go run ./cmd/atr sample read --id smp_2f4a6c8e0b1d --format json
 go run ./cmd/atr --error-format json sample read --id smp_000000000000
 ```
 
-The root agent contract must be schema version 8 with `view: index`, reveal the
+The root agent contract must be schema version 9 with `view: index`, reveal the
 `sample` namespace and both exact paths, and contain no input, output,
 authentication, error, mutation, fixed-target, or workflow detail. Its
 `scope_request` must identify the selector fields and exact invocation template.
@@ -196,21 +196,21 @@ measurements were 1,517 bytes for root agent help, 5,359 bytes for exact
 `sample read` help, and 8,359 bytes for the `sample` namespace. The 512-byte
 limit continues to bound each root selection entry.
 
-With schema 8, measured on 2026-07-22 for the transform-runtime catalog, the
-current root is 5,589 bytes, exact `sample read` help is 5,845 bytes, and the
-`sample` namespace is 8,734 bytes. Exact artifact contracts remain scoped:
-`source inspect` is 11,178 bytes, `spec init` is 10,491 bytes, `spec validate`
-is 11,683 bytes, `bundle build` is 8,386 bytes, `bundle status` is 7,527 bytes,
-`bundle trust` is 8,743 bytes, `bundle preview` is 16,654 bytes, and `bundle
-execute` is 15,411 bytes. Preview's larger scoped contract
+With schema 9, measured on 2026-07-22 for the transform-runtime catalog, the
+current root is 5,589 bytes, exact `sample read` help is 5,867 bytes, and the
+`sample` namespace is 8,778 bytes. Exact artifact contracts remain scoped:
+`source inspect` is 11,200 bytes, `spec init` is 10,513 bytes, `spec validate`
+is 11,705 bytes, `bundle build` is 8,408 bytes, `bundle status` is 7,549 bytes,
+`bundle trust` is 8,765 bytes, `bundle preview` is 16,676 bytes, and `bundle
+execute` is 15,433 bytes. Preview's larger scoped contract
 includes the versioned `wrapper-plan` JSON-pointer field/type inventory. The
 root contains selection entries rather than those complete invocation and
 failure contracts.
 
-Schema 8 retains the fixed derived-scale regression with six selected commands, 18
+Schema 9 retains the fixed derived-scale regression with six selected commands, 18
 producer endpoints, 18 consumer endpoints, and 324 implicit same-kind edges.
-The grouped document is 26,643 UTF-8 bytes; a pair-expanded representation of
-the same facts is 179,909 bytes. The fixed corpus has a 65,536-byte
+The grouped document is 26,087 UTF-8 bytes; a pair-expanded representation of
+the same facts is 169,561 bytes. The fixed corpus has a 65,536-byte
 whole-response budget. The test expands the groups in memory and proves exact
 edge-set equality, so meeting the budget cannot delete producer fields,
 consumer inputs, usage, invocation contracts, or fault recovery. This is a
@@ -373,7 +373,7 @@ option surface. If the match has cataloged descendants, a following non-dash
 token that does not complete a known child is ambiguous rather than assumed to
 be positional; the caller must put an inner `--` before positional data. The
 schema-2 JSON envelope contains `plan_digest`, `plan`, and
-`source_process_attempts`. Exact schema-8 agent help declares the nested plan
+`source_process_attempts`. Exact schema-9 agent help declares the nested plan
 as `wrapper-plan` version 3 and publishes its typed JSON-pointer inventory. The
 plan binds:
 
@@ -570,7 +570,7 @@ four GitHub CLI inspection probes and the admitted `issue list` and `pr list`
 invocations. Its append-only JSONL log is outside public output.
 
 The replay starts from an isolated user-config root. Before starting the source
-fixture, packaged `atr` must return schema-8 root help plus exact `source
+fixture, packaged `atr` must return schema-9 root help plus exact `source
 inspect`, `spec init`, `spec validate`, `bundle preview`, and `bundle execute`
 scopes. It checks the complete catalog/specification output-schema field
 inventory and the exact ordered 27-fault preview and 41-fault execute recovery

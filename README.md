@@ -186,8 +186,13 @@ again. The credential- and provider-network-free synthetic fixture is the
 canonical automated evidence.
 
 Use `atr help <exact-command> --format agent` for the complete machine-readable
-contract. Agent help currently uses schema version 8; object outputs may publish
-a versioned nested JSON-pointer field inventory.
+contract. Agent help currently uses schema version 9; object outputs may publish
+a versioned nested JSON-pointer field inventory. Each output declares whether
+the catalog or a freshly rebuilt wrapper plan governs its interpretation and
+presentation. The reserved host-neutral wrapper variant points to the exact
+`bundle preview` plan schema; source JSON supplies the admitted object or array
+and value types, while that fresh plan governs selection, rename, and compact
+JSON rendering.
 
 ## Current decisions and open work
 
