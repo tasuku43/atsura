@@ -1549,7 +1549,7 @@ func DefaultCatalog() Catalog {
 					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable,
 					JSONEnvelope: "preview", JSONSchemaVersion: 2,
 				},
-				Prerequisites: []string{"One current schema-2 bundle whose exact digest is user-adopted; preview revalidates source path, SHA-256, and size and never treats adoption as source authorization."},
+				Prerequisites: []string{"One current schema-3 bundle whose exact digest is user-adopted; preview revalidates source path, SHA-256, and size and never treats adoption as source authorization."},
 				Errors:        bundlePreviewErrors(),
 			},
 			handler: runBundlePreview,
@@ -1584,7 +1584,7 @@ func DefaultCatalog() Catalog {
 					JSONEnvelope: "execution", JSONSchemaVersion: 2,
 				},
 				Prerequisites: []string{
-					"One current schema-2 bundle whose exact digest is user-adopted; execution rebuilds rather than consumes a preview document.",
+					"One current schema-3 bundle whose exact digest is user-adopted; execution rebuilds rather than consumes a preview document.",
 					"The current runtime accepts only source adapter atsura.source.github_cli contract 2, GitHub CLI major version 2, and exact command issue list or pr list.",
 					"A projection wrapper must be kind=transform with output.kind=projection, output.projection.input=json, and output.projection.render=compact_json; it must append exactly one inline --json=<ordered-select> selector whose fields exactly equal output.projection.select in order.",
 					"The attempted argv may use only the command-specific maintained GitHub CLI long-option grammar; positional arguments, unmodeled options, separated --json values, duplicate or reordered selectors, selectors after --, and competing --jq, --template, or --web modes fail before source start.",
