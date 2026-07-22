@@ -37,29 +37,29 @@ gap without implementing general replacement or positional grammar.
 
 ## Acceptance criteria
 
-- [ ] Schema-5 YAML and bundle schema 4 represent explicit bounded typed
+- [x] Schema-5 YAML and bundle schema 4 represent explicit bounded typed
       defaults; missing, null, non-string, empty, hidden, valueless, selector,
       duplicate, overlapping, structurally unsafe, or legacy content fails
       closed with exact recovery.
-- [ ] Plan schema 6 records declared and applied default lists, and rebuilds
+- [x] Plan schema 6 records declared and applied default lists, and rebuilds
       exact transformed argv for omission, inline/separated/empty override,
       repetition, short aliases, malformed input, and `--` cases without source
       execution.
-- [ ] Contract-3 exact-command tailored help discloses the configured value;
+- [x] Contract-3 exact-command tailored help discloses the configured value;
       root and namespace membership remain unchanged and help starts zero
       runtime, source, and processor attempts.
-- [ ] One complete GitHub bundle and generated `gh` wrapper apply `--limit=30`
+- [x] One complete GitHub bundle and generated `gh` wrapper apply `--limit=30`
       to ordinary `pr list`, preserve an explicit caller limit, retain the
       sibling append-only command, and use one source attempt per ordinary call.
-- [ ] Any invalid default on any surface entry rejects the whole render before
+- [x] Any invalid default on any surface entry rejects the whole render before
       material, adoption changes, source attempts, or processor attempts.
-- [ ] Existing Go identity/optimizer behavior, output authority, source
+- [x] Existing Go identity/optimizer behavior, output authority, source
       authentication/authorization meaning, and vendor/host independence remain
       unchanged.
 - [ ] Evidence schema 8 passes four POSIX ordinary cases, the Windows structured
       unsupported result, all five native rows, and aggregate schema 2 for one
       exact revision.
-- [ ] `task check`, `task security`, `task public:check`, and
+- [x] `task check`, `task security`, `task public:check`, and
       `task release:check` pass without weakening a check.
 
 ## Governing documents
