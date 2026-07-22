@@ -159,6 +159,24 @@ func TestApplyDerivesExactExecutableFromTheStrictlyLoadedBundle(t *testing.T) {
 	if compatibility.plan.OriginalArgv[0] == "not-the-command-basename" || compatibility.plan.OriginalArgv[0] == bundle.Catalog.Source.ResolvedPath {
 		t.Fatalf("bundle executable spelling was basename/path-normalized: %#v", compatibility.plan.OriginalArgv)
 	}
+	directPlan, err := tailoringplan.Build(digest, bundle, identity, tailoringplan.Attempt{
+		Executable: bundle.Catalog.Source.RequestedExecutable,
+		Args:       append([]string{}, args...),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	directDigest, err := directPlan.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	derivedDigest, err := compatibility.plan.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(compatibility.plan, directPlan) || derivedDigest != directDigest {
+		t.Fatalf("bundle-derived plan/digest drifted from direct preview construction: derived=%s direct=%s", derivedDigest, directDigest)
+	}
 }
 
 func TestApplyRejectsSimultaneousDerivedAndSuppliedExecutableBeforeLoading(t *testing.T) {
