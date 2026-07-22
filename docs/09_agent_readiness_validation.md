@@ -202,7 +202,7 @@ current root is 6,333 bytes, exact `sample read` help is 6,005 bytes, and the
 `source inspect` is 11,338 bytes, `spec init` is 10,651 bytes, `spec validate`
 is 11,843 bytes, `bundle build` is 8,546 bytes, `bundle status` is 7,687 bytes,
 `bundle trust` is 8,903 bytes, `bundle preview` is 16,887 bytes, `bundle execute`
-is 15,571 bytes, `wrapper render` is 11,509 bytes, and `wrapper run` is 16,127
+is 15,571 bytes, `wrapper render` is 11,511 bytes, and `wrapper run` is 16,127
 bytes. Preview's larger scoped contract
 includes the versioned `wrapper-plan` JSON-pointer field/type inventory. The
 root contains selection entries rather than those complete invocation and

@@ -711,7 +711,7 @@ func wrapperRenderErrors() []CommandError {
 		declaredCommandError(fault.KindInvalidInput, "unsafe_source_executable", false, "bundle status", "Select and inspect a supported regular source executable."),
 		declaredCommandError(fault.KindRejected, "source_identity_changed", false, "bundle status", "Rebuild from stable current source identity evidence."),
 		declaredCommandError(fault.KindContract, "invalid_source_identity", false, "bundle status", "Repair invalid source identity evidence."),
-		declaredCommandError(fault.KindUnsupported, "wrapper_runtime_not_supported", false, "help wrapper render", "Use one complete transforming surface admitted by the maintained source runtime."),
+		declaredCommandError(fault.KindUnsupported, "wrapper_runtime_not_supported", false, "help wrapper render", "Review the exact adopted-bundle, runtime, surface, and POSIX wrapper requirements."),
 		declaredCommandError(fault.KindUnavailable, "wrapper_runtime_unavailable", false, "help wrapper render", "Retry only after the current Atsura executable identity is readable and stable."),
 		declaredCommandError(fault.KindContract, "wrapper_render_failed", false, "help wrapper render", "Repair the fixed POSIX renderer or its validated product binding."),
 		declaredCommandError(fault.KindContract, "output_contract_exceeded", false, "help wrapper render", "Reduce the bounded generated wrapper output."),

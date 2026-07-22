@@ -234,7 +234,10 @@ func TestRenderRejectsBeforeLaterBoundaries(t *testing.T) {
 			fixture := newRenderFixture(t, "gh")
 			test.mutate(fixture)
 			result, err := fixture.service.Render(context.Background(), renderIntent(), fixture.bundlePath)
-			assertRenderFault(t, err, test.wantCode)
+			public := assertRenderFault(t, err, test.wantCode)
+			if test.wantCode == "wrapper_runtime_not_supported" && (len(public.NextActions) != 1 || public.NextActions[0] != helpAction()) {
+				t.Fatalf("runtime recovery=%+v want=%+v", public.NextActions, helpAction())
+			}
 			if result.SourceProcessAttempts != 0 || len(result.Material.Source) != 0 {
 				t.Fatalf("failed render returned material or attempts: %+v", result)
 			}

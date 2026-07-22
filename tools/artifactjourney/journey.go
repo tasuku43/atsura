@@ -26,6 +26,7 @@ const (
 	maxEvidenceBytes      = 8 * 1024
 	maxAttemptLogBytes    = 1024 * 1024
 	maxSourceStderrBytes  = 256 * 1024
+	maxTransformedBytes   = 2 * 1024 * 1024
 	commandTimeout        = 40 * time.Second
 	fixtureAttemptEnv     = "ATSURA_SOURCE_FIXTURE_ATTEMPT_LOG"
 	fixtureModeEnv        = "ATSURA_SOURCE_FIXTURE_MODE"
@@ -989,7 +990,7 @@ var wrapperRenderHelpFaults = append(
 	expectedHelpFault("unsafe_source_executable", "invalid_input", false, "bundle status", "Select and inspect a supported regular source executable."),
 	expectedHelpFault("source_identity_changed", "rejected", false, "bundle status", "Rebuild from stable current source identity evidence."),
 	expectedHelpFault("invalid_source_identity", "contract", false, "bundle status", "Repair invalid source identity evidence."),
-	expectedHelpFault("wrapper_runtime_not_supported", "unsupported", false, "help wrapper render", "Use one complete transforming surface admitted by the maintained source runtime."),
+	expectedHelpFault("wrapper_runtime_not_supported", "unsupported", false, "help wrapper render", "Review the exact adopted-bundle, runtime, surface, and POSIX wrapper requirements."),
 	expectedHelpFault("wrapper_runtime_unavailable", "unavailable", false, "help wrapper render", "Retry only after the current Atsura executable identity is readable and stable."),
 	expectedHelpFault("wrapper_render_failed", "contract", false, "help wrapper render", "Repair the fixed POSIX renderer or its validated product binding."),
 	expectedHelpFault("output_contract_exceeded", "contract", false, "help wrapper render", "Reduce the bounded generated wrapper output."),
@@ -1018,7 +1019,7 @@ var wrapperRunHelpFaults = append(
 	expectedHelpFault("command_not_in_surface", "not_found", false, "help wrapper run", "Use a command present in the compiled tailored surface."),
 	expectedHelpFault("option_not_in_surface", "not_found", false, "help wrapper run", "Use only options present in the matched command's tailored option surface."),
 	expectedHelpFault("invalid_wrapper_plan", "contract", false, "bundle preview", "Inspect the fresh plan and repair incomplete wrapper construction."),
-	expectedHelpFault("wrapper_runtime_not_supported", "unsupported", false, "help wrapper run", "Use a transform wrapper and source adapter contract with accepted JSON selector behavior."),
+	expectedHelpFault("wrapper_runtime_not_supported", "unsupported", false, "help wrapper run", "Review the supported generated-wrapper runtime contract."),
 	expectedHelpFault("invalid_source_process_request", "contract", false, "bundle preview", "Inspect the exact plan-derived source request before execution."),
 	expectedHelpFault("source_process_start_failed", "unavailable", true, "wrapper run", "Retry the exact generated invocation only when the result proves no source process started."),
 	expectedHelpFault("source_stdout_too_large", "contract", false, "help wrapper run", "Reduce source output within the declared bound; the source was not retried."),
@@ -1032,7 +1033,7 @@ var wrapperRunHelpFaults = append(
 	expectedHelpFault("source_json_invalid", "contract", false, "bundle preview", "Repair the source output selector or adapter contract; raw output is not a fallback."),
 	expectedHelpFault("output_transform_failed", "contract", false, "bundle preview", "Repair selected fields and typed transform expectations; raw output is not a fallback."),
 	expectedHelpFault("unclassified_source_execution_outcome", "contract", false, "bundle status", "Reconcile source-owned effects before considering another invocation."),
-	expectedHelpFault("output_contract_exceeded", "contract", false, "bundle preview", "Reduce the bounded transformed result; the source was not retried."),
+	expectedHelpFault("output_contract_exceeded", "contract", false, "bundle preview", "Inspect the bounded fresh-plan result; the source was not retried."),
 	expectedHelpFault("output_encoding_failed", "contract", false, "bundle preview", "Repair deterministic compact wrapper JSON; the source was not retried."),
 	expectedHelpFault("internal_error", "internal", false, "bundle status", "Inspect wrapper execution wiring without replaying the source."),
 	expectedHelpFault("execute_output_write_failed", "internal", false, "bundle status", "The source completed; reconcile before considering another invocation."),
@@ -1318,7 +1319,7 @@ func validateWrapperRunOutput(command helpCommandProjection) error {
 		{
 			Mode: "transformed_json", Stdout: "compact_json", Stderr: "empty", ExitStatus: "zero",
 			Framing: "one_value_lf", Projection: "visible_json", Delivery: "buffered_after_completion", CrossStreamOrder: "not_applicable",
-			StdoutLimitBytes: maxCommandOutputBytes, StderrLimitBytes: 0,
+			StdoutLimitBytes: maxTransformedBytes, StderrLimitBytes: 0,
 		},
 		{
 			Mode: "source_stream_passthrough", Stdout: "exact_bounded_source_bytes", Stderr: "exact_bounded_source_bytes", ExitStatus: "source_conventional",
@@ -1374,8 +1375,11 @@ func verifyPackagedHelp(ctx context.Context, runner journeyRunner) (packagedHelp
 		arguments = append(arguments, "--format", "agent")
 		output, runErr := runner.success(ctx, "success", arguments...)
 		command, validationErr := validateScopedHelp(path, output.stdout)
-		if runErr != nil || validationErr != nil {
-			return packagedHelpEvidence{}, fmt.Errorf("packaged scoped help contract is invalid for %s", path)
+		if runErr != nil {
+			return packagedHelpEvidence{}, fmt.Errorf("packaged scoped help could not be read for %s", path)
+		}
+		if validationErr != nil {
+			return packagedHelpEvidence{}, fmt.Errorf("packaged scoped help contract is invalid for %s: %w", path, validationErr)
 		}
 		var faultErr error
 		switch path {
