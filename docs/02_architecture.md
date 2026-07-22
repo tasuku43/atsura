@@ -21,11 +21,14 @@ finite compatibility and process boundary. ADR 0014 adds bundle-derived static
 tailored help to generated wrapper material without adding a source-plan result
 or coding-agent-host adapter. ADR 0015 lets the same whole-surface verifier
 admit one or both maintained GitHub contract-2 commands, all-or-nothing, without
-changing schemas, wrapper contract 2, or process boundaries.
+changing schemas or process boundaries. ADR 0016 then advances the tailoring
+specification to schema 5, bundle to schema 4, plan to schema 6, and generated
+wrapper to contract 3 for one finite catalog-typed value-option default. It
+adds no shell, processor, source, host, or vendor boundary.
 
-The current runtime milestone extends strict schema-4 specification loading,
-schema-3 bundle compilation/adoption, and pure surface resolution through one
-complete bundle-backed schema-5 wrapper plan into one compatibility-admitted
+The current runtime milestone extends strict schema-5 specification loading,
+schema-4 bundle compilation/adoption, and pure surface resolution through one
+complete bundle-backed schema-6 wrapper plan into one compatibility-admitted
 JSON transform, source-stream result, or finite original-preserving optimizer.
 It exposes that same application path
 through a deterministic Linux/macOS POSIX function rendered from an exact
@@ -55,12 +58,12 @@ outside production packages entirely.
 bounded source-inspector adapter
   -> provenance-bearing command catalog
 
-catalog + strict tailoring specification schema 4
+catalog + strict tailoring specification schema 5
   -> normalized specification
   -> pure command/option surface composition
   -> complete identity or transforming wrapper for each included command
   -> optional explicit processor observation admission
-  -> canonical bundle schema 3 with exact processor bindings
+  -> canonical bundle schema 4 with exact processor bindings
   -> exact-digest user adoption
 
 adopted bundle + attempted invocation
@@ -69,7 +72,9 @@ adopted bundle + attempted invocation
   -> fail closed on child-versus-positional ambiguity unless `--` is explicit
   -> pure surface and option resolution
        -> absent command: command_not_in_surface, no wrapper plan
-       -> included command: one complete schema-5 wrapper plan and digest
+       -> included command: apply missing finite option defaults in declaration
+          order after the command path, then preserve caller tail and append args
+       -> included command: one complete schema-6 wrapper plan and digest
   -> preview: zero source-process attempts
      or
   -> compatibility-admitted runtime
@@ -88,6 +93,7 @@ adopted bundle + explicit purpose binding
   -> caller-owned command resolution exposes the ordinary source command
   -> root/namespace/exact final `--help`: fixed bundle-derived projection,
      no bound `atr`, source, or processor process
+     and exact-command help discloses configured option defaults
   -> all other argv: fixed function invokes the bound absolute `atr` and
      forwards exact argv
   -> `wrapper run`: revalidate bundle/runtime/source binding
@@ -113,7 +119,8 @@ typed before stages
 The previewed plan binds bundle/catalog/specification digests, exact source and
 adapter identity, the matched command, explicit or inherited surface origin,
 the exact specification entry or `null`, original and transformed argv,
-ordered stages, one result mode, and finite process bounds. Its canonical bytes
+the complete declared option-default list and exact applied subset, ordered
+stages, one result mode, and finite process bounds. Its canonical bytes
 determine the plan digest. It contains no universal allow/confirm/deny decision, inferred
 source read/create/write effect, or source-operation target and impact.
 
@@ -128,6 +135,12 @@ source read/create/write effect, or source-operation target and impact.
 - Executable and argv are separate typed values; no specification or plan
   contains a shell program.
 - Invocation and output transformations are independent typed stages.
+- A finite option default is catalog-typed public artifact data, not a shell
+  fragment or secret. Exact caller long-option presence before the first `--`
+  wins; otherwise planning inserts `--option=value` in declaration order
+  immediately after the matched command path. The complete canonical argv
+  element, not merely its value, must fit `sourceprocess.MaxArgumentBytes`
+  (4096 bytes).
 - The finite built-in stage registry is the only initial transformation
   vocabulary. Unknown actions fail during validation.
 - One canonical bundle is the compilation product consumed by the direct
@@ -162,17 +175,18 @@ source read/create/write effect, or source-operation target and impact.
   provenance;
 - source commands, options, argument evidence, and structured-output
   capabilities;
-- schema-4 tailoring specifications and their projection-or-optimizer output
-  union;
+- schema-5 tailoring specifications, ordered finite option defaults, and their
+  projection-or-optimizer output union;
 - explicit `inherit` or `exclude` surface defaults;
 - command `include` or `exclude` membership;
 - included-command option surfaces;
 - identity and transforming wrappers;
 - deterministic invocation and typed output transformations;
-- canonical schema-3 bundles, exact processor bindings, digests, and drift
+- canonical schema-4 bundles, exact processor bindings, digests, and drift
   validation;
 - pure surface resolution and `command_not_in_surface`;
-- ordered schema-5 wrapper execution plans, explicit result modes, and
+- ordered schema-6 wrapper execution plans, declared/applied option defaults,
+  explicit result modes, and
   canonical plan digests;
 - a host-neutral wrapper binding containing an exact adopted purpose
   bundle, wrapper contract, runtime identity, source identity, ordinary
@@ -251,9 +265,12 @@ never falls back to the source result.
 
 - resolve and identify source executables;
 - perform finite adapter-selected help or metadata probes;
-- strictly decode bounded schema-4 YAML, schema-3 bundle JSON, and schema-1
+- strictly decode bounded schema-5 YAML, schema-4 bundle JSON, and schema-1
   processor observations;
 - reject duplicate or unknown fields and retired schema versions;
+- preserve declaration order while decoding finite option defaults and reject
+  structurally unsafe, malformed, or canonical-token-over-bound values before
+  compilation;
 - read and persist exact-digest adoption receipts safely;
 - observe the current path/hash/size identity used by zero-execution preview;
 - execute an exact plan-bound executable plus argv vector without a shell under
@@ -280,7 +297,9 @@ permission mapper, process client, or lifecycle adapter.
 
 The current infrastructure adapters are deliberately unequal in shape. GitHub
 CLI contract 2 performs four fixed offline probes and maintains finite `issue
-list` / `pr list` grammars. Go CLI contract 2 performs `go version`, `go help`,
+list` / `pr list` grammars, including defaulted and caller-overridden `--limit`
+forms for the admitted `pr list` transform. Go CLI contract 2 performs `go
+version`, `go help`,
 and `go help test`; it accepts a recorded inspection-time effective-toolchain
 observation in stable Go 1.26.x and proves exact no-argument `test` with either
 an identity source-stream wrapper or the exact append-`-json` optimizer
@@ -312,12 +331,14 @@ service as `bundle execute`; neither command accepts a host hook document or a
 shell command string.
 
 The selected command-resolution material is a fixed generated shell function
-on Linux and macOS. Contract 2 contains only Atsura's template, the exact
+on Linux and macOS. Contract 3 contains only Atsura's template, the exact
 bundle and runtime closure, a bounded bundle-derived help projection,
 structured-error selection, and lossless non-help `"$@"` forwarding. Root,
 included-namespace, and included-command final `--help` branches print the
 artifact-local projection without starting the bound `atr`, source, or
-processor. They do not claim current executability; all non-help execution
+processor. Exact-command help includes each configured value-option default;
+root and namespace help remain bounded indexes. They do not claim current
+executability; all non-help execution
 retains the current-state checks below.
 Under the declared standard-`unalias` POSIX activation precondition, the
 generated preamble removes an exact same-name alias before the function
@@ -404,7 +425,7 @@ source-catalog schema 2, Go CLI contract 2, a recorded stable Go 1.26.x
 observation, caller argv `go test`, source argv `go test -json`,
 processor-observation schema 1, and an official RTK v0.43.0 artifact. The
 authoring workflow materializes that contract only from explicit compatible
-evidence; bundle schema 3 and plan schema 5 bind the resulting identity.
+evidence; bundle schema 4 and plan schema 6 bind the resulting identity.
 
 Strict source-result admission resolves RTK's unsafe skip-only,
 malformed-line, source-status, and failure-order behavior before processor
@@ -435,7 +456,7 @@ become plan output.
 - explicit `processor inspect` presentation and bounded processor-evidence
   selection during specification initialization and bundle compilation;
 - stable migration diagnostics for retired policy and bundle schemas;
-- schema-5 wrapper-plan, schema-2 tailored-result, exact source-stream, and
+- schema-6 wrapper-plan, schema-2 tailored-result, exact source-stream, and
   original-preserving optimizer final delivery; and
 - composition of application tasks with source and output infrastructure
   adapters.
@@ -508,7 +529,7 @@ activation settings.
 ## Bundle adoption and drift
 
 The canonical bundle binds source identity, adapter evidence, catalog,
-schema-4 specification, exact processor bindings, and the derived surface with
+schema-5 specification, exact processor bindings, and the derived surface with
 wrapper definitions. A receipt adopts exactly one digest. Status recomputes
 every embedded digest and checks current source and processor identity without
 starting either process.
@@ -590,7 +611,7 @@ inspection evidence. It predates static tailored help.
 
 Historical evidence schema 6 retains the complete schema-5 record and adds the
 first bounded `tailored_help` object for a one-command transformed-PR wrapper.
-Current evidence schema 7 retains that proof and adds exact `caller_argv` to
+Historical evidence schema 7 retains that proof and adds exact `caller_argv` to
 every ordinary-wrapper case. On POSIX rows, ordered cases
 `transformed_json`, `append_only`, and `identity` still total three source
 attempts. The first two bind the same complete two-command bundle and rendered-
@@ -619,30 +640,44 @@ schema 2 for revision `01c05a45e8b00f09d63d3c6551d3a5df393c41b5` across the
 exact five-target matrix. That is release-quality implementation evidence for
 this revision's one-command tailored-help contract, not schema-7 multi-command
 evidence, publication authorization, or evidence for a later candidate.
-CI run 29914651542 then passed current schema 7 and aggregate schema 2 on
+CI run 29914651542 then passed historical schema 7 and aggregate schema 2 on
 2026-07-22 for revision `8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`
 across the same exact matrix. That is release-quality implementation evidence
 for this revision's optimizer, multi-command tailored-help, and platform
 contracts, not publication authorization, independent executable attestation,
 or evidence for a later candidate.
-The inherited schema-5 optimizer shape keeps the identity case in the outer
-`go_source` wrapper fields and the optimizer's distinct bundle, plan, rendered-
-wrapper digest, cases, and faults only in the nested `optimizer` object.
+
+Current evidence schema 8 succeeds schema 7. It binds specification schema 5,
+bundle schema 4, plan schema 6, generated-wrapper contract 3, exact source argv,
+the complete declared option-default list, and the exact applied subset. POSIX
+rows require four ordered wrapper cases: `default_applied`,
+`default_overridden`, `append_only`, and `identity`, totaling four wrapper
+source attempts and 14 GitHub fixture attempts. Windows retains the structured
+unsupported result, zero wrapper attempts, and 10 GitHub fixture attempts. The
+Go and RTK contracts are unchanged. No native five-target schema-8 replay has
+yet been recorded; implementation and controlled tests are not a substitute
+for that pending release evidence.
+
+The inherited schema-5 optimizer evidence shape keeps the identity case in the
+outer `go_source` wrapper fields and the optimizer's distinct bundle, plan,
+rendered-wrapper digest, cases, and faults only in the nested `optimizer`
+object.
 
 ## Current milestone boundary
 
 The completed finite transform-runtime milestone is:
 
 ```text
-strict schema-4 specification
+strict schema-5 specification
   + validated catalog
   -> pure surface and wrapper compilation
-  -> canonical schema-3 bundle
+  -> canonical schema-4 bundle
   -> exact-digest adoption/status
   -> current source path/hash/size observation
   -> longest full-catalog command match
   -> included/absent command and option resolution
-  -> complete schema-5 wrapper plan + digest
+  -> apply finite missing option defaults after the matched command path
+  -> complete schema-6 wrapper plan + digest
   -> preview: source_process_attempts: 0
      or
   -> exact adapter compatibility admission
@@ -699,10 +734,11 @@ Go CLI contract 2 catalog (three probes, recorded Go 1.26.x observation)
   -> strict `test -json` admission and the isolated processor boundary
 ```
 
-The exact five-target schema-7 evidence above establishes this milestone for
-revision `8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`. Every later release
-candidate must repeat the full gates and installed-artifact journeys. Windows
-exercises existing commands and structured unsupported behavior only.
+The exact five-target schema-7 evidence above establishes its historical
+milestone for revision `8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`.
+The current schema-8 milestone remains pending until a later release candidate
+repeats the full gates and installed-artifact journeys. Windows exercises
+existing commands and structured unsupported behavior only.
 
 Raw execution, source refresh, richer argv transformations, additional
 processor tuples, and coding-agent-host integration remain outside these
@@ -710,8 +746,9 @@ milestones.
 
 ## Unresolved architecture decisions
 
-- Which argv replacement/default operations and typed before/after actions join
-  exact append arguments and structured output transformation.
+- Which argv removal or replacement operations and typed before/after actions
+  should join finite value-option defaults, exact append arguments, and
+  structured output transformation.
 - How catalog and plan grammar should model short options, root/global options,
   and command-specific positional arguments beyond the current explicit `--`
   disambiguation rule.

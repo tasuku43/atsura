@@ -1,7 +1,7 @@
-# Structural schema-4 example only. Replace this placeholder with the exact
+# Structural schema-5 example only. Replace this placeholder with the exact
 # catalog_digest emitted by source inspect, or create a bound draft with
 # `atr spec init --catalog <catalog.json> -- pr list`.
-schema_version: 4
+schema_version: 5
 catalog_digest: "0000000000000000000000000000000000000000000000000000000000000000"
 surface:
   default: exclude
@@ -10,13 +10,16 @@ commands:
     presence: include
     reason: Return a compact pull request inventory for this tailored surface.
     options:
-      default: inherit
-      include: []
+      default: exclude
+      include: [--limit]
       exclude: []
     wrapper:
       kind: transform
       before: []
       invoke:
+        option_defaults:
+          - option: --limit
+            value: "30"
         append_args: ["--json=number,title,state"]
       output:
         kind: projection

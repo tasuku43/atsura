@@ -16,8 +16,10 @@ explicitly inspected RTK v0.43.0 artifact. ADR 0014 makes the ordinary wrapper
 self-discoverable by compiling bounded tailored help from the exact bundle
 into fixed wrapper material. ADR 0015 admits a non-empty, complete GitHub
 contract-2 surface with one or both maintained commands while retaining
-all-or-nothing runtime admission. The vendor-neutral, compiled-bundle
-architecture remains authoritative.
+all-or-nothing runtime admission. ADR 0016 adds the first catalog-typed value-
+option default with caller precedence, plan explanation, and exact-command
+help disclosure. The vendor-neutral, compiled-bundle architecture remains
+authoritative.
 
 ## North star
 
@@ -42,6 +44,7 @@ catalog + reviewed tailoring specification
 
 adopted bundle + attempted source invocation
   -> resolve command in the tailored surface
+  -> apply declared option defaults only where caller argv omitted them
   -> compile one wrapper execution plan
   -> preview the plan and its digest without starting the source
      or
@@ -113,9 +116,20 @@ evidence and one purpose-specific wrapper surface. It may describe:
 - typed output transformation; and
 - the reason for each explicit change.
 
-The implemented schema may support these dimensions incrementally. Unsupported
-actions remain explicit unknowns rather than generic strings or embedded code.
-Schema 4 may select the one finite external-output-processor compatibility
+The implemented schema supports exact appended argv and one finite default
+operation for cataloged, tailored, value-taking long options. A configured
+default applies only when its exact long option is absent before `--`; caller
+inline, separated, explicit-empty, and repeated occurrences remain exact and
+suppress insertion. Short aliases never suppress a long default, and matching
+text after `--` remains positional. Missing defaults are inserted in declared
+order immediately after the matched command path. The canonical
+`--option=value` argv element, not only its value, must fit the 4096-byte source
+argument bound. Removal, replacement,
+boolean, short, root/global, positional, conditional, and environment-derived
+defaults remain unsupported rather than being emulated with generic strings.
+
+Unsupported actions remain explicit unknowns rather than generic strings or
+embedded code. Schema 5 may select the one finite external-output-processor compatibility
 contract maintained for strict passing Go test output. It never embeds an
 executable path, arbitrary command, shell fragment, RTK program or argv,
 plugin, or script. The authoring workflow materializes that default only from
@@ -183,6 +197,7 @@ A complete plan identifies at least:
 - bundle, catalog, specification, source, and adapter identity;
 - the exact processor binding when the selected output stage requires one;
 - original and transformed argv;
+- every declared option default and the exact applied subset;
 - the exact applied specification entry, or explicit `null` when the surface
   entry was inherited, plus its reason;
 - before actions;
@@ -208,6 +223,10 @@ catalog before checking command and option membership in the tailored surface.
 When a matched command has cataloged descendants, unresolved non-dash data is
 not guessed to be a child or a positional; an explicit `--` must disambiguate
 positional intent.
+For a defaulted option, detached validation recomputes caller presence before
+the first `--`, the declaration-ordered applied subset, canonical
+`--option=value` insertion immediately after the command path, and the final
+argv before accepting a plan or digest.
 Preview reports `source_process_attempts: 0`. `bundle execute` revalidates the
 bundle and source identity, reuses this constructor, binds the plan's exact
 path/hash/size to the process boundary, and starts at most the one source
@@ -321,8 +340,8 @@ The first implemented tuple is
 2, an inspection-time stable Go 1.26.x observation, caller argv `go test`,
 source argv `go test -json`, processor-observation schema 1, and an explicitly
 inspected official RTK v0.43.0 artifact invoked as `pipe --filter=go-test`.
-Specification schema 4 records only the typed contract and original-output
-allowance. Bundle schema 3 and plan schema 5 bind the exact processor identity,
+Specification schema 5 records only the typed contract and original-output
+allowance. Bundle schema 4 and plan schema 6 bind the exact processor identity,
 version, filter mapping, bounds, and reason. An installed tool never changes
 the choice, and RTK is never the source executor, a runtime-selected fallback,
 or a permission mechanism.
@@ -359,7 +378,7 @@ revalidates its exact bundle, runtime, command, and source binding, constructs a
 fresh plan, and applies the same runtime used by the direct maintainer gateway.
 
 The first material form is a fixed POSIX function produced by `wrapper render`
-on Linux and macOS. Contract 2 embeds the absolute current `atr` identity,
+on Linux and macOS. Contract 3 embeds the absolute current `atr` identity,
 exact bundle digest, and one bounded help projection derived from the included
 surface. A final exact `--help` selector for the root, an included namespace,
 or an included command returns that fixed projection without starting `atr`,
@@ -374,6 +393,8 @@ modes. Go CLI contract 2 remains exactly one no-argument `test` command, using
 either its identity wrapper or the one processor-bound pass-only optimizer.
 Windows returns a structured unsupported fault for POSIX rendering and has no
 optimizer runtime claim; this contract makes no Windows activation claim.
+Exact-command help discloses each configured default as a deterministic quoted
+value. Root and namespace views retain command membership only.
 
 Production Atsura has no coding-agent-host adapter. It never discovers,
 inspects, starts, signals, or calls a host process, executable, service,
@@ -415,7 +436,8 @@ Its digest is its identity. Trust is a user-local decision to adopt that exact
 purpose-specific CLI, not a grant of permission to source operations.
 
 A trust summary therefore describes included and excluded surface entries,
-option changes, identity and transforming wrappers, argv changes, processing
+option changes, a distinct option-default count, identity and transforming
+wrappers, argv changes, processing
 stages, output transformations, source-stream result visibility, source
 identity, exact processor bindings, original-output visibility, and bundle
 digest. When source streams or pre-processor preserved bytes may be returned unprojected,
@@ -481,6 +503,15 @@ command, option surface, wrapper, and result mode is admitted; one unsupported
 entry prevents all wrapper bytes rather than being omitted or deferred to
 invocation. Go remains the exact singleton `test` surface.**
 
+The catalog-typed option-default extension is:
+
+**A maintainer can configure `gh pr list --limit` with one public, reviewed
+default. Omission inserts the canonical value before caller tail argv; an
+explicit caller value, including explicit empty, wins unchanged. Preview
+records the declared and applied subsets, exact-command wrapper help discloses
+the value, and neither path starts a source or processor. The full canonical
+`--option=value` argv element is bounded to 4096 bytes.**
+
 The bounded source-stream extension is:
 
 **For one fully adapter-admitted identity or append-argv-only surface, that
@@ -502,8 +533,8 @@ process.**
 The first external-output-processor proof is:
 
 **A maintainer can explicitly inspect one official RTK v0.43.0 executable,
-materialize the exact maintained Go pass optimizer into a reviewed schema-4
-specification, build and adopt its processor-bound schema-3 bundle, and invoke
+materialize the exact maintained Go pass optimizer into a reviewed schema-5
+specification, build and adopt its processor-bound schema-4 bundle, and invoke
 ordinary no-argument `go test` through the same host-neutral wrapper. A strict
 eligible pass stream yields the independently validated shorter summary;
 conventional ineligible results are preserved exactly before RTK starts; and a
@@ -542,12 +573,16 @@ exact-artifact evidence and the required gates pass on the claimed targets.
   commands.
 - Coding-agent-host compatibility, activation, installation, or enforcement
   claims.
+- Boolean, short, root/global, positional, conditional, computed, or
+  environment-derived option defaults.
+- Using specification defaults for credentials or other secrets; their exact
+  values are public in the specification, bundle, plan, help, and evidence.
 - Publishing or releasing Atsura.
 
 ## Open questions
 
-- Which argv replacement/default actions and typed before/after actions form
-  the first finite wrapper vocabulary?
+- Which argv removal/replacement actions and typed before/after actions should
+  follow the first finite option-default vocabulary?
 - How should an agent-facing option surface represent positional arguments and
   mutually dependent source options?
 - How should the catalog and plan grammar model short options, root/global

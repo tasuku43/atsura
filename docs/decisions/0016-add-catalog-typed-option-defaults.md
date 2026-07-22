@@ -85,7 +85,9 @@ is semantic and is preserved rather than sorted. A default option:
 - has `takes_value: true`;
 - is included in that command's tailored option surface;
 - is not a cataloged structured-output selector;
-- has one non-empty, bounded, structurally safe UTF-8 value; and
+- has one non-empty, structurally safe UTF-8 value whose canonical
+  `--option=value` argv element is at most
+  `sourceprocess.MaxArgumentBytes` (4096 bytes); and
 - does not also occur by parsed active long-option name in `append_args`.
 
 Append overlap recognizes both `--option=value` and separated `--option value`
@@ -171,7 +173,8 @@ aggregate evidence schema 2 remain unchanged.
 
 - Strict schema tests require explicit default and append lists, preserved
   declaration order, uniqueness, catalog value arity, tailored visibility,
-  non-selector ownership, bounded values, and no append overlap.
+  non-selector ownership, the canonical-token byte bound, and no append
+  overlap.
 - Plan truth tables cover omission, inline and separated override, explicit
   empty override, repetition, malformed values, and the `--` boundary.
 - Plan mutation tests reject changed applied subsets and transformed argv.

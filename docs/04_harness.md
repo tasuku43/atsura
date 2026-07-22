@@ -88,21 +88,33 @@ Contract tests must prove:
 Inspection command catalog entries declare `EffectExecute` because their
 bounded probes start a source-owned process.
 
-### Tailoring specification schema 4
+### Tailoring specification schema 5
 
 Domain, codec, application, and CLI tests must prove:
 
-- schema version 4 is required and catalog-bound;
+- schema version 5 is required and catalog-bound;
 - `surface.default` is explicitly `inherit` or `exclude`;
 - commands are exact, sorted, unique, verified catalog paths with bounded
   reasons;
 - presence is explicitly `include` or `exclude`;
 - included entries have an explicit option surface and complete wrapper;
 - excluded entries have neither options nor wrapper;
-- option defaults and overrides are exact, sorted, unique, disjoint, and
+- option-surface defaults and include/exclude overrides are exact, sorted,
+  unique, disjoint, and
   catalog-observed;
 - identity wrappers contain no transformations;
 - transform wrappers contain at least one supported transformation;
+- `invoke.option_defaults` is an explicit declaration-ordered unique list;
+  each entry names an included cataloged long option with `takes_value: true`,
+  excludes structured-output selectors and active `append_args` option names,
+  and carries one non-empty structurally safe UTF-8 value whose full canonical
+  `--option=value` argv element is at most
+  `sourceprocess.MaxArgumentBytes` (4096 bytes);
+- option-default and append-argument entries have a combined maximum of 64;
+  identity wrappers cannot carry defaults, while defaults alone make a
+  transform wrapper meaningful;
+- round-trip, help, and evidence tests treat default values as public artifact
+  data and prove that credentials and secret canaries are never introduced;
 - before/after lists are explicit and reject unsupported actions;
 - output projection and original-preserving optimization are a closed
   discriminated union;
@@ -134,12 +146,12 @@ entry without a complete wrapper, and a wrapper-only or membership-only
 shortcut are invalid. Resolving an absent command returns
 `command_not_in_surface`, produces no plan, and starts zero source processes.
 
-### Bundle schema 3 and adoption
+### Bundle schema 4 and adoption
 
 Tests must prove:
 
 - a canonical bundle binds exact source identity, adapter evidence, normalized
-  catalog and digest, normalized schema-4 specification and digest, the
+  catalog and digest, normalized schema-5 specification and digest, the
   derived surface with wrappers, and any exact processor observation required
   by those wrappers;
 - canonical bytes exclude timestamps, machine/user identity, credentials,
@@ -149,7 +161,7 @@ Tests must prove:
   are distinguishable;
 - alternate vendor-neutral adapter fixtures compile to the same shared bundle
   contract; and
-- schema-1 and schema-2 bundles are rejected rather than reinterpreted.
+- schema-1 through schema-3 bundles are rejected rather than reinterpreted.
 
 Adoption tests must prove that only the full exact digest is accepted through a
 controlling terminal; the receipt is user-local and content-bound; unrelated
@@ -166,7 +178,7 @@ through the central mutation invoker with exact target and impact contracts.
 `bundle preview --bundle <path> -- <source-executable> <argv>` is the current
 zero-execution plan boundary. Tests must prove:
 
-- only a strictly loaded schema-3 bundle with an exact valid adoption receipt
+- only a strictly loaded schema-4 bundle with an exact valid adoption receipt
   is admitted;
 - current source path, SHA-256, and size are observed and must equal the
   bundle-bound identity before plan construction;
@@ -181,16 +193,24 @@ zero-execution plan boundary. Tests must prove:
   returns `option_not_in_surface`, and both produce no plan;
 - an explicit surface match includes the exact specification entry, while an
   inherited match encodes `specification_entry: null`;
-- the schema-5 plan binds bundle/catalog/specification digests, source and
+- the schema-6 plan binds bundle/catalog/specification digests, source and
   adapter identity, any required processor identity and contract, matched
   command and surface origin, wrapper kind, reason, option surface,
-  original/transformed argv, and ordered before/invoke/output/after stages plus
+  original/transformed argv, the complete declared option-default list and
+  exact applied subset, and ordered before/invoke/output/after stages plus
   exactly one result mode;
 - the invocation stage declares closed stdin plus inherited working directory
   and environment modes without serializing ambient values;
 - the invoke stage declares exactly one maximum attempt plus finite timeout,
   stdout, and stderr bounds, even though preview never crosses that boundary;
-- `append_args` appear exactly at the end of transformed argv;
+- exact inline, separated, explicit-empty, and repeated caller long-option
+  occurrences before the first `--` suppress the matching default; short
+  aliases and the same spelling after `--` do not;
+- missing defaults appear as `--option=value` in declaration order immediately
+  after the matched command path, caller argv retain their exact order and
+  spelling, and `append_args` appear exactly at the end of transformed argv;
+- detached plan validation recomputes the applied subset and exact transformed
+  argv and rejects tampering before process start;
 - an output transform requires exactly one active cataloged selector matching
   its input format before `--`; missing, duplicate, conflicting, or positional
   selectors fail plan construction;
@@ -203,7 +223,7 @@ zero-execution plan boundary. Tests must prove:
   `plan_digest` values;
 - the schema-2 preview envelope contains exactly `plan_digest`, `plan`, and
   `source_process_attempts`, with the attempt count always zero;
-- exact schema-12 agent help publishes the versioned schema-5 `wrapper-plan`
+- exact schema-12 agent help publishes the versioned schema-6 `wrapper-plan`
   inventory,
   including nested JSON-pointer paths, scalar/object/array types, array element
   types, requiredness, and nullable object states; and
@@ -234,6 +254,11 @@ public source-runtime boundary. Tests must prove:
 - the current GitHub CLI runtime adapter accepts only its exact contract,
   compatible major version, `issue list` or `pr list`, JSON output mode, and
   one selector whose ordered value exactly equals the plan's selected fields;
+- the admitted `pr list` transform accepts the exact compiled `--limit=<value>`
+  default and an exact non-empty caller override. Explicit empty values suppress
+  the default during generic planning but, together with malformed, duplicate-
+  default, positional-only, short-alias, or other out-of-contract forms, fail
+  GitHub runtime admission before start;
 - unsupported adapters, versions, commands, identity wrappers, argv-only
   transforms, missing or mismatched selectors, and unmodeled invocation forms
   fail with zero source-process attempts;
@@ -274,6 +299,8 @@ the direct `bundle execute` result envelope. Tests must prove:
   existing result modes, and each later invocation uses only the selected
   command's plan without requiring a JSON selector for identity or append-argv-
   only wrappers;
+- that complete-surface proof admits the finite `pr list --limit` default and
+  validates both default-applied and caller-overridden transformed argv;
 - Go CLI contract 2 admits a recorded stable Go 1.26.x inspection observation
   and exact command `test`. Its identity branch permits one complete identity
   wrapper, `source_stream_passthrough`, no caller-visible option surface, and
@@ -285,7 +312,7 @@ the direct `bundle execute` result envelope. Tests must prove:
   `Source.Version` observation and do not claim that runtime repeats `go
   version`, detects a later effective-toolchain change, or binds a selected
   toolchain/GOROOT tree;
-- preview and wrapper application rebuild byte-identical schema-5 plans and
+- preview and wrapper application rebuild byte-identical schema-6 plans and
   plan digests for `source_stream_passthrough`;
 - source stdout and stderr are returned byte-for-byte within 4 MiB and 256 KiB,
   including empty streams, NUL, non-UTF-8, control-looking, and prompt-like
@@ -314,8 +341,8 @@ the direct `bundle execute` result envelope. Tests must prove:
 
 ADR 0012 admits exactly one finite tuple:
 `atsura.output.rtk_go_test_pass.v1`, source-catalog schema 2, Go CLI contract 2,
-processor-observation schema 1, specification schema 4, bundle schema 3, and
-plan schema 5. It binds exact caller argv `go test`, source argv
+processor-observation schema 1, specification schema 5, bundle schema 4, and
+plan schema 6. It binds exact caller argv `go test`, source argv
 `go test -json`, an official RTK v0.43.0 artifact, and processor argv
 `pipe --filter=go-test` on Linux and macOS amd64/arm64. Tests must prove:
 
@@ -369,7 +396,7 @@ plan schema 5. It binds exact caller argv `go test`, source argv
   claim absence of child
   processes, outside-root filesystem access, or network attempts without a
   separately implemented and validated external observer. A release-quality
-  native claim belongs only to an exact revision whose evidence schema 7 rows
+  native claim belongs only to an exact revision whose current evidence rows
   and aggregate schema 2 pass the required five-target workflow.
 
 ADR 0009's rejected `git-log` tuple remains a negative fixture: executable
@@ -407,10 +434,13 @@ use, network access, or caller-owned file/cache changes.
 
 ### Retired-schema migration
 
-Fixtures for specification schemas 1 through 3 and bundle schemas 1 and 2 must
+Fixtures for specification schemas 1 through 4, bundle schemas 1 through 3,
+and generated-wrapper contract 2 must
 prove:
 
 - retired documents are rejected before adoption or source start;
+- contract-2 generated-wrapper invocations are rejected and require a freshly
+  rendered contract-3 wrapper;
 - no allow/confirm/deny, source read/create/write, target, or impact value is
   silently converted;
 - deprecated public paths return the stable migration fault and an exact
@@ -439,7 +469,7 @@ Catalog tests must prove:
   source status with no timing/interleaving claim; and the three exact
   original-preserving optimizer dispositions with their source/processor
   attempt contracts. Whole-catalog validation resolves the exact `bundle
-  preview` `plan`/`wrapper-plan` schema-5 reference and rejects an incomplete
+  preview` `plan`/`wrapper-plan` schema-6 reference and rejects an incomplete
   or unknown result variant;
 - retired `policy` vocabulary appears only in migration diagnostics or
   historical superseded documents;
@@ -497,11 +527,14 @@ The slice must prove:
   separator, accepts exact argv rather than a shell command string, and reaches
   the same plan constructor and source-execution boundary as the direct
   gateway;
-- generated-wrapper contract 2 derives root, namespace, and exact-command
+- generated-wrapper contract 3 derives root, namespace, and exact-command
   views only from included surface entries and effective long options; final
   exact `--help` prints deterministic bundle-digested text with zero bound
   `atr`, source, and processor attempts, while excluded and unknown selectors
   expose no raw source help and retain existing fail-closed faults;
+- exact-command help discloses each configured value-option default using the
+  same bounded formatter as compilation, while root and namespace help remain
+  unchanged indexes;
 - spaces, empty values, Unicode, dash-prefixed values, literal metacharacters,
   and ordering survive wrapper forwarding without `eval`, `sh -c`, or shell
   reconstruction;
@@ -526,7 +559,7 @@ The slice must prove:
 - wrapper success uses the exclusive `fresh_wrapper_plan` interpretation and
   presentation authority and emits no maintainer evidence envelope; exact
   scoped schema-12 help publishes all three typed result modes and points to the
-  schema-5 `bundle preview` wrapper-plan governing the selected variant;
+  schema-6 `bundle preview` wrapper-plan governing the selected variant;
 - the current renderer persists nothing and edits no activation configuration;
   any future persisted artifact lifecycle uses exact ownership, bounded
   regular-file paths, symlink/special-file rejection, atomic replacement,
@@ -639,14 +672,14 @@ bytes in persisted or structured evidence.
   Historical evidence schema 4 proves only the pre-optimizer GitHub and Go
   identity-wrapper journey. Schema 5 retains those base facts and adds Go CLI
   contract 2, processor-observation schema 1, the exact RTK identity and
-  invocation, schema-3 bundle and schema-5 plan identities, exact caller/source/
-  processor argv, formats, modes, v2 environment and bounds, separate source
-  and processor-inspection evidence, disposition/status, source-fixture attempt
-  counts, and leak booleans. It is optimizer-aware but predates static tailored
-  help.
+  invocation, historical schema-3 bundle and schema-5 plan identities, exact
+  caller/source/processor argv, formats, modes, v2 environment and bounds,
+  separate source and processor-inspection evidence, disposition/status,
+  source-fixture attempt counts, and leak booleans. It is optimizer-aware but
+  predates static tailored help.
 - Historical evidence schema 6 retains the complete schema-5 record and adds
   the first bounded `tailored_help` object for one transformed-PR wrapper.
-  Current schema 7 adds exact `caller_argv` to every wrapper case. POSIX rows
+  Historical schema 7 adds exact `caller_argv` to every wrapper case. POSIX rows
   keep three ordered cases and three wrapper source attempts: transformed
   `pr list` and append-only `issue list` share one exact bundle and wrapper
   digest while keeping distinct caller argv and plan digests; identity remains
@@ -659,6 +692,14 @@ bytes in persisted or structured evidence.
   digests or wrapper contract, zero wrapper attempts, and 10 GitHub fixture
   attempts. Top-level journey identities remain required. Aggregate schema 2
   is unchanged and excludes the new per-case caller argv.
+- Current evidence schema 8 binds specification schema 5, bundle schema 4,
+  plan schema 6, generated-wrapper contract 3, exact source argv, the complete
+  declared option-default list, and the exact applied subset. POSIX rows add
+  ordered `default_applied` and `default_overridden` cases alongside
+  `append_only` and `identity`, totaling four wrapper source attempts and 14
+  GitHub fixture attempts. Windows retains zero wrapper attempts and 10
+  fixture attempts. Go and RTK evidence contracts remain unchanged. No native
+  five-target schema-8 replay is recorded yet.
 - The four Linux/macOS optimizer targets must prove `optimized` and reachable
   `preserved_before_processor`; Windows records no optimizer case and no
   processor evidence. Installed evidence does not claim processor-launch
@@ -684,13 +725,14 @@ true on the same tree:
 
 1. focused domain, codec, application, infrastructure, CLI, and migration tests
    pass;
-2. schema-4 specification, schema-3 bundle, schema-5 plan, and schema-1
+2. schema-5 specification, schema-4 bundle, schema-6 plan, and schema-1
    processor-observation canonical fixtures pass;
-3. surface/wrapper truth tables, the projection/optimizer discriminated union,
-   and `EffectExecute` negative tests pass;
+3. surface/wrapper truth tables, finite option-default validation and caller-
+   precedence truth tables, the projection/optimizer discriminated union, and
+   `EffectExecute` negative tests pass;
 4. adopted/current bundle preview covers identity, projection, source-stream,
-   and optimizer wrappers, stable plan digests, exact processor binding, and
-   exactly zero process attempts;
+   and optimizer wrappers, declared/applied defaults, stable plan digests,
+   exact processor binding, and exactly zero process attempts;
 5. compatibility-admitted GitHub CLI execution covers exact selector encoding,
    preview/execute plan parity, selected typed JSON, no raw-output leak, and one
    source attempt per admitted command;
@@ -712,8 +754,9 @@ true on the same tree:
     fault, schema-2 review-envelope, and scoped-help contracts match the
     implementation; `wrapper run` publishes all three schema-12 result modes;
 11. deterministic binding/render tests cover portable command names, POSIX
-    quoting, contract-2 root/namespace/exact tailored help, exact
-    bundle/runtime/source/processor closure, one- and two-command GitHub whole-
+    quoting, contract-3 root/namespace/exact tailored help and option-default
+    disclosure, exact bundle/runtime/source/processor closure, one- and two-
+    command GitHub whole-
     surface admission, mixed existing result modes, retained singleton Go
     admission, hostile argv forwarding, and absence of coding-agent-host
     fields;
@@ -739,10 +782,10 @@ candidate revision:
 2. CI provides native Linux amd64/arm64, Darwin amd64/arm64, and Windows amd64
    base rows, with the exact official RTK v0.43.0 artifact supplied only to the
    four optimizer-supported rows;
-3. evidence schema 7 retains the schema-5 optimizer and historical schema-6
-   tailored-help records, adds exact caller argv to each ordinary-wrapper case,
-   binds transformed `pr list` and append-only `issue list` to one shared bundle
-   and wrapper with distinct plans, and records all five POSIX help views plus
+3. evidence schema 8 retains the historical optimizer, tailored-help, and
+   caller-argv records; binds specification schema 5, bundle schema 4, plan
+   schema 6, wrapper contract 3, exact source argv, declared/applied defaults,
+   the four ordered POSIX wrapper cases, and all five help views; and records
    the runtime-non-executable condition and zero-attempt fallthrough faults;
 4. Windows proves structured unsupported rendering and an explicit empty
    `tailored_help: platform_not_supported` record without receiving a
@@ -760,13 +803,15 @@ Historical predecessor evidence: a clean detached-worktree
 `task release:check` and CI run 29910455312 passed the corresponding schema-6
 six-condition set on 2026-07-22 for revision
 `01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. That run does not satisfy current
-schema-7 condition 3 or the current six-condition set. The clean local gates
+schema-8 condition 3 or the current six-condition set. The clean local gates
 (`task check`, `task security`, `task public:check`, and `task release:check`)
-plus CI run 29914651542 passed the current six-condition set on 2026-07-22 for
-revision `8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`. This establishes the
-release-quality implementation claim for that exact revision only. Publication
-remains separately authorized, and every later candidate must repeat both the
-local gates and native workflow.
+plus CI run 29914651542 passed the then-current schema-7 six-condition set on
+2026-07-22 for revision
+`8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`.
+That establishes the release-quality implementation claim for that exact
+historical revision only; it does not satisfy current schema-8 condition 3.
+Publication remains separately authorized, and the current candidate must run
+both the local gates and the native workflow before receiving that claim.
 
 Neither gate claims raw execution, richer argv transforms, persistent wrapper
 installation or executable shims, Windows POSIX activation, arbitrary

@@ -199,6 +199,32 @@ spelling. Accept argv rather than a shell command string, and reuse the existing
 fresh plan constructor and source execution boundary. Do not create a second
 surface, plan, compatibility, fault, or executor registry.
 
+For a finite value-option default, use only the current typed
+`invoke.option_defaults` list. Each declaration names one exact included
+cataloged long option with `takes_value: true`, excludes structured-output
+selectors and active `append_args` option names, and carries a non-empty
+structurally safe UTF-8 value whose canonical `--option=value` argv element is
+at most `sourceprocess.MaxArgumentBytes` (4096 bytes). Preserve declaration
+order and uniqueness; keep the combined defaults/append count at most 64.
+Identity wrappers cannot carry defaults, while a default alone may make a
+transform wrapper non-empty.
+
+Caller precedence is exact: inline, separated, explicit-empty, and repeated
+occurrences of that long option before the first `--` suppress its default.
+Short aliases do not, and the same spelling after `--` is positional data.
+Insert missing defaults as canonical `--option=value` elements immediately
+after the matched command path, in declaration order; preserve the caller tail
+exactly and keep `append_args` last. The plan carries the complete declared
+list and exact applied subset, and detached validation recomputes both that
+subset and transformed argv. Exact-command wrapper help discloses configured
+defaults; root and namespace indexes do not.
+
+Default values are public specification, bundle, plan, help, and evidence
+data. Never use them for credentials or secrets, and never reinterpret them as
+shell source. Adding a default changes no source, processor, host, or vendor
+boundary. Keep source-specific admission finite; the current GitHub case is
+`pr list --limit`, while Go and RTK contracts are unchanged.
+
 A generated shell form, if selected, must come from a fixed Atsura template and
 forward exact argv without configuration-authored source, `eval`, or `sh -c`.
 An executable form must invoke the exact physical bundle-bound source rather
@@ -476,6 +502,11 @@ Add the smallest set that proves the capability:
 - surface truth-table tests for explicit inherit/exclude defaults, explicit
   include/exclude entries, option overrides, identity/transform wrappers, and
   no plan for surface absence;
+- option-default truth tables covering catalog/type/output-selector/overlap,
+  uniqueness/order/combined-count and canonical-token byte bounds; inline,
+  separated, explicit-empty, repeated, short-alias, and post-`--` caller forms;
+  insertion before caller tail and append args; declared/applied plan parity;
+  exact-command help disclosure; and zero-attempt rejection of tampering;
 - source-execution tests proving `EffectExecute` has no mutation contract,
   preserves exact identity/argv, starts at most once, and never advertises a
   post-start unknown outcome or output failure as safe to retry;
@@ -535,6 +566,14 @@ them honestly; native journeys must not fabricate those results. The fixture
 may set `GOTOOLCHAIN=local`, disable download, and isolate roots for
 determinism; never promote those fixture inputs to production toolchain
 guarantees.
+
+For the current option-default successor, installed evidence schema 8 binds
+specification schema 5, bundle schema 4, plan schema 6, generated-wrapper
+contract 3, exact source argv, and complete declared/applied defaults. POSIX
+rows require `default_applied`, `default_overridden`, `append_only`, and
+`identity`; Windows retains structured unsupported behavior. Go and RTK remain
+unchanged. Do not claim release quality until the exact five native rows and
+aggregate pass for the candidate revision.
 
 Tests must use temporary directories, fixed clocks, fake credentials, and local
 test servers. They must not require a developer account or live network.

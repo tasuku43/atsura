@@ -6,6 +6,8 @@ system sandbox. Security therefore depends on honest boundaries: strict
 tailoring inputs, exact artifact adoption, identity-bound no-shell process
 execution, controlled Atsura-owned mutations, bounded parsing, and explicit
 failure when the core cannot evaluate its own contracts.
+ADR 0016 adds one finite value-option-default transformation without adding a
+process, shell, secret, host, or vendor trust boundary.
 
 ## Security objectives
 
@@ -78,6 +80,13 @@ and retired authorization schemas fail before compilation or process start.
 
 Arbitrary shell and arbitrary executable code are not valid specification
 actions. Arguments remain argv elements and never become a shell program.
+Each `invoke.option_defaults` entry must name one exact included cataloged long
+option that takes a value, avoid structured-output selectors and active
+`append_args` options, and carry one non-empty structurally safe UTF-8
+value whose full canonical `--option=value` argv element is no larger than
+`sourceprocess.MaxArgumentBytes` (4096 bytes). The ordered list is public
+artifact data propagated to the bundle, plan, exact-command help, and release
+evidence; it must never hold credentials or other secrets.
 
 ### Compiled bundle and adoption receipt
 
@@ -122,10 +131,12 @@ authority.
 
 The current wrapper accepts argv, not a shell command string or agent-host
 payload. On Linux and macOS, `wrapper render` emits one fixed POSIX function and
-an optional schema-2 review envelope. Contract 2 compiles bounded root,
+an optional schema-2 review envelope. Contract 3 compiles bounded root,
 namespace, and exact-command final-`--help` views from the bundle's included
 surface. Those fixed branches print only constant-format single-quoted data,
 name the exact bundle digest, and start no bound `atr`, source, or processor.
+Exact-command help discloses configured option defaults; root and namespace
+help remain bounded indexes.
 The function body is a subshell: alias-safe POSIX special-builtin cleanup
 removes inherited `command` and `return` functions only in that isolated body
 and fails before runtime start if cleanup is unavailable. Escaped builtin
@@ -219,12 +230,22 @@ Surface membership and wrapper behavior are validated independently:
 
 `bundle preview` binds the adopted bundle, bundle/catalog/specification
 digests, exact source and adapter identity, matched command, original and
-transformed argv, ordered stages, finite process bounds, and the exact applied
+transformed argv, the complete declared option-default list and exact applied
+subset, ordered stages, finite process bounds, and the exact applied
 specification entry or `null` for inheritance. It does not carry a universal
 permission decision. Preview revalidates current source path, SHA-256, and size,
 returns a canonical plan digest, and reports `source_process_attempts: 0`.
 Runtime revalidates again and rebuilds the plan rather than using an old
 preview as authority.
+
+Caller precedence is exact and no-shell: inline, separated, explicit-empty,
+and repeated occurrences of the same long option before the first `--`
+suppress its default. A short alias does not, and the same spelling after `--`
+is positional data. Missing defaults are inserted as `--option=value` in
+declaration order immediately after the matched command path; the caller tail
+then remains byte-for-byte ordered and `append_args` remain last. Detached plan
+validation recomputes both the applied subset and transformed argv so tampered
+plans fail before process start.
 
 `wrapper render` additionally requires the complete included surface to be a
 non-empty same-source set whose every command, exposed option, wrapper, and
@@ -550,8 +571,8 @@ disposition, status, and the same bounded leak checks. It predates static
 tailored help.
 
 Historical schema 6 retains that optimizer-aware proof and adds the first
-bounded `tailored_help` record for one transformed-PR wrapper. Current schema 7
-adds exact `caller_argv` to every wrapper case and binds the transformed
+bounded `tailored_help` record for one transformed-PR wrapper. Historical
+schema 7 adds exact `caller_argv` to every wrapper case and binds the transformed
 `pr list` and append-only `issue list` calls to one exact bundle and one rendered
 wrapper while requiring separate plan digests. A POSIX row proves five exact
 root/namespace/command help views while the bound `atr` is non-executable, then
@@ -563,6 +584,15 @@ wrapper cases, help views, and faults, no tailored-help bundle or rendered-
 wrapper binding digests or wrapper contract, zero wrapper attempts, and 10
 GitHub fixture attempts. Top-level journey identities remain required.
 Aggregate schema 2 is unchanged and does not carry per-case caller argv.
+
+Current evidence schema 8 succeeds that record. It binds specification schema
+5, bundle schema 4, plan schema 6, generated-wrapper contract 3, exact source
+argv, the declared option defaults, and the exact applied subset. POSIX rows
+require ordered `default_applied`, `default_overridden`, `append_only`, and
+`identity` cases, four wrapper source attempts, and 14 GitHub fixture attempts.
+Windows retains zero wrapper attempts and 10 GitHub fixture attempts. The Go
+and RTK contracts do not change. These are current evidence requirements; no
+native five-target schema-8 replay has yet been recorded.
 
 Installed evidence does not claim processor-launch counts without an accepted
 external observer; controlled application and infrastructure tests own that
@@ -605,7 +635,7 @@ all five historical schema-6 rows plus aggregate schema 2 for revision
 the executables, authorize publication, prove schema-7 multi-command behavior,
 or carry forward to another revision.
 CI run 29914651542 then supplied the same workflow provenance and passed all
-five current schema-7 rows plus aggregate schema 2 on 2026-07-22 for revision
+five historical schema-7 rows plus aggregate schema 2 on 2026-07-22 for revision
 `8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`. That observation establishes the
 bounded multi-command behavior for this revision; it does not independently
 attest the executables, authorize publication, or carry forward to another
@@ -636,6 +666,10 @@ revision.
 - `append_args` are appended exactly even after a positional-only `--`; preview
   exposes that result but does not prove that the source interprets it as an
   option.
+- Option-default presence recognizes only the exact long option before the
+  first `--`; short aliases intentionally do not suppress a default. The finite
+  source compatibility contract, not generic parsing, decides whether each
+  resulting invocation is executable.
 - Preview requires exactly one active cataloged structured-output selector for
   the planned input format before `--`. Execute further requires an exact
   adapter compatibility contract; GitHub CLI contract 2 covers only `issue
@@ -667,8 +701,8 @@ revision.
 
 ## Security claim for the current milestone
 
-The runtime milestone may claim that validated schema-4 specifications compile
-deterministically into schema-3 bundles; preview returns one canonical schema-5
+The runtime milestone may claim that validated schema-5 specifications compile
+deterministically into schema-4 bundles; preview returns one canonical schema-6
 plan with zero attempts; and application rebuilds that plan, requires exact
 adoption/current identity and finite-registry source and processor
 compatibility, requires every observable executable identity to match the
@@ -698,9 +732,10 @@ plan-declared JSON value, exact bounded source streams and conventional status,
 or the declared optimizer result; failure never selects raw, another bundle,
 or original bytes after processor authority. This becomes a release-quality
 optimizer claim only after the required full/security/public/release gates and
-the optimizer-aware installed-artifact native evidence pass. They passed on
-2026-07-22 for exact revision
-`8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`; every later candidate must repeat
-them. The claim does not include executable attestation, caller activation
+the current installed-artifact native evidence pass. Historical schema 7
+passed on 2026-07-22 for exact revision
+`8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`; the schema-8 option-default
+successor remains pending and every later candidate must repeat the matrix.
+The claim does not include executable attestation, caller activation
 integrity, Windows POSIX or optimizer support, source authorization,
 sandboxing, or a persistent wrapper lifecycle.

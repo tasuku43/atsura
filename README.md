@@ -22,16 +22,16 @@ source inspect + optional processor inspect
   -> wrapper render -> caller-owned POSIX activation -> ordinary source command
 ```
 
-- Tailoring specification schema 4 independently declares command membership,
-  option membership, wrapper behavior, and a closed projection-or-optimizer
-  output union.
-- Bundle schema 3 binds exact source identity, catalog evidence, the normalized
+- Tailoring specification schema 5 independently declares command membership,
+  option membership, catalog-typed value-option defaults, wrapper behavior,
+  and a closed projection-or-optimizer output union.
+- Bundle schema 4 binds exact source identity, catalog evidence, the normalized
   specification, the compiled purpose-specific surface, and any exact
   processor observation required by that surface.
 - `bundle trust` interactively records adoption of one exact bundle digest. It
   does not grant permission to run source operations.
 - `bundle preview --bundle <path> -- <source-executable> <argv>` returns one
-  deterministic schema-5 wrapper plan and digest with zero source-process
+  deterministic schema-6 wrapper plan and digest with zero source-process
   attempts.
 - `bundle execute` rebuilds that plan and, for a compatibility-admitted GitHub
   CLI `issue list` or `pr list` JSON transform, requires every observable
@@ -41,7 +41,7 @@ source inspect + optional processor inspect
   bound to one exact adopted bundle and the current absolute `atr` identity.
   Its JSON review envelope is schema 2 and reports both source and processor
   attempts as zero.
-  Contract 2 compiles root, included-namespace, and included-command final
+  Contract 3 compiles root, included-namespace, and included-command final
   `--help` views from that exact bundle. Those views start no bound `atr`,
   source, or processor; every other argv list is forwarded unchanged to
   `wrapper run`, which applies the
@@ -84,9 +84,9 @@ installed source CLI
   -> bounded adapter inspection
   -> provenance-bearing command catalog
 
-catalog + reviewed schema-4 specification
+catalog + reviewed schema-5 specification
   -> deterministic compilation
-  -> canonical schema-3 bundle
+  -> canonical schema-4 bundle
      + compiled command/option surface
      + identity or transforming wrapper per included command
      + exact processor binding when the wrapper requires one
@@ -160,7 +160,7 @@ runtime and make the complete exposed surface renderable, replace the generated
 command's option surface and `wrapper` with this deliberately narrow built-in
 JSON transform. Only `--limit` remains agent-visible; the generated `--json`
 selector belongs to the invocation stage. Exact `spec init` and `spec validate`
-agent help publish the finite schema-4 field inventory and authoring
+agent help publish the finite schema-5 field inventory and authoring
 constraints:
 
 ```yaml
@@ -172,6 +172,9 @@ wrapper:
   kind: transform
   before: []
   invoke:
+    option_defaults:
+      - option: --limit
+        value: "30"
     append_args: ["--json=number,title,state"]
   output:
     kind: projection
@@ -202,7 +205,7 @@ bytes:
 ```
 
 The static
-[schema-4 example](examples/tailoring-spec.schema4.yaml) illustrates the strict
+[schema-5 example](examples/tailoring-spec.schema5.yaml) illustrates the strict
 shape, but its placeholder catalog digest must be replaced by the digest from
 the exact inspected catalog; `spec init` is the reliable way to produce a bound
 draft.
@@ -215,8 +218,11 @@ the exact digest after reviewing the source, surface, and wrapper summary:
 "$ATR" bundle status --bundle /tmp/atsura-bundle.json
 "$ATR" bundle preview \
   --bundle /tmp/atsura-bundle.json \
-  -- gh pr list --limit=2
+  -- gh pr list
 "$ATR" bundle execute \
+  --bundle /tmp/atsura-bundle.json \
+  -- gh pr list
+"$ATR" bundle preview \
   --bundle /tmp/atsura-bundle.json \
   -- gh pr list --limit=2
 ```
@@ -237,6 +243,7 @@ function. Activation is deliberately caller-owned:
 gh --help
 gh pr --help
 gh pr list --help
+gh pr list
 gh pr list --limit=2
 unset -f gh
 ```
@@ -252,7 +259,9 @@ help selectors from the exact bundle-derived surface and prints its full bundle
 digest. A bundle containing both maintained GitHub commands instead answers
 five selectors: root, `issue`, `issue list`, `pr`, and `pr list`. This artifact-
 local help does not execute raw source help or claim that later source/runtime
-state is current. For every non-help argv list, the function invokes the
+state is current. Exact-command help discloses the configured `--limit`
+default; root and namespace membership views are unchanged. For every non-help
+argv list, the function invokes the
 absolute `atr` that rendered it, passes the complete bundle/runtime closure to
 `wrapper run`, inserts the required `--`, and forwards `"$@"` without `eval` or
 `sh -c`. Successful ordinary-command stdout
@@ -275,6 +284,10 @@ surface membership, and returns source/adapter identity, the exact or `null`
 specification entry, original/transformed argv, ordered stages, finite
 process bounds, and a canonical plan digest. It always reports
 `source_process_attempts: 0` and does not transform output at preview time.
+Plan schema 6 also records the complete declared `option_defaults` list and
+the exact applied subset. In this walkthrough, omitted `--limit` inserts
+`--limit=30` immediately after `pr list`; explicit `--limit=2` remains exact
+and suppresses the default.
 
 `bundle execute` independently rebuilds the plan rather than trusting preview
 output, verifies GitHub CLI adapter contract 2, the complete supported argv,
@@ -400,8 +413,9 @@ the finite `plan_result_modes` byte, framing, projection, and status contract.
 ## Current decisions and open work
 
 The current schema supports exact command include/exclude composition,
-inherited or narrowed options, identity wrappers, appended argv, and typed JSON
-select/rename/compact-output transformations. It also supports one finite
+inherited or narrowed options, identity wrappers, catalog-typed value-option
+defaults, appended argv, and typed JSON select/rename/compact-output
+transformations. It also supports one finite
 original-preserving optimizer contract: Go CLI contract 2 plus an explicitly
 inspected official RTK v0.43.0 artifact and the fixed `go-test` filter. Before
 and after stage lists are explicit but must remain empty; arbitrary shell,
@@ -419,26 +433,25 @@ The following remain later research or vertical-slice decisions:
 - persistent wrapper installation, replacement, removal, executable/PATH shims,
   and multi-profile command selection;
 - raw tailoring bypass;
-- output transformations beyond the schema-4 projection and exact admitted
+- output transformations beyond the schema-5 projection and exact admitted
   optimizer;
 - usage-history collection; and
 - jq, plugin, or additional external-transformer contracts.
 
 The optimizer implementation and controlled conformance tests are distinct
 from release evidence. Historical installed-artifact schema 4 predates the
-optimizer, schema 5 adds optimizer evidence, and schema 6 adds the first static
-tailored-help proof for a one-command wrapper. Current evidence schema 7 retains
-those proofs and adds exact `caller_argv` to every ordinary-wrapper case. On
-POSIX rows, the transformed `pr list` and append-only `issue list` cases share
-one bundle digest and rendered-wrapper digest while retaining distinct caller
-argv and plan digests; the separate identity case remains independent. The
-shared wrapper proves all five root/namespace/exact-command help views plus
-hidden `api --help` and unknown `unknown --help` faults with zero source and
-processor attempts. Windows retains empty wrapper/help inventories, zero
-wrapper attempts, and the structured unsupported result. Aggregate schema 2 is
-unchanged and does not project `caller_argv`. On 2026-07-22, CI run
+optimizer, schema 5 adds optimizer evidence, schema 6 adds the first static
+tailored-help proof, and schema 7 adds exact caller argv for the multi-command
+wrapper. Current evidence schema 8 retains those proofs and adds exact source
+argv plus declared/applied option defaults for omitted and caller-overridden
+`pr list --limit` cases. The POSIX default-applied, override, and append-only
+cases share one bundle and rendered wrapper while retaining distinct caller
+argv and plan digests; identity remains independent. Windows retains empty
+wrapper/help inventories, zero wrapper attempts, and the structured unsupported
+result. Aggregate schema 2 is unchanged. The required five-target schema-8
+native replay is pending for this worktree. On 2026-07-22, CI run
 [29914651542](https://github.com/tasuku43/atsura/actions/runs/29914651542)
-passed all five native schema-7 rows and aggregate schema 2 for revision
+passed all five historical schema-7 rows and aggregate schema 2 for revision
 `8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`. That is release-quality
 implementation evidence for this exact revision, not publication,
 independent executable attestation, or evidence for a later revision.
@@ -447,8 +460,16 @@ Current plan parsing is deliberately bounded. Source short options,
 root/global options, and command-specific positional grammar are not completely
 modeled. If a matched command has cataloged descendants, an unknown following
 non-dash token is ambiguous rather than assumed positional; use an inner `--`
-before positional data. `append_args` remain at the end even after an existing
-`--`, and option-looking values there are positional. Preview requires one
+before positional data. Before the first `--`, exact inline, separated, and
+explicit-empty occurrences of a configured long option suppress its default;
+repeated caller occurrences remain exact, a short alias never suppresses the
+long default, and matching text after `--` is positional. Missing defaults are
+inserted in declaration order immediately after the matched command path.
+Each non-empty structurally safe UTF-8 value is accepted only when its full
+canonical `--option=value` argv element is at most 4096 bytes.
+Defaults and appended arguments together are limited to 64 entries.
+`append_args` remain at the end even after an existing `--`, and option-looking
+values there are positional. Preview requires one
 active cataloged selector matching a planned structured input for projection
 and optimizer plans. Direct `bundle execute` remains restricted to projection
 and additionally requires the exact ordered selector. The ordinary wrapper
@@ -511,7 +532,9 @@ Commands, arguments, help output, source output, generated catalogs,
 specifications, bundles, and wrapper bindings are untrusted. Repository-provided
 configuration is not implicitly user-adopted. Specification processing is
 limited to typed Atsura built-ins rather than arbitrary executable code. Atsura
-does not acquire or store provider credentials or persist source output. Source
+option defaults are public in specification, bundle, plan, tailored help, and
+evidence and therefore must never contain credentials. Atsura does not acquire
+or store provider credentials or persist source output. Source
 inspection starts the selected executable without a shell using adapter-owned,
 bounded offline probes; the source process inherits the caller's environment.
 Coding-agent hook payloads, settings, permissions, and lifecycle remain outside

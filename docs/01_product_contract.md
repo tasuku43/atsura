@@ -15,6 +15,9 @@ into bounded ordinary-command help without turning help into a source
 execution plan. ADR 0015 admits complete non-empty GitHub contract-2 surfaces
 containing one or both maintained commands without changing the bundle or
 wrapper contract. One canonical vendor-neutral bundle remains the authority.
+ADR 0016 adds one finite catalog-typed value-option default with deterministic
+caller precedence, schema-6 plan explanation, contract-3 help disclosure, and
+no new process or host boundary.
 
 ## Product statement
 
@@ -48,10 +51,10 @@ impossible to invoke through another route.
 
 ```text
 bounded source-inspector adapter -> generated catalog evidence
-catalog + reviewed tailoring specification schema 4
+catalog + reviewed tailoring specification schema 5
         |
         v
-canonical bundle schema 3 + exact-digest user adoption
+canonical bundle schema 4 + exact-digest user adoption
         |
         +--> compiled command and option surface
         +--> identity or transforming wrapper per included command
@@ -65,7 +68,7 @@ surface resolution
 
 explicit `processor inspect` schema-1 observation
         +--> optional authoring evidence for the exact maintained optimizer
-        +--> exact processor binding in a schema-3 bundle and schema-5 plan
+        +--> exact processor binding in a schema-4 bundle and schema-6 plan
 
 adopted bundle + explicit purpose binding
         |
@@ -85,9 +88,9 @@ generated function -> `atr wrapper run` -> same fresh plan and execution path
 
 `bundle preview` implements the zero-execution branch of this flow. `bundle
 execute` implements the first transform-only runtime branch. Both require the
-exact schema-3 bundle to be user-adopted, revalidate current source and any
+exact schema-4 bundle to be user-adopted, revalidate current source and any
 bound processor path, SHA-256, and size, and rebuild the same deterministic
-schema-5 plan. Execute
+schema-6 plan. Execute
 additionally requires an accepted adapter JSON selector contract and starts the
 identity-checked resolved path at most once. `wrapper render` closes the exact
 bundle digest with the current absolute `atr` path/hash/size in deterministic
@@ -129,12 +132,12 @@ surface. Other entries remain catalog evidence and are not described as denied.
 ### Tailoring specification
 
 The strict catalog-bound YAML document that describes one purpose-specific
-surface and wrapper set. The current schema version is 4.
+surface and wrapper set. The current schema version is 5.
 
 Its initial normalized model is:
 
 ```yaml
-schema_version: 4
+schema_version: 5
 catalog_digest: <sha256>
 surface:
   default: exclude
@@ -150,6 +153,9 @@ commands:
       kind: transform
       before: []
       invoke:
+        option_defaults:
+          - option: --limit
+            value: "30"
         append_args: ["--json=id,name"]
       output:
         kind: projection
@@ -169,7 +175,7 @@ The exact implemented constraints are:
 - every explicit command entry has a bounded reason;
 - an excluded entry has no options or wrapper;
 - an included entry has an explicit option surface and wrapper;
-- option default is `inherit` or `exclude`;
+- each option-surface default is `inherit` or `exclude`;
 - under option `inherit`, only exact exclusions may be listed;
 - under option `exclude`, only exact inclusions may be listed;
 - option overrides are sorted, unique, disjoint, and catalog-observed;
@@ -177,6 +183,14 @@ The exact implemented constraints are:
 - an identity wrapper has empty before/invoke/after changes and no output
   transform;
 - a transform wrapper contains at least one supported transform;
+- `invoke.option_defaults` and `invoke.append_args` are explicit lists whose
+  combined length is at most 64;
+- each option default is an exact included cataloged long option with
+  `takes_value: true`, is not a structured-output selector, has one non-empty
+  structurally safe UTF-8 value whose canonical `--option=value` argv element
+  is at most `sourceprocess.MaxArgumentBytes` (4096 bytes), retains declaration
+  order, is unique, and does not overlap an active option name in
+  `append_args`;
 - an output stage is a complete discriminated `projection` or `optimizer`
   union and cannot contain both;
 - the optimizer form contains a catalog-observed input, one namespaced
@@ -185,11 +199,14 @@ The exact implemented constraints are:
 - before and after lists are explicit and currently must be empty because no
   built-in actions have yet been selected; and
 - arbitrary shell, script, jq, plugin, RTK program/argv, unregistered
-  processor, or runtime-LLM actions are invalid. Schema 4 admits only the exact
+  processor, or runtime-LLM actions are invalid. Schema 5 admits only the exact
   maintained optimizer contract.
 
-Schema 4 contains no source allow/confirm/deny, source read/create/write,
+Schema 5 contains no source allow/confirm/deny, source read/create/write,
 authorization target, or authorization impact fields.
+Option-default values are public artifact data carried through the
+specification, bundle, plan, exact-command help, and release evidence. They are
+not a credential or secret-storage mechanism.
 
 ### Surface default and command membership
 
@@ -220,9 +237,22 @@ command remains transform-only.
 ### Transforming wrapper
 
 An included command with a typed deterministic pipeline. The initial accepted
-transform vocabulary retains exact argv additions and structured JSON
-select/rename/compact rendering. Removal, replacement, defaults, and typed
-before/after actions remain planned vocabulary until implemented and tested.
+transform vocabulary retains exact argv additions, catalog-typed value-option
+defaults, and structured JSON select/rename/compact rendering. A default is
+wrapper behavior, not option membership: its option must remain in the
+effective tailored surface so a caller can override it. Removal, replacement,
+boolean/short/root/global/positional defaults, and typed before/after actions
+remain planned vocabulary until implemented and tested.
+
+Before the first caller `--`, `--option=value`, `--option value`,
+`--option=`, and a separated option followed by an explicit empty argv element
+all suppress that option's default. Repeated valid occurrences remain exact
+and suppress only the configured insertion; Atsura does not select a repeated
+source value. A short alias does not suppress a long default, and identical
+text after `--` is positional. Each missing default becomes one canonical
+`--option=value` token, in declaration order, immediately after the matched
+command path. Caller tail argv remains exact, followed by unchanged
+`append_args` at the end.
 
 ### Typed output projection
 
@@ -302,6 +332,7 @@ starting the source. It contains:
 - exact source identity and source-adapter kind/contract version;
 - the exact processor binding when the output stage requires one;
 - original and transformed argv;
+- the complete declared option-default list and exact applied subset;
 - wrapper kind and ordered before/invoke/output/after stages;
 - exactly one result mode: `transformed_json`,
   `source_stream_passthrough`, or `original_preserving_optimizer`;
@@ -319,7 +350,7 @@ The plan does not contain a universal permission decision, source effect,
 authorization target/impact, or confirmation requirement. A command absent
 from the surface produces no plan. The preview envelope is schema version 2 and
 contains `plan_digest`, `plan`, and `source_process_attempts`; the last field is
-always zero. Exact schema-12 agent help publishes the schema-5 `wrapper-plan`
+always zero. Exact schema-12 agent help publishes the schema-6 `wrapper-plan`
 version and a typed JSON-pointer inventory for every nested plan field.
 
 Resolution first chooses the longest matching command path from the complete
@@ -329,8 +360,16 @@ If that command has cataloged descendants and its next token is non-dash but
 does not complete a cataloged descendant, preview cannot distinguish an
 unobserved child from positional data and fails `invalid_invocation`. A caller
 must place `--` before intended positional data in that ambiguous case.
-Only after those steps does it append the wrapper's `append_args` and validate
-the bounded no-shell invocation recorded in the plan. A plan with an output
+After those steps it derives exact caller presence, inserts missing
+`option_defaults` immediately after the matched command path, preserves caller
+tail argv, appends the wrapper's `append_args`, and validates the bounded no-
+shell invocation recorded in the plan. Inline, separated, explicit-empty, and
+repeated exact long-option occurrences before the first `--` suppress a
+default. Short aliases do not suppress it, and the same spelling after `--` is
+positional data. Defaults are emitted in declaration order as
+`--option=value`; caller repetitions and tail bytes retain their order and
+spelling. Detached plan validation recomputes the applied subset and exact
+transformed argv. A plan with an output
 transform additionally requires exactly one active cataloged structured-output
 selector for the declared input format before any `--` marker.
 
@@ -343,12 +382,12 @@ caller-generated bypass, or a member of the tailored surface.
 
 ### Compiled tailoring bundle
 
-Bundle schema 3 is one canonical JSON document binding:
+Bundle schema 4 is one canonical JSON document binding:
 
 - exact resolved source identity and observed version;
 - source-adapter kind and contract version;
 - normalized catalog and catalog digest;
-- normalized schema-4 specification and specification digest;
+- normalized schema-5 specification and specification digest;
 - an explicit bounded processor-binding list, empty when no optimizer is used;
   and
 - the derived purpose-specific surface with its wrapper definitions.
@@ -371,8 +410,8 @@ The controlling-terminal summary identifies:
 - surface default;
 - included and explicitly excluded command counts;
 - identity and transforming wrapper counts;
-- option override, argv transformation, before/after action, and output
-  transformation counts;
+- option override, option-default, argv transformation, before/after action,
+  and output transformation counts;
 - the count of included wrappers whose conventional source streams may be
   returned without projection, with a conditional control/secret warning; and
 - every processor kind, version, exact identity, namespaced compatibility
@@ -464,7 +503,7 @@ The fixed function invokes the exact absolute `atr` that rendered it:
 
 ```text
 atr wrapper run \
-  --contract-version=2 \
+  --contract-version=3 \
   --bundle=<absolute-path> \
   --bundle-digest=<sha256> \
   --runtime-path=<absolute-path> \
@@ -520,13 +559,17 @@ that precondition remains caller-owned.
 
 ### Ordinary tailored help
 
-Generated-wrapper contract 2 makes the rendered artifact self-describing. It
+Generated-wrapper contract 3 makes the rendered artifact self-describing. It
 recognizes only a final exact `--help` after zero or more included command-path
 segments. The root view lists every included exact command path; a namespace
 view lists only its included descendants; an exact-command view shows the
 bounded source summary, tailoring reason, and only the effective included long
 options with explicit value arity. When an exact command is also a namespace,
 one view contains both its exact-command facts and included descendants.
+For a value-taking option with a configured default, only the exact-command
+view adds the deterministic quoted disclosure
+`--option=<value> (value required; default when omitted: "...")`. Root and
+namespace membership remain unchanged.
 
 The help model is derived from the canonical bundle during `wrapper render`.
 The fixed function prints it through constant-format, single-quoted POSIX data
@@ -619,7 +662,7 @@ atr bundle trust --bundle <bundle.json>
 atr bundle preview --bundle <bundle.json> -- <source-executable> <argv>
 atr bundle execute --bundle <bundle.json> -- <source-executable> <argv>
 atr wrapper render --bundle <absolute-bundle.json> [--format text|json]
-atr wrapper run --contract-version=2 --bundle=<absolute-bundle.json> \
+atr wrapper run --contract-version=3 --bundle=<absolute-bundle.json> \
   --bundle-digest=<sha256> --runtime-path=<absolute-atr> \
   --runtime-sha256=<sha256> --runtime-size=<bytes> -- <argv...>
 ```
@@ -647,7 +690,7 @@ draft is an executable ordinary-wrapper baseline only when its complete surface
 and invocation fit the finite source-stream compatibility contract. For exact
 Go `test`, supplying a compatible processor observation materializes the
 reviewable optimizer default; without that explicit evidence the draft remains
-identity. A user may instead deliberately change a draft to the finite schema-4
+identity. A user may instead deliberately change a draft to the finite schema-5
 JSON projection, selecting
 only fields observed together in the inspected command's structured-output
 evidence and declaring any collision-free rename. Exact
@@ -657,7 +700,7 @@ edit without repository-source inspection.
 
 `bundle build` requires that same observation exactly when the specification
 selects the optimizer, rejects unused or incompatible evidence, and binds the
-processor identity into bundle schema 3. `bundle status` recomputes all
+processor identity into bundle schema 4. `bundle status` recomputes all
 canonical bindings, observes exact-digest adoption, and compares current source
 and processor identity without starting either process. `bundle trust` is the
 only Atsura-owned mutation in this workflow.
@@ -665,7 +708,7 @@ only Atsura-owned mutation in this workflow.
 `bundle preview` is a read-only, JSON-only utility. It admits only the exact
 requested executable spelling or resolved path recorded in an adopted current
 bundle, resolves one cataloged attempted invocation, and returns the complete
-schema-5 tailored plan inside a schema-2 preview envelope plus its canonical
+schema-6 tailored plan inside a schema-2 preview envelope plus its canonical
 SHA-256 plan digest. It reads current
 source identity but reports `source_process_attempts: 0` and performs no output
 transformation.
@@ -685,9 +728,12 @@ refresh, and raw execution are not implemented by this direct evidence command;
 an optimizer is rejected before source start.
 
 `wrapper render` is the zero-source-attempt producer of the complete function
-and binding. Its contract-2 fixed function answers compiled root, namespace,
+and binding. Its contract-3 fixed function answers compiled root, namespace,
 and exact-command final-`--help` selectors without starting the bound `atr`,
-source, or processor; every other argv list is forwarded unchanged to
+source, or processor. Exact-command help discloses each configured finite
+value-option default with the same bounded formatter used by compilation;
+root and namespace help remain indexes and do not repeat those defaults. Every
+other argv list is forwarded unchanged to
 `wrapper run` with root structured JSON errors. `wrapper run` first validates the closure against the
 honestly executing current `atr` identity and expected bundle digest, then
 reuses the shared fresh-plan application boundary. Success follows one of three
@@ -705,7 +751,11 @@ The current compatibility admission is also available in exact `bundle
 execute` help: GitHub CLI adapter contract 2 and major 2, `issue list` or `pr
 list`, a transform JSON output stage, one exact inline ordered selector,
 maintained long-option grammar, no competing output mode, and empty stderr on
-success. Live execution inherits the caller's source-CLI authentication plus
+success. The finite GitHub `pr list` admission also accepts its compiled
+`--limit` value-option default. Atsura inserts it as `--limit=<value>` only
+when the caller did not supply `--limit` before the first positional-only `--`;
+the adapter validates both defaulted and caller-overridden transformed argv.
+Live execution inherits the caller's source-CLI authentication plus
 repository context from the inherited working directory or an admitted
 command-specific `--repo` option. Atsura neither obtains those credentials nor
 turns a source-owned failure into replay permission.
@@ -754,11 +804,14 @@ receiving that stronger claim.
 
 ## Migration contract
 
-Authorization policy schemas 1 through 3, bundle schemas 1 and 2, and their
-plan/run semantics are retired experimental formats.
+Authorization-policy schemas 1 and 2, tailoring-specification schemas 3 and 4,
+bundle schemas 1 through 3, generated-wrapper contract 2, and their plan/run
+semantics are retired experimental formats.
 
-- Readers never interpret specification schemas 1 through 3 as schema 4.
-- Old bundle bytes never validate as bundle schema 3.
+- Readers never interpret specification schemas 1 through 4 as schema 5.
+- Old bundle bytes never validate as bundle schema 4.
+- Contract-2 generated-wrapper invocations are rejected; maintainers render a
+  fresh contract-3 function from the adopted current bundle.
 - Old trust receipts remain inert exact digests and are not copied or removed
   automatically.
 - No automatic converter is selected because deny/hidden/confirm/effect/target

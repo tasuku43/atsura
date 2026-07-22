@@ -246,9 +246,9 @@ The sample is not evidence that a real API adapter is secure. A derived CLI repe
 ### Outcome
 
 Given one installed supported source CLI, a maintainer can produce exact
-schema-2 catalog evidence, create and review a schema-4 purpose-specific
-surface, and compile one deterministic schema-3 bundle without starting a bundle-backed
-source invocation.
+schema-2 catalog evidence, create and review a schema-5 purpose-specific
+surface, and compile one deterministic schema-4 bundle without starting a
+bundle-backed source invocation.
 
 ### Runnable probe
 
@@ -283,17 +283,17 @@ processor-bound optimizer; this
 alternate artifact path does not imply that arbitrary Go commands or arguments
 are executable. Scenario G owns the one admitted no-argument runtime.
 
-The static [schema-4 example](../examples/tailoring-spec.schema4.yaml) is
+The static [schema-5 example](../examples/tailoring-spec.schema5.yaml) is
 structural evidence only: its placeholder digest is deliberately not silently
 rebound. `spec init` is the executable route to a catalog-bound draft.
 
 ### Recovery probes
 
-- A schema-1, schema-2, or schema-3 specification returns `invalid_input` /
-  `legacy_tailoring_schema`, starts no source process, and points to exact
-  `spec` help.
-- A bundle-schema-1 or bundle-schema-2 document returns the same stable migration code and is not
-  adopted or converted.
+- A schema-1, schema-2, schema-3, or schema-4 specification returns
+  `invalid_input` / `legacy_tailoring_schema`, starts no source process, and
+  points to exact `spec` help.
+- A bundle-schema-1, bundle-schema-2, or bundle-schema-3 document returns the
+  same stable migration code and is not adopted or converted.
 - Catalog digest mismatch, unverified command provenance, unknown fields,
   aliases, multiple YAML documents, unsupported option overrides, and an
   identity wrapper with transformations fail before bundle compilation.
@@ -314,7 +314,7 @@ covered by Scenario G.
 
 ### Outcome
 
-Given one current schema-3 bundle, a maintainer can review its exact source,
+Given one current schema-4 bundle, a maintainer can review its exact source,
 surface, wrapper, and digest summary on a controlling terminal and explicitly
 adopt that purpose-specific CLI definition without granting source-operation
 permission.
@@ -352,7 +352,7 @@ and trust both report zero source and processor process attempts.
 - A malformed or mismatched bundle fails strict loading before confirmation.
 - Output failure after confirmed adoption is non-retryable and points to status
   reconciliation rather than repeating the mutation.
-- An old exact-digest receipt remains inert for a schema-3 bundle with a
+- An old exact-digest receipt remains inert for a schema-4 bundle with a
   different digest; migration never copies or removes receipts automatically.
 
 This scenario validates an Atsura-owned adoption-store mutation. Adoption is
@@ -363,7 +363,7 @@ hidden commands are inaccessible through another route.
 
 ### Outcome
 
-Given one adopted current schema-3 bundle, a maintainer can resolve an exact
+Given one adopted current schema-4 bundle, a maintainer can resolve an exact
 attempted source invocation into its complete deterministic tailored wrapper
 plan and digest without starting the source executable.
 
@@ -389,18 +389,19 @@ token that does not complete a known child is ambiguous rather than assumed to
 be positional; the caller must put an inner `--` before positional data. The
 schema-2 JSON envelope contains `plan_digest`, `plan`, and
 `source_process_attempts`. Exact schema-12 agent help declares the nested plan
-as `wrapper-plan` version 5 and publishes its typed JSON-pointer inventory. The
+as `wrapper-plan` version 6 and publishes its typed JSON-pointer inventory. The
 plan binds:
 
 - bundle, catalog, and specification digests;
 - exact source path/hash/size/version and adapter kind/contract version;
 - matched command and explicit or inherited surface origin;
-- the exact schema-4 specification entry for an explicit match, or JSON `null`
+- the exact schema-5 specification entry for an explicit match, or JSON `null`
   for an inherited match;
 - reason, option surface, and wrapper kind;
 - exactly one result mode: `transformed_json`,
   `source_stream_passthrough`, or `original_preserving_optimizer`;
 - original and transformed argv;
+- the complete declared option-default list and exact applied subset;
 - ordered before, invoke, output, and after stages; and
 - closed stdin, inherited working-directory and environment modes, plus maximum
   attempts, timeout, stdout, and stderr bounds for a source invocation; and
@@ -415,6 +416,16 @@ also exercises an inherited entry, an append-argv-only wrapper, and a typed
 transforming wrapper whose plan declares `transformed_json`. Every success and
 failure reports or proves
 `source_process_attempts: 0`; preview also starts zero processor processes.
+
+For a transforming entry with `invoke.option_defaults`, inline, separated,
+explicit-empty, and repeated occurrences of the exact long option before the
+first `--` suppress its default. Short aliases do not, and the same spelling
+after `--` is positional. Preview inserts each missing default as
+`--option=value` in declaration order immediately after the matched command
+path, preserves the caller tail exactly, and leaves `append_args` last. The
+declared and applied lists explain that result without executing the source.
+Validation requires the complete canonical argv element, including option name
+and `=`, to fit `sourceprocess.MaxArgumentBytes` (4096 bytes).
 
 ### Recovery probes
 
@@ -457,6 +468,9 @@ output selector. Preview alone
 does not prove that a selector value encodes the requested select fields. The
 GitHub CLI compatibility contract in Scenario F makes that narrower command-
 and adapter-specific admission check before transformed execution.
+Finite option defaults do not broaden this generic grammar: the source adapter
+must separately admit the default-applied and caller-overridden transformed
+argv before execution.
 
 ### Acceptance
 
@@ -473,7 +487,7 @@ not runtime application, raw execution, or ordinary-command activation.
 
 ### Outcome
 
-Given one adopted schema-3 bundle containing a supported transform wrapper, a
+Given one adopted schema-4 bundle containing a supported transform wrapper, a
 maintainer can run one exact GitHub CLI `issue list` or `pr list` invocation and
 receive only the configured selected and renamed typed JSON fields.
 
@@ -481,7 +495,7 @@ receive only the configured selected and renamed typed JSON fields.
 
 Start with the catalog from Scenario C. Replace the `spec init` identity
 wrapper with the transform shown in
-[the schema-4 example](../examples/tailoring-spec.schema4.yaml), preserving the
+[the schema-5 example](../examples/tailoring-spec.schema5.yaml), preserving the
 generated catalog digest, then validate, build, and adopt the resulting bundle.
 The user invocation deliberately omits `--json`; Atsura's wrapper appends the
 exact selector:
@@ -490,10 +504,13 @@ exact selector:
 go run ./cmd/atr help bundle execute --format agent
 go run ./cmd/atr bundle preview \
   --bundle /tmp/atsura-bundle.json \
-  -- gh pr list --limit=1
+  -- gh pr list
 go run ./cmd/atr bundle execute \
   --bundle /tmp/atsura-bundle.json \
-  -- gh pr list --limit=1
+  -- gh pr list
+go run ./cmd/atr bundle preview \
+  --bundle /tmp/atsura-bundle.json \
+  -- gh pr list --limit=2
 ```
 
 The exact scoped help publishes the positional-only grammar and fixed schema-2
@@ -503,6 +520,9 @@ then requires GitHub CLI adapter contract 2, source major 2, exact command
 `issue list` or `pr list`, the complete maintained argv grammar, JSON output,
 and exactly one inline
 `--json=<ordered-select>` before any positional-only marker.
+The first preview and execute pair also prove that the configured `--limit`
+default is applied when omitted. The final preview proves that an exact caller
+override wins and appears in the distinct plan without a duplicate default.
 
 On success, `execution.plan_digest` equals preview's `plan_digest`,
 `source_process_attempts` is one, `source.exit_code` is zero, and
@@ -629,14 +649,19 @@ wrapper:
   kind: transform
   before: []
   invoke:
+    option_defaults:
+      - option: --limit
+        value: "30"
     append_args: ["--json=number,title,state"]
   output:
-    input: json
-    select: [number, title, state]
-    rename:
-      - from: number
-        to: id
-    render: compact_json
+    kind: projection
+    projection:
+      input: json
+      select: [number, title, state]
+      rename:
+        - from: number
+          to: id
+      render: compact_json
   after: []
 ```
 
@@ -657,12 +682,20 @@ controlling terminal, and render the fixed function bytes:
   --bundle /tmp/atsura-bundle.json > /tmp/atsura-gh-wrapper.sh
 
 . /tmp/atsura-gh-wrapper.sh
-gh pr list --limit=1
+gh pr list
+gh pr list --limit=2
 unset -f gh
 ```
 
-That is the `transformed_json` case. Repeat the build/adopt/render/activate
-sequence with two separate schema-4 specifications:
+Those calls are the default-applied and caller-overridden forms of the same
+`transformed_json` wrapper. Exact-command `gh pr list --help` discloses the
+configured default without starting the bound `atr`, source, or processor.
+The value is public in the specification, bundle, plan, help, and evidence; do
+not place credentials in it. It remains an argv element and never becomes
+shell source.
+
+Repeat the build/adopt/render/activate sequence with two separate schema-5
+specifications:
 
 - keep the generated identity wrapper to obtain
   `source_stream_passthrough`, then invoke ordinary `gh pr list --limit=1`; and
@@ -672,7 +705,7 @@ sequence with two separate schema-4 specifications:
 
 Each bundle contains exactly one included command and only an option surface
 covered by the maintained GitHub CLI runtime grammar. These are three reviewed
-bundles and three ordinary invocations, not runtime mode selection or fallback.
+bundles and four ordinary invocations, not runtime mode selection or fallback.
 
 For the nature-distinct second source, run from a reviewed Go module where the
 inspection probe records stable Go 1.26.x. Without processor evidence the
@@ -765,14 +798,15 @@ processor failure returns no source or processor bytes and never falls back.
 `bundle execute` deliberately rejects this result mode before source start;
 the ordinary wrapper is the finite runtime path.
 
-The generated function contains the complete `wrapper run` contract-version-2
+The generated function contains the complete `wrapper run` contract-version-3
 closure and always inserts the explicit `--` separator before non-help
 `"$@"`. Its exact final root, namespace, and command `--help` branches are
-compiled from the bundle and name its full digest; they do not start the bound
-`atr`, source, or processor. Users do not copy the bundle digest or runtime
+compiled from the bundle and name its full digest; exact-command help also
+discloses configured option defaults. They do not start the bound `atr`, source,
+or processor. Users do not copy the bundle digest or runtime
 identity into a second command. On transformed success, ordinary `gh` stdout
 is exactly one compact JSON object or array plus LF and stderr is empty. The
-source JSON supplies container and value types, while the fresh schema-5 plan
+source JSON supplies container and value types, while the fresh schema-6 plan
 governs selection, rename, order, compact rendering, and `result_mode`. On a
 conventionally completed source-stream case, stdout and stderr are the exact
 separately bounded source bytes and the ordinary command returns the source
@@ -853,7 +887,7 @@ reconstruction. Direct preview
 and wrapper application use the same fresh plan and plan digest for identical
 validated inputs; the generic fixture, not wrapper stdout, compares that
 evidence. Each admitted case has exactly one successful source attempt, the
-three-case GitHub fixture has three, each Go case has one source attempt, and
+four-case GitHub fixture has four, each Go case has one source attempt, and
 the eligible optimizer case has one processor attempt. Every pre-start
 rejection has zero. Vendor-specific activation remains downstream.
 
@@ -866,10 +900,12 @@ extracted from its immutable archive and can close the finite GitHub CLI
 transform journey on that target without a repository-built replacement
 binary, provider credential, provider network call, or undeclared parser. On
 Linux and macOS the same extracted executable must also render and serve the
-transformed-JSON, identity, and append-argv-only ordinary-command POSIX cases.
-One shared two-command wrapper must serve the transformed-JSON and append-only
-cases, expose both exact commands through root, namespace, and command tailored
-help while its bound runtime is non-executable, then preserve the declared
+default-applied and caller-overridden transformed-JSON, identity, and append-
+argv-only ordinary-command POSIX cases.
+One shared two-command wrapper must serve both transformed-JSON forms and the
+append-only case, expose both exact commands through root, namespace, and
+exact-command tailored help while its bound runtime is non-executable, then
+preserve the declared
 hidden- and unknown-selector faults with zero source and processor attempts.
 Every native target must record stable Go 1.26.x inspection evidence through
 contract 2. Linux and macOS must additionally serve exact identity-wrapped
@@ -879,18 +915,20 @@ artifact and proves the exact unsupported-render result with zero Go wrapper
 source attempts and no processor evidence while retaining the GitHub transform
 journey.
 
-This section defines the optimizer-, multi-command-, and tailored-help-aware
-acceptance target. Evidence schema 7, unchanged aggregate schema 2, and the
-native workflow implement the current mechanism. CI run 29910455312 passed the
+This section defines the optimizer-, multi-command-, tailored-help-, and
+option-default-aware acceptance target. Evidence schema 8, unchanged aggregate
+schema 2, and the native workflow implement the current mechanism. CI run
+29910455312 passed the
 historical schema-6 five-target matrix and aggregate on 2026-07-22 for revision
 `01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. That historical run established
 only the predecessor one-command help contract; it did not establish the
 schema-7 multi-command requirements, authorize publication, or carry forward
 to a later revision.
-CI run 29914651542 then passed the current five-target schema-7 matrix and
+CI run 29914651542 then passed the historical five-target schema-7 matrix and
 aggregate schema 2 on 2026-07-22 for revision
-`8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`. The current requirements therefore
-have one exact release-quality implementation observation. It does not
+`8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`. Those historical requirements have
+one exact release-quality implementation observation. Current schema 8 has no
+recorded native five-target result. The historical result does not
 authorize publication, independently attest the executables, or carry forward
 to a later revision.
 
@@ -919,8 +957,9 @@ inventory and the exact ordered 27-fault preview and 41-fault execute recovery
 signatures rather than recognizing prose markers alone. It then obtains the
 catalog in four fixture attempts. For the shared wrapper, the harness composes
 typed drafts into one exclude-by-default specification: `pr list` exposes only
-`--limit` and uses the compact projection, while `issue list` exposes `--label`
-and `--search`, appends fixed `--limit=1`, and preserves source streams. It
+`--limit`, defaults it to `"30"`, and uses the compact projection, while
+`issue list` exposes `--label` and `--search`, appends fixed `--limit=1`, and
+preserves source streams. It
 separately builds the existing issue projection bundle for direct-execution
 evidence. Each specification is validated and built before its status is
 observed. Pre-adoption preview and execute against the shared bundle fail
@@ -941,12 +980,13 @@ attempt per command, returns fields `["id","title","state"]`, omits the
 unselected canary, and has the same command-specific plan digest as preview.
 
 Linux and macOS build and adopt one two-command wrapper bundle plus one separate
-identity bundle. The shared wrapper serves transformed-JSON `pr list` with
-caller argv `["pr","list","--limit=1"]` and append-only `issue list` with
+identity bundle. The shared wrapper serves default-applied transformed-JSON
+`pr list` with caller argv `["pr","list"]`, caller-overridden transformed JSON
+with caller argv `["pr","list","--limit=2"]`, and append-only `issue list` with
 caller argv
 `["issue","list","--search=append value","--label=one","--label=two"]`;
-the two cases bind one exact bundle and rendered-source digest but distinct
-schema-5 plans. The identity case retains its separate bundle, plan, rendered
+the three cases bind one exact bundle and rendered-source digest but distinct
+schema-6 plans. The identity case retains its separate bundle, plan, rendered
 source, and hostile caller argv. The harness renders JSON review material and
 raw function text from the exact extracted `atr`, compares the exact source and
 SHA-256, sources the fixed material in an isolated generic POSIX shell, and
@@ -954,17 +994,19 @@ invokes ordinary `gh`. For the shared wrapper, it temporarily makes the exact
 extracted `atr` non-executable and requires byte-exact `["--help"]`,
 `["issue","--help"]`, `["issue","list","--help"]`,
 `["pr","--help"]`, and `["pr","list","--help"]` results with the full
-bundle digest and empty stderr. After restoring the runtime, hidden
+bundle digest and empty stderr; exact `pr list` help discloses the configured
+default. After restoring the runtime, hidden
 `["api","--help"]` must yield `command_not_in_surface` and
 `["unknown","--help"]` must yield `invalid_invocation`; none may add a
 source or processor attempt. Each wrapper case records the preview-derived
-schema-5 plan digest for its exact bundle and caller argv; the ordinary result
+schema-6 plan digest, exact source argv, complete declared defaults, and exact
+applied subset for its bundle and caller argv; the ordinary result
 and attempt log must match that plan's declared result mode. The append-only
 log must add exactly one source attempt per ordinary execution case. The
 transformed result must equal its compact JSON value; the append-only and
 identity cases must match their
 exact bounded stdout/stderr digests and conventional status without storing
-either stream. POSIX retains three wrapper source attempts and 13 GitHub
+either stream. POSIX requires four wrapper source attempts and 14 GitHub
 fixture attempts. Windows must instead receive
 `wrapper_platform_not_supported`, empty wrapper cases and tailored-help views
 and faults, zero wrapper source attempts, 10 GitHub fixture attempts, and no
@@ -984,13 +1026,13 @@ but requires `wrapper_platform_not_supported`, no Go wrapper case, one zero-
 attempt rejection, and zero Go wrapper source attempts. Isolation is fixture
 discipline, not an Atsura sandbox claim.
 
-The schema-7 journey supplies the exact official RTK v0.43.0 archive
+The schema-8 journey supplies the exact official RTK v0.43.0 archive
 only to the four POSIX rows. Before extraction it verifies target, archive name,
 size, and SHA-256 from the pinned processor manifest; after extraction it
 requires exactly one regular executable with the pinned binary identity. The
 packaged `atr` then performs explicit `processor inspect` and carries that
-schema-1 observation through schema-4 authoring, schema-3 compilation and
-adoption, schema-5 preview, render, and ordinary no-argument `go test`.
+schema-1 observation through schema-5 authoring, schema-4 compilation and
+adoption, schema-6 preview, render, and ordinary no-argument `go test`.
 Runtime source argv is exactly `go test -json`; processor argv is exactly
 `pipe --filter=go-test`.
 
@@ -1028,7 +1070,7 @@ Windows records
 zero Go wrapper source attempts. Together with the four GitHub inspection and
 two direct success attempts plus induced failures, the fixed GitHub fixture-
 attempt total remains 13 on Linux/macOS and 10 on Windows. These are historical
-schema-4 baseline facts, not the current schema-7 acceptance requirements.
+schema-4 baseline facts, not the current schema-8 acceptance requirements.
 
 Evidence schema 4 does not support the current Go contract or the optimizer.
 Schema 5 retains the base journey facts and additionally binds Go CLI contract
@@ -1039,7 +1081,7 @@ disposition and status, and bounded leak booleans. It is optimizer-aware but
 predates static tailored help.
 
 Historical schema 6 retains the complete schema-5 record and adds a bounded
-`tailored_help` object for one transformed-PR wrapper. Current schema 7 adds
+`tailored_help` object for one transformed-PR wrapper. Historical schema 7 adds
 exact `caller_argv` to every wrapper case. POSIX orders
 `transformed_json`, `append_only`, and `identity`; the first two share one exact
 bundle and wrapper digest while keeping distinct caller argv and plan digests,
@@ -1055,9 +1097,18 @@ attempts, and 10 GitHub fixture attempts. POSIX Go identity evidence adds exact
 caller argv `["test"]`; Windows keeps the Go case empty. Aggregate schema 2
 remains unchanged and excludes the per-case caller argv.
 
+Current schema 8 retains those historical records and binds specification
+schema 5, bundle schema 4, plan schema 6, generated-wrapper contract 3, exact
+source argv, the complete declared option-default list, and the exact applied
+subset. POSIX orders `default_applied`, `default_overridden`, `append_only`,
+and `identity`; the first three share one exact bundle and wrapper digest while
+keeping distinct plans. Four ordinary cases produce four wrapper source
+attempts and 14 GitHub fixture attempts. Windows retains zero wrapper attempts
+and 10 GitHub fixture attempts. Go and RTK contracts remain unchanged.
+
 No evidence document stores source or processor streams. Without an accepted
 external observer it does not claim processor-launch counts; controlled
-application and infrastructure tests own that truth. Schema 7 becomes release
+application and infrastructure tests own that truth. Schema 8 becomes release
 evidence only for an exact revision whose strict decoder, five native rows,
 aggregate, and publication dependency all pass; this document does not attest
 a moving worktree. The inherited schema-5 optimizer shape keeps the identity
@@ -1073,8 +1124,8 @@ bounds; v1 evidence is rejected.
 CI runs this probe natively on Linux amd64, Linux arm64, macOS amd64, macOS
 arm64, and Windows amd64. The release workflow downloads the exact archive
 uploaded by its build job and blocks publication until all five native replays
-succeed. The four POSIX rows must close all three GitHub ordinary-command result
-cases, the exact Go identity case, and the required reachable optimizer cases;
+succeed. The four POSIX rows must close all four GitHub ordinary-command cases,
+the exact Go identity case, and the required reachable optimizer cases;
 the Windows row must close the exact structured unsupported-render contracts
 before any source attempt, record no processor evidence, and not count as POSIX
 activation or optimizer support.
@@ -1095,21 +1146,23 @@ On 2026-07-22, the exact packaged Darwin/arm64 journey passed for revision
 `b4ade8c`, including ordinary-command activation. That bounded observation does
 not cover this later documentation tree, schema-5 source-stream or optimizer
 plans, current Go contract 2, RTK inspection or execution, wrapper contract 2
-static help, the current schema-7/aggregate-schema-2 mechanism, the other
+static help, the current schema-8/aggregate-schema-2 mechanism, the other
 native rows, publication, or the complete release matrix; the tagged revision
 must replay every required row.
 
-The current bounded observation is CI run 29914651542 on 2026-07-22. It passed
-the exact packaged journeys for Linux amd64/arm64, Darwin amd64/arm64, and
-Windows amd64 plus aggregate schema 2 for revision
-`8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`. It covers the current schema-7
+The latest historical bounded observation is CI run 29914651542 on 2026-07-22.
+It passed the exact packaged journeys for Linux amd64/arm64, Darwin amd64/arm64,
+and Windows amd64 plus aggregate schema 2 for revision
+`8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`. It covers the historical schema-7
 multi-command, optimizer, static-help, and platform acceptance mechanism for
 this revision only; it does not authorize publication, independently attest
-the executables, or carry forward to another revision.
+the executables, or carry forward to another revision. No current schema-8
+native observation has yet been recorded.
 
 Exact scoped help is the public authoring contract: the source catalog exposes
 command paths, provenance, option grammar, structured output selector, and
-fields; schema-4 help exposes surface, option, wrapper, projection, optimizer,
+fields; schema-5 help exposes surface, option, wrapper, option-default,
+projection, optimizer,
 select, rename, and render constraints; processor help exposes explicit RTK
 inspection and observation identity; execute help exposes the finite runtime-
 admission matrix; wrapper help exposes the renderer-produced closure, explicit
@@ -1120,9 +1173,10 @@ does not erase the user's deliberate configuration-authoring step.
 
 Historical evidence schema 4 did not run RTK or validate an optimizer default.
 Schema 5 is the optimizer-aware proof but predates static tailored help, and
-schema 6 adds the first one-command contract-2 tailored-help proof. Current
+schema 6 adds the first one-command contract-2 tailored-help proof. Historical
 schema 7 retains the accepted `atsura.output.rtk_go_test_pass.v1` evidence and
-adds the exact shared-bundle/shared-wrapper multi-command proof; the release
+adds the exact shared-bundle/shared-wrapper multi-command proof. Current schema
+8 adds the option-default and contract-3 proof; the release
 claim is not complete merely because local controlled tests or one platform
 pass.
 The processor portion records only explicitly observed identity, invocation,

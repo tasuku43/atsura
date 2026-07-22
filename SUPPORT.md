@@ -1,10 +1,11 @@
 # Support
 
 Atsura is pre-release and maintained on a best-effort basis. Support currently
-covers source inspection through the registered GitHub CLI adapter, schema-3
-tailoring specification creation and validation, schema-2 bundle compilation,
+covers source inspection through the registered GitHub CLI and Go adapters,
+schema-5 tailoring specification creation and validation, schema-4 bundle
+compilation,
 exact-digest bundle status and interactive adoption, repository development,
-zero-execution schema-2 wrapper-plan preview, the first narrow adapter-admitted
+zero-execution schema-6 wrapper-plan preview, the first narrow adapter-admitted
 typed JSON transform runtime, host-neutral POSIX wrapper rendering/invocation,
 and the verification harness.
 
@@ -43,20 +44,21 @@ atr bundle build / bundle status / bundle trust
 atr bundle preview --bundle <path> -- <source-executable> <argv>
 atr bundle execute --bundle <path> -- <source-executable> <argv>
 atr wrapper render --bundle <absolute-path> [--format text|json]
-atr wrapper run --contract-version=2 --bundle=<absolute-path> \
+atr wrapper run --contract-version=3 --bundle=<absolute-path> \
   --bundle-digest=<sha256> --runtime-path=<absolute-atr> \
   --runtime-sha256=<sha256> --runtime-size=<bytes> -- <argv...>
 ```
 
-Specification schema 4 composes command and option membership independently
-from identity or transforming wrapper behavior. Bundle schema 3 binds the exact
+Specification schema 5 composes command and option membership independently
+from identity or transforming wrapper behavior and admits one finite typed
+value-option default. Bundle schema 4 binds the exact
 source, catalog, normalized specification, and compiled surface. `bundle trust`
 means user adoption of one exact purpose-specific bundle; it is not source
 authorization.
 
 `spec init` intentionally emits an identity-wrapper authoring baseline. Exact
 agent help for `source inspect`, `spec init`, and `spec validate` describes the
-catalog fields and finite schema-4 transform grammar needed to select observed
+catalog fields and finite schema-5 transform grammar needed to select observed
 JSON fields and declare collision-free renames. The installed `atr` workflow
 does not require a source checkout, although editing the reviewed YAML remains
 an explicit user or agent configuration action.
@@ -71,7 +73,7 @@ marker. Preview proves an active selector and planned input format but does not
 apply it.
 
 `bundle execute` independently rebuilds that plan. Current runtime support is
-limited to schema-4 JSON transform wrappers for GitHub CLI adapter contract 2,
+limited to schema-5 JSON transform wrappers for GitHub CLI adapter contract 2,
 GitHub CLI major 2, and exact commands `issue list` and `pr list`. The adapter
 must admit the complete argv and exact inline ordered `--json` selector before
 one bounded source attempt. Competing `--jq`, `--template`, and `--web` modes,
@@ -80,13 +82,22 @@ combinations fail before start. Successful stdout is still parsed and
 transformed strictly; raw stdout, stderr, and unselected fields are not returned
 or persisted.
 
+For the finite `pr list` transform, a declared `--limit` default is inserted as
+`--limit=<value>` after the command path only when the caller did not supply the
+exact long option before the first `--`; the plan exposes the declared and
+applied lists. Values are public artifact/help/evidence data, not credential
+storage or shell source. The complete canonical `--option=value` argv element,
+not the standalone value, is bounded to 4096 bytes.
+
 On Linux and macOS, `wrapper render` produces a fixed POSIX function only when
-the exact adopted bundle exposes one completely runtime-admitted command and
-result mode. Contract 2 embeds the exact bundle digest and current absolute
+every command and result mode in the non-empty exact adopted surface is
+runtime-admitted. Contract 3 embeds the exact bundle digest and current absolute
 `atr` identity. Root, included-namespace, and included-command final `--help`
 views are compiled from the bundle and start no bound `atr`, source, or
-processor; every other argv list is forwarded unchanged after the required
-`--` to `wrapper run`. `wrapper run` rebuilds the same fresh plan and emits only
+processor; exact-command help discloses configured defaults while root and
+namespace help remain indexes. Every other argv list is forwarded unchanged
+after the required `--` to `wrapper run`. `wrapper run` rebuilds the same fresh
+plan and emits only
 its declared compact JSON, exact bounded source-stream, or finite
 original-preserving optimizer result. Activation and later modification of the
 function are caller-owned. Windows returns the structured
@@ -104,8 +115,10 @@ capabilities. The only external optimizer contract is the exact maintained
 RTK v0.43.0 strict Go-test-pass tuple; it does not generalize to arbitrary RTK
 programs or filters.
 Coding-agent-host configuration, hooks, permissions, and
-lifecycle are outside Atsura rather than deferred capabilities. Retired policy
-schemas 1 and 2, bundle schema 1, legacy `plan preview`, and `run` are supported
+lifecycle are outside Atsura rather than deferred capabilities. Retired
+authorization-policy schemas 1 and 2, tailoring-specification schemas 3 and 4,
+bundle schemas 1 through 3, generated-wrapper contract 2, legacy `plan preview`,
+and `run` are supported
 only by explicit zero-execution migration diagnostics and are not automatically
 converted.
 
