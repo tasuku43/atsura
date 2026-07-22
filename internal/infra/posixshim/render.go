@@ -32,7 +32,7 @@ func (*Renderer) Render(binding wrapperbinding.Binding) (wrapperbinding.Rendered
 }
 
 // Render emits an executable #!/bin/sh program with contract-3 help semantics
-// and one exact wrapper-run fallthrough. No shell body, executable, argv, or
+// and one exact wrapper-run exec. No shell body, executable, argv, or
 // command-resolution instruction is supplied by configuration.
 func Render(binding wrapperbinding.Binding) (wrapperbinding.RenderedMaterial, error) {
 	if err := binding.Validate(); err != nil {
@@ -59,6 +59,11 @@ func Render(binding wrapperbinding.Binding) (wrapperbinding.RenderedMaterial, er
 	if err := renderHelpBranches(&source, binding); err != nil {
 		return wrapperbinding.RenderedMaterial{}, invalidRender("help: %v", err)
 	}
+	// The shim must not remain as an intermediate process. A literal escaped
+	// POSIX special builtin preserves the bound runtime's PID, signals, streams,
+	// and exit status even when /bin/sh is dash and does not optimize a final
+	// ordinary command into an exec.
+	source.WriteString("\\exec ")
 	source.WriteString(runtimePath)
 	source.WriteString(" --error-format=json wrapper run --contract-version=")
 	source.WriteString(strconv.Itoa(binding.ContractVersion))

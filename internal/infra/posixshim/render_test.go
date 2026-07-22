@@ -66,7 +66,7 @@ func TestRenderIsDeterministicFixedExecutable(t *testing.T) {
 		"if \\command test \"$#\" -eq 3 && \\command test \"${1}\" = 'issue' && \\command test \"${2}\" = 'list' && \\command test \"${3}\" = '--help'; then\n" +
 		"  \\command printf '%s\\n' 'Atsura tailored help' 'Bundle digest: " + strings.Repeat("a", 64) + "' 'Command: issue list' 'Source summary: List issues' 'Tailoring reason: Keep issue inventory' 'Options:' '  --json=<value> (value required; default when omitted: \"30\")' '  --web (no value)'\n" +
 		"  \\exit $?\nfi\n" +
-		"'/opt/Atsura'\\''s runtime/bin/atr' --error-format=json wrapper run --contract-version=3" +
+		"\\exec '/opt/Atsura'\\''s runtime/bin/atr' --error-format=json wrapper run --contract-version=3" +
 		" --bundle='/tmp/-purpose bundle;`literal`/$(still-literal)-雪.json'" +
 		" --bundle-digest=" + strings.Repeat("a", 64) +
 		" --runtime-path='/opt/Atsura'\\''s runtime/bin/atr'" +
