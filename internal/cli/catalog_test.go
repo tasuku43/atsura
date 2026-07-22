@@ -12,6 +12,7 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/authn"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
+	"github.com/tasuku43/atsura/internal/domain/processorprocess"
 	"github.com/tasuku43/atsura/internal/domain/sourcecatalog"
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
 	"github.com/tasuku43/atsura/internal/domain/tailoringplan"
@@ -909,6 +910,90 @@ func TestSourceInspectCatalogPublishesExactAdapterAndNestedCatalogSchema(t *test
 		got, exists := paths[path]
 		if !exists || got.Type != expected.fieldType || got.ElementType != expected.elementType || !got.Required {
 			t.Errorf("source catalog schema field %q=%+v want=%+v", path, got, expected)
+		}
+	}
+}
+
+func TestProcessorInspectCatalogPublishesExactAdapterObservationAndFaultContract(t *testing.T) {
+	spec, found := DefaultCatalog().Lookup("processor inspect")
+	if !found {
+		t.Fatal("processor inspect is missing from the catalog")
+	}
+	if spec.Args != "--adapter=rtk --executable <absolute-path>" || spec.Effect != operation.EffectExecute ||
+		spec.Role != RoleUtility || spec.Agent.CapabilityID != "tailoring.output.optimize" || len(spec.Agent.Inputs) != 2 ||
+		spec.Agent.Mutation != nil || spec.Agent.Authentication != nil || spec.Agent.FixedTarget != nil {
+		t.Fatalf("processor inspect contract=%+v", spec)
+	}
+	adapter := spec.Agent.Inputs[0]
+	executable := spec.Agent.Inputs[1]
+	if adapter.Name != "--adapter" || !adapter.Required || !equalStrings(adapter.AllowedValues, []string{"rtk"}) ||
+		executable.Name != "--executable" || !executable.Required || len(executable.AllowedValues) != 0 {
+		t.Fatalf("processor inspect inputs=%+v", spec.Agent.Inputs)
+	}
+	if spec.Agent.Output.Authority != OutputAuthorityCatalog ||
+		!reflect.DeepEqual(spec.Agent.Output.Formats, []OutputFormat{OutputFormatJSON}) ||
+		spec.Agent.Output.DefaultFormat != OutputFormatJSON || spec.Agent.Output.JSONEnvelope != "inspection" ||
+		spec.Agent.Output.JSONSchemaVersion != 1 || spec.Agent.Output.Delivery != OutputDeliveryComplete ||
+		spec.Agent.Output.CollectionCoverage != CollectionCoverageNotApplicable || len(spec.Agent.Output.Fields) != 3 {
+		t.Fatalf("processor inspect output=%+v", spec.Agent.Output)
+	}
+	if spec.Agent.Output.Fields[0].Name != "observation_digest" || spec.Agent.Output.Fields[1].Name != "observation" ||
+		spec.Agent.Output.Fields[2].Name != "processor_process_attempts" {
+		t.Fatalf("processor inspect fields=%+v", spec.Agent.Output.Fields)
+	}
+	schema := spec.Agent.Output.Fields[1].Schema
+	if schema == nil || schema.ID != "processor-observation" || schema.Version != processorprocess.ObservationSchemaVersion {
+		t.Fatalf("processor observation schema=%+v", schema)
+	}
+	paths := make(map[string]OutputSchemaField, len(schema.Fields))
+	for _, field := range schema.Fields {
+		paths[field.Path] = field
+	}
+	wantFields := map[string]struct {
+		fieldType   OutputFieldType
+		elementType OutputFieldType
+	}{
+		"/schema_version":             {fieldType: OutputFieldTypeInteger},
+		"/adapter/kind":               {fieldType: OutputFieldTypeString},
+		"/adapter/contract_version":   {fieldType: OutputFieldTypeInteger},
+		"/platform/os":                {fieldType: OutputFieldTypeString},
+		"/platform/arch":              {fieldType: OutputFieldTypeString},
+		"/identity/resolved_path":     {fieldType: OutputFieldTypeString},
+		"/identity/sha256":            {fieldType: OutputFieldTypeString},
+		"/identity/size":              {fieldType: OutputFieldTypeInteger},
+		"/version":                    {fieldType: OutputFieldTypeString},
+		"/probe/argv":                 {fieldType: OutputFieldTypeArray, elementType: OutputFieldTypeString},
+		"/probe/environment_contract": {fieldType: OutputFieldTypeString},
+		"/probe/attempts":             {fieldType: OutputFieldTypeInteger},
+	}
+	for path, expected := range wantFields {
+		got, exists := paths[path]
+		if !exists || !got.Required || got.Type != expected.fieldType || got.ElementType != expected.elementType {
+			t.Errorf("processor schema field %q=%+v want=%+v", path, got, expected)
+		}
+	}
+
+	errorsByCode := make(map[string]CommandError, len(spec.Agent.Errors))
+	for _, declared := range spec.Agent.Errors {
+		errorsByCode[declared.Code] = declared
+	}
+	wantFaults := map[string]struct {
+		kind      fault.Kind
+		retryable bool
+	}{
+		"unsupported_processor_platform":     {kind: fault.KindUnsupported},
+		"unsupported_processor_artifact":     {kind: fault.KindRejected},
+		"processor_identity_unavailable":     {kind: fault.KindUnavailable, retryable: true},
+		"processor_environment_setup_failed": {kind: fault.KindUnavailable, retryable: true},
+		"processor_process_start_failed":     {kind: fault.KindUnavailable, retryable: true},
+		"processor_execution_canceled":       {kind: fault.KindCanceled},
+		"processor_cleanup_failed":           {kind: fault.KindUnavailable},
+		"execute_output_write_failed":        {kind: fault.KindInternal},
+	}
+	for code, expected := range wantFaults {
+		got, exists := errorsByCode[code]
+		if !exists || got.Kind != expected.kind || got.Retryable != expected.retryable {
+			t.Errorf("processor inspect fault %q=%+v want=%+v", code, got, expected)
 		}
 	}
 }

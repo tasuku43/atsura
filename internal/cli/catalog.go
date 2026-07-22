@@ -13,6 +13,7 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/authn"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
+	"github.com/tasuku43/atsura/internal/domain/processorprocess"
 	"github.com/tasuku43/atsura/internal/domain/sourcecatalog"
 	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
@@ -840,6 +841,35 @@ func sourceCatalogOutputSchema() *OutputSchema {
 	}
 	sort.Slice(fields, func(i, j int) bool { return fields[i].Path < fields[j].Path })
 	return &OutputSchema{ID: "source-command-catalog", Version: sourcecatalog.SchemaVersion, Fields: fields}
+}
+
+func processorObservationOutputSchema() *OutputSchema {
+	field := func(path string, fieldType OutputFieldType) OutputSchemaField {
+		return OutputSchemaField{Path: path, Type: fieldType, Required: true}
+	}
+	array := func(path string, elementType OutputFieldType) OutputSchemaField {
+		return OutputSchemaField{Path: path, Type: OutputFieldTypeArray, ElementType: elementType, Required: true}
+	}
+	fields := []OutputSchemaField{
+		field("/adapter", OutputFieldTypeObject),
+		field("/adapter/contract_version", OutputFieldTypeInteger),
+		field("/adapter/kind", OutputFieldTypeString),
+		field("/identity", OutputFieldTypeObject),
+		field("/identity/resolved_path", OutputFieldTypeString),
+		field("/identity/sha256", OutputFieldTypeString),
+		field("/identity/size", OutputFieldTypeInteger),
+		field("/platform", OutputFieldTypeObject),
+		field("/platform/arch", OutputFieldTypeString),
+		field("/platform/os", OutputFieldTypeString),
+		field("/probe", OutputFieldTypeObject),
+		array("/probe/argv", OutputFieldTypeString),
+		field("/probe/attempts", OutputFieldTypeInteger),
+		field("/probe/environment_contract", OutputFieldTypeString),
+		field("/schema_version", OutputFieldTypeInteger),
+		field("/version", OutputFieldTypeString),
+	}
+	sort.Slice(fields, func(i, j int) bool { return fields[i].Path < fields[j].Path })
+	return &OutputSchema{ID: "processor-observation", Version: processorprocess.ObservationSchemaVersion, Fields: fields}
 }
 
 func tailoringSpecificationOutputSchema() *OutputSchema {
@@ -1673,6 +1703,67 @@ func DefaultCatalog() Catalog {
 				},
 			},
 			handler: runSampleRead,
+		},
+		CommandSpec{
+			Path:    "processor inspect",
+			Summary: "Inspect one explicit output processor executable",
+			Args:    "--adapter=rtk --executable <absolute-path>",
+			Effect:  operation.EffectExecute,
+			Role:    RoleUtility,
+			Agent: AgentContract{
+				CapabilityID: "tailoring.output.optimize",
+				Outcome:      "Produce deterministic identity-bound evidence for one maintained RTK output processor by running only its isolated version probe",
+				Inputs: []CommandInput{
+					{Name: "--adapter", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Select the sole registered finite processor-inspection adapter.", AllowedValues: []string{"rtk"}},
+					{Name: "--executable", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Inspect this exact absolute clean processor executable path without PATH discovery.", AllowedValues: []string{}},
+				},
+				Output: CommandOutput{
+					Authority: OutputAuthorityCatalog,
+					Formats:   []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
+					Fields: []OutputField{
+						{Name: "observation_digest", Type: OutputFieldTypeString, Description: "SHA-256 identity of the canonical schema-1 processor observation bytes."},
+						{Name: "observation", Type: OutputFieldTypeObject, Description: "Exact adapter, native platform, executable identity, version, isolated probe, and attempt evidence.", Schema: processorObservationOutputSchema()},
+						{Name: "processor_process_attempts", Type: OutputFieldTypeInteger, Description: "Exact isolated processor probe attempts; successful inspection is always one."},
+					},
+					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable,
+					JSONEnvelope: "inspection", JSONSchemaVersion: 1,
+				},
+				Prerequisites: []string{
+					"An official RTK v0.43.0 executable at one explicit absolute path on a maintained Linux or Darwin architecture; Atsura does not discover, download, install, or configure it.",
+					"Inspection starts exactly one no-shell --version probe in atsura.processor.rtk_isolated.v1 with no inherited credentials or coding-agent host configuration.",
+				},
+				Errors: []CommandError{
+					declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help processor inspect", "Pass the exact rtk adapter and one absolute executable path."),
+					declaredCommandError(fault.KindContract, "processor_adapter_contract", false, "help processor inspect", "Repair the finite processor adapter composition."),
+					declaredCommandError(fault.KindInvalidInput, "unsupported_processor_adapter", false, "help processor inspect", "Select the maintained rtk adapter."),
+					declaredCommandError(fault.KindInvalidInput, "invalid_processor_executable", false, "help processor inspect", "Pass one absolute clean processor executable path."),
+					declaredCommandError(fault.KindUnsupported, "unsupported_processor_platform", false, "help processor inspect", "Inspect RTK only on a maintained Linux or Darwin architecture."),
+					declaredCommandError(fault.KindInvalidInput, "unsupported_processor_version", false, "help processor inspect", "Install the exact maintained RTK v0.43.0 version before inspecting again."),
+					declaredCommandError(fault.KindRejected, "unsupported_processor_artifact", false, "help processor inspect", "Select the official RTK v0.43.0 artifact for this native platform."),
+					declaredCommandError(fault.KindContract, "invalid_processor_observation", false, "help processor inspect", "Inspect the adapter observation and canonical evidence contract."),
+					declaredCommandError(fault.KindRejected, "processor_inspection_failed", false, "help processor inspect", "Review the exact isolated version-probe result before inspecting again."),
+					declaredCommandError(fault.KindContract, "invalid_processor_process_request", false, "help processor inspect", "Repair the exact processor process request."),
+					declaredCommandError(fault.KindUnavailable, "processor_identity_unavailable", true, "processor inspect", "Retry after the explicit executable identity is readable and stable."),
+					declaredCommandError(fault.KindInvalidInput, "unsafe_processor_executable", false, "help processor inspect", "Use a supported regular executable rather than a link or special file."),
+					declaredCommandError(fault.KindRejected, "processor_identity_changed", false, "help processor inspect", "Review the executable identity before deciding whether to inspect again."),
+					declaredCommandError(fault.KindContract, "invalid_processor_identity", false, "help processor inspect", "Repair the processor identity adapter contract."),
+					declaredCommandError(fault.KindUnavailable, "processor_environment_setup_failed", true, "processor inspect", "Retry after a private isolated processor environment can be created."),
+					declaredCommandError(fault.KindUnavailable, "processor_process_start_failed", true, "processor inspect", "Retry only because the result proves no processor process started."),
+					declaredCommandError(fault.KindContract, "processor_stdout_too_large", false, "help processor inspect", "Use processor version evidence within the declared stdout bound."),
+					declaredCommandError(fault.KindContract, "processor_stderr_too_large", false, "help processor inspect", "Use processor version evidence within the declared stderr bound."),
+					declaredCommandError(fault.KindCanceled, "processor_execution_canceled", false, "help processor inspect", "Review the uncertain post-start processor outcome before deciding whether to inspect again."),
+					declaredCommandError(fault.KindUnavailable, "processor_timeout", false, "help processor inspect", "Review the uncertain timed-out processor outcome before deciding whether to inspect again."),
+					declaredCommandError(fault.KindRejected, "processor_command_failed", false, "help processor inspect", "Correct the exact version-probe failure before inspecting again."),
+					declaredCommandError(fault.KindUnavailable, "processor_process_wait_failed", false, "help processor inspect", "Review the uncertain processor wait outcome before deciding whether to inspect again."),
+					declaredCommandError(fault.KindUnavailable, "processor_cleanup_failed", false, "help processor inspect", "Review and remove the isolated temporary processor state before another inspection."),
+					declaredCommandError(fault.KindContract, "output_contract_exceeded", false, "help processor inspect", "Reduce the bounded processor observation output."),
+					declaredCommandError(fault.KindContract, "output_encoding_failed", false, "help processor inspect", "Repair deterministic processor observation JSON projection."),
+					declaredCommandError(fault.KindInternal, "internal_error", false, "help processor inspect", "Inspect processor adapter and orchestration wiring."),
+					declaredCommandError(fault.KindInternal, "execute_output_write_failed", false, "help processor inspect", "The processor probe completed; review its outcome before considering replay."),
+					declaredCommandError(fault.KindCanceled, "operation_canceled", true, "processor inspect", "Retry only because cancellation occurred before a processor attempt."),
+				},
+			},
+			handler: runProcessorInspect,
 		},
 		CommandSpec{
 			Path:    "source inspect",

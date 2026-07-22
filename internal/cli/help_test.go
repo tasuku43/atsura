@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/tasuku43/atsura/internal/domain/fault"
+	"github.com/tasuku43/atsura/internal/domain/processorprocess"
 	"github.com/tasuku43/atsura/internal/domain/sourcecatalog"
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
 	"github.com/tasuku43/atsura/internal/domain/tailoringplan"
@@ -153,7 +154,7 @@ func TestRootAgentHelpIsACompactProjectionOfTheCatalog(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &document); err != nil {
 		t.Fatalf("agent help is not JSON: %v\n%s", err, stdout.String())
 	}
-	if document.SchemaVersion != 10 || agentHelpSchemaVersion != 10 || document.View != "index" || document.Program != ProgramName {
+	if document.SchemaVersion != 11 || agentHelpSchemaVersion != 11 || document.View != "index" || document.Program != ProgramName {
 		t.Fatalf("agent document header = %+v", document)
 	}
 	if document.ScopeRequest.InvocationTemplate != "atr help <command-or-namespace> --format agent" ||
@@ -421,6 +422,24 @@ func TestTailoringExactAgentHelpPublishesSelfContainedAuthoringContracts(t *test
 	}
 	if schema := inspect.Contract.Output.Fields[1].Schema; schema == nil || schema.ID != "source-command-catalog" || schema.Version != sourcecatalog.SchemaVersion || len(schema.Fields) < 24 {
 		t.Fatalf("source inspect schema=%+v", schema)
+	}
+
+	processorInspect := command("processor", "inspect")
+	if processorInspect.Usage != "atr processor inspect --adapter=rtk --executable <absolute-path>" ||
+		processorInspect.Effect != "execute" || processorInspect.Role != "utility" ||
+		!reflect.DeepEqual(processorInspect.Contract.Inputs[0].AllowedValues, []string{"rtk"}) ||
+		len(processorInspect.Contract.Output.Fields) != 3 {
+		t.Fatalf("processor inspect help=%+v", processorInspect)
+	}
+	if schema := processorInspect.Contract.Output.Fields[1].Schema; schema == nil || schema.ID != "processor-observation" ||
+		schema.Version != processorprocess.ObservationSchemaVersion || len(schema.Fields) != 16 {
+		t.Fatalf("processor inspect schema=%+v", schema)
+	}
+	processorPrerequisites := strings.Join(processorInspect.Contract.Prerequisites, "\n")
+	for _, want := range []string{"does not discover, download, install, or configure", "exactly one no-shell --version probe", "atsura.processor.rtk_isolated.v1", "no inherited credentials"} {
+		if !strings.Contains(processorPrerequisites, want) {
+			t.Errorf("processor inspect prerequisites lack %q: %s", want, processorPrerequisites)
+		}
 	}
 
 	init := command("spec", "init")
@@ -874,7 +893,7 @@ func TestDerivedScaleScopedAgentHelpFitsWholeResponseBudget(t *testing.T) {
 	if err := json.Unmarshal(encoded, &document); err != nil {
 		t.Fatal(err)
 	}
-	if document.SchemaVersion != 10 || len(document.Commands) != len(selected) || len(document.Workflows) != 1 ||
+	if document.SchemaVersion != 11 || len(document.Commands) != len(selected) || len(document.Workflows) != 1 ||
 		len(document.Workflows[0].Producers) != 18 || len(document.Workflows[0].Consumers) != 18 {
 		t.Fatalf("derived-scale grouped document = schema %d commands %d workflows %+v", document.SchemaVersion, len(document.Commands), document.Workflows)
 	}

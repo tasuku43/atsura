@@ -14,6 +14,7 @@ import (
 	"github.com/tasuku43/atsura/internal/app/doctorcmd"
 	"github.com/tasuku43/atsura/internal/app/planapply"
 	"github.com/tasuku43/atsura/internal/app/planpreview"
+	"github.com/tasuku43/atsura/internal/app/processorinspect"
 	"github.com/tasuku43/atsura/internal/app/runtimecompat"
 	"github.com/tasuku43/atsura/internal/app/samplecmd"
 	"github.com/tasuku43/atsura/internal/app/sourceinspect"
@@ -29,6 +30,8 @@ import (
 	"github.com/tasuku43/atsura/internal/infra/githubcli"
 	"github.com/tasuku43/atsura/internal/infra/gocli"
 	"github.com/tasuku43/atsura/internal/infra/posixwrapper"
+	"github.com/tasuku43/atsura/internal/infra/processorexec"
+	"github.com/tasuku43/atsura/internal/infra/rtkprocessor"
 	"github.com/tasuku43/atsura/internal/infra/sampledata"
 	"github.com/tasuku43/atsura/internal/infra/selfexec"
 	"github.com/tasuku43/atsura/internal/infra/sourceexec"
@@ -51,6 +54,10 @@ type wrapperRunService interface {
 	Execute(context.Context, operation.Intent, wrapperbinding.RuntimeInvocation, []string) (wrapperrun.Result, error)
 }
 
+type processorInspectionService interface {
+	Inspect(context.Context, operation.Intent, string, string) (processorinspect.Result, error)
+}
+
 // CLI contains injected streams and application services.
 type CLI struct {
 	In      io.Reader
@@ -63,6 +70,7 @@ type CLI struct {
 	doctor         *doctorcmd.Service
 	samples        *samplecmd.Service
 	sources        *sourceinspect.Service
+	processors     processorInspectionService
 	bundles        *bundlebuild.Service
 	drafts         *specinit.Service
 	authority      *bundleauthority.Service
@@ -100,6 +108,7 @@ func newCLIWithSamples(
 	trustPath, _ := trustfile.DefaultPath()
 	bundleLoader := bundlejson.New()
 	sourceRunner := sourceexec.New()
+	processorRunner := processorexec.New()
 	trustStore := trustfile.New(trustPath)
 	runtimeVerifier := newRuntimeCompatibility()
 	planApplier := planapply.New(bundleLoader, trustStore, sourceRunner, runtimeVerifier, sourceRunner, sourcejson.New())
@@ -113,6 +122,9 @@ func newCLIWithSamples(
 		sources: sourceinspect.New(map[string]sourceinspect.InspectorPort{
 			"github-cli": githubcli.New(sourceexec.New()),
 			"go-cli":     gocli.New(sourceexec.New()),
+		}),
+		processors: processorinspect.New(processorinspect.Registration{
+			Selector: "rtk", AdapterKind: rtkprocessor.AdapterKind, Inspector: rtkprocessor.New(processorRunner),
 		}),
 		bundles:        bundlebuild.New(catalogjson.New(), specyaml.New()),
 		drafts:         specinit.New(catalogjson.New()),

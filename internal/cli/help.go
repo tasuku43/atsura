@@ -16,7 +16,7 @@ type helpFormat uint8
 const (
 	helpFormatText helpFormat = iota
 	helpFormatAgent
-	agentHelpSchemaVersion = 10
+	agentHelpSchemaVersion = 11
 )
 
 type agentIndexDocument struct {

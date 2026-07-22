@@ -41,6 +41,12 @@ func TestJSONOutputMatchesCatalogContract(t *testing.T) {
 		return command, stdout, stderr
 	}
 	wrapperResult := testWrapperRenderResult(t)
+	processorResult := testProcessorInspectionResult(t)
+	newProcessorInspection := func() (*CLI, *bytes.Buffer, *bytes.Buffer) {
+		command, stdout, stderr := newDefault()
+		command.processors = &cliProcessorInspectionService{result: processorResult}
+		return command, stdout, stderr
+	}
 	newWrapperRender := func() (*CLI, *bytes.Buffer, *bytes.Buffer) {
 		command, stdout, stderr := newDefault()
 		command.wrapperRenders = &cliWrapperRenderStub{result: wrapperResult}
@@ -54,6 +60,7 @@ func TestJSONOutputMatchesCatalogContract(t *testing.T) {
 			},
 		},
 		{path: "help", args: []string{"help", "--format=agent"}, build: newDefault, view: "index"},
+		{path: "processor inspect", args: []string{"processor", "inspect", "--adapter=rtk", "--executable", processorResult.Observation.Identity.ResolvedPath}, build: newProcessorInspection},
 		{path: "spec validate", args: bundleCommandArgs("spec validate", catalogPath, specificationPath), build: newDefault},
 		{path: "bundle build", args: bundleCommandArgs("bundle build", catalogPath, specificationPath), build: newDefault},
 		{path: "bundle status", args: []string{"bundle", "status", "--bundle", bundlePath}, build: newBundleAuthority},

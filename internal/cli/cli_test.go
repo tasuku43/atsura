@@ -660,6 +660,11 @@ func TestEveryCatalogCommandDispatchesThroughItsSpec(t *testing.T) {
 			command.sources = sourceinspect.New(map[string]sourceinspect.InspectorPort{"github-cli": &cliSourceInspector{}})
 			args = append(args, "--adapter", "github-cli", "--executable", "fixture")
 		}
+		if spec.Path == "processor inspect" {
+			result := testProcessorInspectionResult(t)
+			command.processors = &cliProcessorInspectionService{result: result}
+			args = append(args, "--adapter=rtk", "--executable", result.Observation.Identity.ResolvedPath)
+		}
 		if spec.Path == "spec validate" || spec.Path == "bundle build" {
 			args = bundleCommandArgs(spec.Path, catalogPath, specificationPath)
 		}
