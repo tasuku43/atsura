@@ -5,13 +5,55 @@ import (
 	"fmt"
 
 	"github.com/tasuku43/atsura/internal/app/planapply"
+	"github.com/tasuku43/atsura/internal/app/wrappershimcmd"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
 	"github.com/tasuku43/atsura/internal/domain/tailoring"
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
 	"github.com/tasuku43/atsura/internal/domain/tailoringplan"
 	"github.com/tasuku43/atsura/internal/domain/wrapperbinding"
+	"github.com/tasuku43/atsura/internal/domain/wrappershim"
 )
+
+type wrapperInstallDocument struct {
+	SchemaVersion int                   `json:"schema_version"`
+	Installation  wrapperInstallPayload `json:"installation"`
+}
+
+type wrapperInstallPayload struct {
+	Command                  string `json:"command"`
+	Path                     string `json:"path"`
+	BinPath                  string `json:"bin_path"`
+	AlreadyInstalled         bool   `json:"already_installed"`
+	SourceProcessAttempts    int    `json:"source_process_attempts"`
+	ProcessorProcessAttempts int    `json:"processor_process_attempts"`
+}
+
+type wrapperStatusDocument struct {
+	SchemaVersion int                      `json:"schema_version"`
+	Artifacts     []wrapperArtifactPayload `json:"artifacts"`
+}
+
+type wrapperArtifactPayload struct {
+	Reference      string `json:"reference"`
+	Command        string `json:"command"`
+	State          string `json:"state"`
+	Path           string `json:"path"`
+	MaterialSHA256 string `json:"material_sha256"`
+}
+
+type wrapperRemoveDocument struct {
+	SchemaVersion int                  `json:"schema_version"`
+	Removal       wrapperRemovePayload `json:"removal"`
+}
+
+type wrapperRemovePayload struct {
+	Command                  string `json:"command"`
+	Path                     string `json:"path"`
+	Removed                  bool   `json:"removed"`
+	SourceProcessAttempts    int    `json:"source_process_attempts"`
+	ProcessorProcessAttempts int    `json:"processor_process_attempts"`
+}
 
 type wrapperRenderDocument struct {
 	SchemaVersion int                  `json:"schema_version"`
@@ -37,6 +79,110 @@ type wrapperRenderContract struct {
 type wrapperRenderBundle struct {
 	Locator string `json:"locator"`
 	Digest  string `json:"digest"`
+}
+
+func runWrapperInstall(ctx context.Context, c *CLI, spec CommandSpec, intent operation.Intent, inputs ParsedInputs) int {
+	if c.wrapperShims == nil {
+		return c.fail(ctx, wrapperShimUnavailable(wrappershimcmd.InstallCommand))
+	}
+	if spec.Agent.FixedTarget == nil || spec.Agent.Mutation == nil {
+		return c.fail(ctx, fault.New(fault.KindContract, "invalid_mutation_contract", "The wrapper artifact installation mutation contract is incomplete.", false))
+	}
+	intent.Target = operation.TargetRef{Kind: spec.Agent.FixedTarget.Kind, ParentID: spec.Agent.FixedTarget.ID}
+	intent.Impact = spec.Agent.Mutation.Impact
+	result, err := c.wrapperShims.Install(ctx, intent, inputs.One("--bundle"))
+	if err != nil {
+		return c.fail(ctx, err)
+	}
+	if result.CommandName == "" || result.Path == "" || result.BinPath == "" ||
+		result.SourceProcessAttempts != 0 || result.ProcessorProcessAttempts != 0 {
+		return c.fail(ctx, fault.New(
+			fault.KindContract,
+			"output_contract_exceeded",
+			"Wrapper installation returned an incomplete or process-attempting artifact result.",
+			false,
+			fault.NextAction{Command: "wrapper status", Reason: "Reconcile the managed artifact without repeating installation."},
+		))
+	}
+	document := wrapperInstallDocument{SchemaVersion: 1, Installation: wrapperInstallPayload{
+		Command: result.CommandName, Path: result.Path, BinPath: result.BinPath,
+		AlreadyInstalled: result.AlreadyInstalled, SourceProcessAttempts: result.SourceProcessAttempts,
+		ProcessorProcessAttempts: result.ProcessorProcessAttempts,
+	}}
+	return c.emitJSONDocument(ctx, document, wrappershimcmd.InstallCommand)
+}
+
+func runWrapperStatus(ctx context.Context, c *CLI, _ CommandSpec, intent operation.Intent, _ ParsedInputs) int {
+	if c.wrapperShims == nil {
+		return c.fail(ctx, wrapperShimUnavailable(wrappershimcmd.StatusCommand))
+	}
+	result, err := c.wrapperShims.Status(ctx, intent)
+	if err != nil {
+		return c.fail(ctx, err)
+	}
+	artifacts := make([]wrapperArtifactPayload, len(result.Artifacts))
+	for index, artifact := range result.Artifacts {
+		record := wrappershim.Record{
+			CommandName: artifact.CommandName, State: artifact.State,
+			Reference: artifact.Reference, MaterialSHA256: artifact.MaterialSHA256,
+		}
+		if err := record.Validate(); err != nil ||
+			(record.State != wrappershim.StateOwnedActive && record.State != wrappershim.StateOwnedInactive) || artifact.Path == "" {
+			return c.fail(ctx, fault.New(
+				fault.KindContract,
+				"output_contract_exceeded",
+				"Wrapper status returned an incomplete artifact record.",
+				false,
+				fault.NextAction{Command: "help wrapper status", Reason: "Repair the bounded managed-artifact result."},
+			))
+		}
+		artifacts[index] = wrapperArtifactPayload{
+			Reference: artifact.Reference.String(), Command: artifact.CommandName, State: string(artifact.State),
+			Path: artifact.Path, MaterialSHA256: artifact.MaterialSHA256,
+		}
+	}
+	return c.emitJSONDocument(ctx, wrapperStatusDocument{SchemaVersion: 1, Artifacts: artifacts}, wrappershimcmd.StatusCommand)
+}
+
+func runWrapperRemove(ctx context.Context, c *CLI, spec CommandSpec, intent operation.Intent, inputs ParsedInputs) int {
+	if c.wrapperShims == nil {
+		return c.fail(ctx, wrapperShimUnavailable(wrappershimcmd.RemoveCommand))
+	}
+	if spec.Agent.Mutation == nil || spec.Agent.Mutation.TargetIDInput != "--artifact" {
+		return c.fail(ctx, fault.New(fault.KindContract, "invalid_mutation_contract", "The wrapper artifact removal mutation contract is incomplete.", false))
+	}
+	artifact := inputs.One("--artifact")
+	intent.Target = operation.TargetRef{Kind: spec.Agent.Mutation.TargetKind, ID: artifact}
+	intent.Impact = spec.Agent.Mutation.Impact
+	result, err := c.wrapperShims.Remove(ctx, intent, artifact)
+	if err != nil {
+		return c.fail(ctx, err)
+	}
+	if result.CommandName == "" || result.Path == "" || !result.Removed ||
+		result.SourceProcessAttempts != 0 || result.ProcessorProcessAttempts != 0 {
+		return c.fail(ctx, fault.New(
+			fault.KindContract,
+			"output_contract_exceeded",
+			"Wrapper removal returned an incomplete or process-attempting artifact result.",
+			false,
+			fault.NextAction{Command: "wrapper status", Reason: "Reconcile the managed artifact without repeating removal."},
+		))
+	}
+	document := wrapperRemoveDocument{SchemaVersion: 1, Removal: wrapperRemovePayload{
+		Command: result.CommandName, Path: result.Path, Removed: result.Removed,
+		SourceProcessAttempts: result.SourceProcessAttempts, ProcessorProcessAttempts: result.ProcessorProcessAttempts,
+	}}
+	return c.emitJSONDocument(ctx, document, wrappershimcmd.RemoveCommand)
+}
+
+func wrapperShimUnavailable(command string) error {
+	return fault.New(
+		fault.KindInternal,
+		"internal_error",
+		"The managed wrapper artifact service is not configured.",
+		false,
+		fault.NextAction{Command: "wrapper status", Reason: "Inspect managed artifact composition without starting a source process."},
+	)
 }
 
 func runWrapperRender(ctx context.Context, c *CLI, _ CommandSpec, intent operation.Intent, inputs ParsedInputs) int {

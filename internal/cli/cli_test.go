@@ -696,6 +696,18 @@ func TestEveryCatalogCommandDispatchesThroughItsSpec(t *testing.T) {
 			command.wrapperRenders = &cliWrapperRenderStub{result: result}
 			args = []string{"wrapper", "render", "--bundle", result.Binding.BundleLocator}
 		}
+		if spec.Path == "wrapper install" || spec.Path == "wrapper status" || spec.Path == "wrapper remove" {
+			service, reference, shimBundle := testWrapperShimService(t)
+			command.wrapperShims = service
+			switch spec.Path {
+			case "wrapper install":
+				args = []string{"wrapper", "install", "--bundle", shimBundle}
+			case "wrapper status":
+				args = []string{"wrapper", "status"}
+			case "wrapper remove":
+				args = []string{"wrapper", "remove", "--artifact", reference.String()}
+			}
+		}
 		if spec.Path == "wrapper run" {
 			binding := testWrapperRenderResult(t).Binding.RuntimeInvocation()
 			command.wrapperRuns = &cliWrapperRunStub{result: testWrapperRunResult(tailoring.ResultShapeObject)}

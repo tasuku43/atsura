@@ -13,12 +13,14 @@ import (
 	"github.com/tasuku43/atsura/internal/app/planapply"
 	"github.com/tasuku43/atsura/internal/app/wrapperrender"
 	"github.com/tasuku43/atsura/internal/app/wrapperrun"
+	"github.com/tasuku43/atsura/internal/app/wrappershimcmd"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
 	"github.com/tasuku43/atsura/internal/domain/tailoring"
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
 	"github.com/tasuku43/atsura/internal/domain/tailoringplan"
 	"github.com/tasuku43/atsura/internal/domain/wrapperbinding"
+	"github.com/tasuku43/atsura/internal/domain/wrappershim"
 )
 
 type cliWrapperRenderStub struct {
@@ -40,6 +42,69 @@ type cliWrapperRunStub struct {
 	calls   int
 	binding wrapperbinding.RuntimeInvocation
 	args    []string
+}
+
+type cliWrapperShimStub struct {
+	installResult wrappershimcmd.InstallResult
+	statusResult  wrappershimcmd.StatusResult
+	removeResult  wrappershimcmd.RemoveResult
+	installErr    error
+	statusErr     error
+	removeErr     error
+	installCalls  int
+	statusCalls   int
+	removeCalls   int
+	installIntent operation.Intent
+	statusIntent  operation.Intent
+	removeIntent  operation.Intent
+	bundle        string
+	artifact      string
+}
+
+func (s *cliWrapperShimStub) Install(_ context.Context, intent operation.Intent, bundle string) (wrappershimcmd.InstallResult, error) {
+	s.installCalls++
+	s.installIntent = intent
+	s.bundle = bundle
+	return s.installResult, s.installErr
+}
+
+func (s *cliWrapperShimStub) Status(_ context.Context, intent operation.Intent) (wrappershimcmd.StatusResult, error) {
+	s.statusCalls++
+	s.statusIntent = intent
+	return s.statusResult, s.statusErr
+}
+
+func (s *cliWrapperShimStub) Remove(_ context.Context, intent operation.Intent, artifact string) (wrappershimcmd.RemoveResult, error) {
+	s.removeCalls++
+	s.removeIntent = intent
+	s.artifact = artifact
+	return s.removeResult, s.removeErr
+}
+
+func testWrapperShimReference(t *testing.T) wrappershim.Reference {
+	t.Helper()
+	reference, err := wrappershim.NewReference(strings.Repeat("d", 64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return reference
+}
+
+func testWrapperShimService(t *testing.T) (*cliWrapperShimStub, wrappershim.Reference, string) {
+	t.Helper()
+	root := t.TempDir()
+	reference := testWrapperShimReference(t)
+	bundle := filepath.Join(root, "purpose.json")
+	path := filepath.Join(root, "bin", "gh")
+	return &cliWrapperShimStub{
+		installResult: wrappershimcmd.InstallResult{
+			CommandName: "gh", Path: path, BinPath: filepath.Dir(path), SourceProcessAttempts: 0, ProcessorProcessAttempts: 0,
+		},
+		statusResult: wrappershimcmd.StatusResult{Artifacts: []wrappershimcmd.Artifact{{
+			Reference: reference, CommandName: "gh", State: wrappershim.StateOwnedActive, Path: path, MaterialSHA256: strings.Repeat("d", 64),
+		}}},
+		removeResult: wrappershimcmd.RemoveResult{CommandName: "gh", Path: path, Removed: true, SourceProcessAttempts: 0, ProcessorProcessAttempts: 0},
+	}, reference, bundle
 }
 
 type orderedWriter struct {
@@ -203,6 +268,45 @@ func TestWrapperCatalogPublishesExactHostNeutralContracts(t *testing.T) {
 	}
 	if run.Agent.Inputs[5].Minimum == nil || *run.Agent.Inputs[5].Minimum != 1 || run.Agent.Inputs[5].Maximum == nil {
 		t.Fatalf("runtime size input = %+v", run.Agent.Inputs[5])
+	}
+	if err := catalog.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWrapperArtifactCatalogSeparatesFixedCreateDiscoveryAndExactRemove(t *testing.T) {
+	catalog := DefaultCatalog()
+	install, found := catalog.Lookup("wrapper install")
+	if !found {
+		t.Fatal("wrapper install is missing")
+	}
+	status, found := catalog.Lookup("wrapper status")
+	if !found {
+		t.Fatal("wrapper status is missing")
+	}
+	remove, found := catalog.Lookup("wrapper remove")
+	if !found {
+		t.Fatal("wrapper remove is missing")
+	}
+	if install.Effect != operation.EffectCreate || install.Role != RoleAct || install.Agent.CapabilityID != "tailoring.wrapper.manage" ||
+		install.Agent.FixedTarget == nil || install.Agent.FixedTarget.Kind != wrappershimcmd.StoreTargetKind || install.Agent.FixedTarget.ID != wrappershimcmd.StoreTargetID ||
+		install.Agent.FixedTarget.Scope != FixedTargetScopeToolLocal || install.Agent.Mutation == nil || install.Agent.Mutation.TargetKind != wrappershimcmd.StoreTargetKind ||
+		len(install.Agent.Mutation.TargetInputs) != 0 || install.Agent.Mutation.Impact != wrappershimcmd.InstallImpact || len(install.ProducedRefs()) != 0 || len(install.ConsumedRefs()) != 0 {
+		t.Fatalf("install contract=%+v produced=%+v consumed=%+v", install, install.ProducedRefs(), install.ConsumedRefs())
+	}
+	if status.Effect != operation.EffectRead || status.Role != RoleDiscover || status.Agent.CapabilityID != install.Agent.CapabilityID ||
+		status.Agent.Output.JSONEnvelope != "artifacts" || status.Agent.Output.JSONSchemaVersion != 1 || status.Agent.Output.CollectionCoverage != CollectionCoverageExhaustive ||
+		len(status.ProducedRefs()) != 1 || status.ProducedRefs()[0] != (ProducedRef{Kind: wrappershimcmd.ArtifactRefKind, Field: "reference"}) {
+		t.Fatalf("status contract=%+v produced=%+v", status, status.ProducedRefs())
+	}
+	if remove.Effect != operation.EffectWrite || remove.Role != RoleAct || remove.Agent.CapabilityID != install.Agent.CapabilityID || remove.Agent.FixedTarget != nil ||
+		remove.Agent.Mutation == nil || remove.Agent.Mutation.TargetKind != wrappershimcmd.ArtifactRefKind || remove.Agent.Mutation.TargetIDInput != "--artifact" ||
+		!reflect.DeepEqual(remove.Agent.Mutation.TargetInputs, []string{"--artifact"}) || remove.Agent.Mutation.Impact != wrappershimcmd.RemoveImpact ||
+		len(remove.ConsumedRefs()) != 1 || remove.ConsumedRefs()[0] != (ConsumedRef{Kind: wrappershimcmd.ArtifactRefKind, Argument: "--artifact"}) {
+		t.Fatalf("remove contract=%+v consumed=%+v", remove, remove.ConsumedRefs())
+	}
+	if install.Args != "--bundle <absolute-path>" || status.Args != "" || remove.Args != "--artifact <reference>" {
+		t.Fatalf("artifact grammar=%q/%q/%q", install.Args, status.Args, remove.Args)
 	}
 	if err := catalog.Validate(); err != nil {
 		t.Fatal(err)
@@ -407,6 +511,119 @@ func TestWrapperRenderRawAndJSONOutputsDescribeIdenticalMaterial(t *testing.T) {
 	_ = json.Unmarshal(payload["processor_process_attempts"], &processorAttempts)
 	if source != string(rawOut.Bytes()) || digest != result.Material.SHA256 || commandName != "gh" || sourceAttempts != 0 || processorAttempts != 0 || jsonErr.Len() != 0 {
 		t.Fatalf("review source/digest/command/attempts = %q %q %q %d/%d", source, digest, commandName, sourceAttempts, processorAttempts)
+	}
+}
+
+func TestWrapperInstallEmitsManagedPathAndFixedCreateIntentWithoutReference(t *testing.T) {
+	stub, _, bundle := testWrapperShimService(t)
+	var stdout, stderr bytes.Buffer
+	command := New(strings.NewReader(""), &stdout, &stderr)
+	command.wrapperShims = stub
+	if code := command.RunContext(context.Background(), []string{"wrapper", "install", "--bundle", bundle}); code != ExitOK {
+		t.Fatalf("code=%d stderr=%q", code, stderr.String())
+	}
+	if stub.installCalls != 1 || stub.bundle != bundle || stub.installIntent != (operation.Intent{
+		Command: wrappershimcmd.InstallCommand, Effect: operation.EffectCreate,
+		Target: operation.TargetRef{Kind: wrappershimcmd.StoreTargetKind, ParentID: wrappershimcmd.StoreTargetID}, Impact: wrappershimcmd.InstallImpact,
+	}) {
+		t.Fatalf("calls=%d bundle=%q intent=%+v", stub.installCalls, stub.bundle, stub.installIntent)
+	}
+	var document map[string]json.RawMessage
+	if err := json.Unmarshal(stdout.Bytes(), &document); err != nil {
+		t.Fatal(err)
+	}
+	assertJSONKeys(t, document, []string{"schema_version", "installation"})
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(document["installation"], &payload); err != nil {
+		t.Fatal(err)
+	}
+	assertJSONKeys(t, payload, []string{"already_installed", "bin_path", "command", "path", "processor_process_attempts", "source_process_attempts"})
+	if bytes.Contains(stdout.Bytes(), []byte(`"reference"`)) || stderr.Len() != 0 {
+		t.Fatalf("stdout=%s stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+func TestWrapperStatusReferencePassesUnchangedIntoExactRemove(t *testing.T) {
+	stub, reference, _ := testWrapperShimService(t)
+	var statusOut, statusErr bytes.Buffer
+	statusCLI := New(strings.NewReader(""), &statusOut, &statusErr)
+	statusCLI.wrapperShims = stub
+	if code := statusCLI.RunContext(context.Background(), []string{"wrapper", "status"}); code != ExitOK {
+		t.Fatalf("status code=%d stderr=%q", code, statusErr.String())
+	}
+	var statusDocument struct {
+		SchemaVersion int `json:"schema_version"`
+		Artifacts     []struct {
+			Reference      string `json:"reference"`
+			Command        string `json:"command"`
+			State          string `json:"state"`
+			Path           string `json:"path"`
+			MaterialSHA256 string `json:"material_sha256"`
+		} `json:"artifacts"`
+	}
+	if err := json.Unmarshal(statusOut.Bytes(), &statusDocument); err != nil {
+		t.Fatal(err)
+	}
+	if statusDocument.SchemaVersion != 1 || len(statusDocument.Artifacts) != 1 || statusDocument.Artifacts[0].Reference != reference.String() || statusDocument.Artifacts[0].State != string(wrappershim.StateOwnedActive) {
+		t.Fatalf("status=%+v", statusDocument)
+	}
+
+	var removeOut, removeErr bytes.Buffer
+	removeCLI := New(strings.NewReader(""), &removeOut, &removeErr)
+	removeCLI.wrapperShims = stub
+	if code := removeCLI.RunContext(context.Background(), []string{"wrapper", "remove", "--artifact", statusDocument.Artifacts[0].Reference}); code != ExitOK {
+		t.Fatalf("remove code=%d stderr=%q", code, removeErr.String())
+	}
+	if stub.removeCalls != 1 || stub.artifact != reference.String() || stub.removeIntent != (operation.Intent{
+		Command: wrappershimcmd.RemoveCommand, Effect: operation.EffectWrite,
+		Target: operation.TargetRef{Kind: wrappershimcmd.ArtifactRefKind, ID: reference.String()}, Impact: wrappershimcmd.RemoveImpact,
+	}) {
+		t.Fatalf("calls=%d artifact=%q intent=%+v", stub.removeCalls, stub.artifact, stub.removeIntent)
+	}
+	var removeDocument map[string]json.RawMessage
+	if err := json.Unmarshal(removeOut.Bytes(), &removeDocument); err != nil {
+		t.Fatal(err)
+	}
+	assertJSONKeys(t, removeDocument, []string{"schema_version", "removal"})
+	var removal map[string]json.RawMessage
+	if err := json.Unmarshal(removeDocument["removal"], &removal); err != nil {
+		t.Fatal(err)
+	}
+	assertJSONKeys(t, removal, []string{"command", "path", "processor_process_attempts", "removed", "source_process_attempts"})
+	if bytes.Contains(removeOut.Bytes(), []byte(`"reference"`)) || statusErr.Len() != 0 || removeErr.Len() != 0 {
+		t.Fatalf("status stderr=%q remove stdout=%q stderr=%q", statusErr.String(), removeOut.String(), removeErr.String())
+	}
+}
+
+func TestWrapperArtifactMutationOutputFailureRequiresReadOnlyReconciliation(t *testing.T) {
+	stub, reference, bundle := testWrapperShimService(t)
+	for name, args := range map[string][]string{
+		"install": {"wrapper", "install", "--bundle", bundle},
+		"remove":  {"wrapper", "remove", "--artifact", reference.String()},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var stderr bytes.Buffer
+			command := New(strings.NewReader(""), shortWriter{}, &stderr)
+			command.wrapperShims = stub
+			if code := command.RunContext(context.Background(), args); code != ExitInternal {
+				t.Fatalf("code=%d stderr=%q", code, stderr.String())
+			}
+			if !strings.Contains(stderr.String(), "code: mutation_output_write_failed") || !strings.Contains(stderr.String(), "next_action: atr wrapper status") || strings.Contains(stderr.String(), "retryable: true") {
+				t.Fatalf("stderr=%q", stderr.String())
+			}
+		})
+	}
+}
+
+func TestWrapperArtifactHandlerMissingServiceReturnsStructuredInternalFault(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	command := New(strings.NewReader(""), &stdout, &stderr)
+	command.wrapperShims = nil
+	if code := command.RunContext(context.Background(), []string{"wrapper", "status"}); code != ExitInternal {
+		t.Fatalf("code=%d stderr=%q", code, stderr.String())
+	}
+	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "code: internal_error") {
+		t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 }
 

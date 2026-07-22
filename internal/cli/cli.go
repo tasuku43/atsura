@@ -22,6 +22,7 @@ import (
 	"github.com/tasuku43/atsura/internal/app/specinit"
 	"github.com/tasuku43/atsura/internal/app/wrapperrender"
 	"github.com/tasuku43/atsura/internal/app/wrapperrun"
+	"github.com/tasuku43/atsura/internal/app/wrappershimcmd"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
 	"github.com/tasuku43/atsura/internal/domain/tailoringplan"
@@ -31,12 +32,14 @@ import (
 	"github.com/tasuku43/atsura/internal/infra/githubcli"
 	"github.com/tasuku43/atsura/internal/infra/gocli"
 	"github.com/tasuku43/atsura/internal/infra/gotestjson"
+	"github.com/tasuku43/atsura/internal/infra/posixshim"
 	"github.com/tasuku43/atsura/internal/infra/posixwrapper"
 	"github.com/tasuku43/atsura/internal/infra/processorexec"
 	"github.com/tasuku43/atsura/internal/infra/processorjson"
 	"github.com/tasuku43/atsura/internal/infra/rtkprocessor"
 	"github.com/tasuku43/atsura/internal/infra/sampledata"
 	"github.com/tasuku43/atsura/internal/infra/selfexec"
+	"github.com/tasuku43/atsura/internal/infra/shimstore"
 	"github.com/tasuku43/atsura/internal/infra/sourceexec"
 	"github.com/tasuku43/atsura/internal/infra/sourcejson"
 	"github.com/tasuku43/atsura/internal/infra/specyaml"
@@ -55,6 +58,12 @@ type wrapperRenderService interface {
 
 type wrapperRunService interface {
 	Execute(context.Context, operation.Intent, wrapperbinding.RuntimeInvocation, []string) (wrapperrun.Result, error)
+}
+
+type wrapperShimService interface {
+	Install(context.Context, operation.Intent, string) (wrappershimcmd.InstallResult, error)
+	Status(context.Context, operation.Intent) (wrappershimcmd.StatusResult, error)
+	Remove(context.Context, operation.Intent, string) (wrappershimcmd.RemoveResult, error)
 }
 
 type processorInspectionService interface {
@@ -81,6 +90,7 @@ type CLI struct {
 	executions     bundleExecutionService
 	wrapperRenders wrapperRenderService
 	wrapperRuns    wrapperRunService
+	wrapperShims   wrapperShimService
 }
 
 // New builds the production CLI with offline template adapters.
@@ -122,6 +132,11 @@ func newCLIWithSamples(
 	}
 	planApplier := planapply.New(bundleLoader, trustStore, sourceRunner, runtimeVerifier, sourceRunner, sourcejson.New(), processorSupport)
 	currentExecutable := selfexec.New()
+	wrapperRenderer := wrapperrender.New(runtime.GOOS, bundleLoader, trustStore, sourceRunner, currentExecutable, runtimeVerifier, posixwrapper.New(), wrapperrender.ProcessorPorts{
+		Identity: processorRunner, Compatibility: processorCompatibility,
+	})
+	shimRoot, _ := shimstore.DefaultRoot()
+	wrapperShimStore := shimstore.New(shimRoot)
 	return &CLI{
 		In: in, Out: out, Err: errOut,
 		Version: "dev",
@@ -141,13 +156,12 @@ func newCLIWithSamples(
 		drafts: specinit.New(catalogjson.New(), specinit.ProcessorSupport{
 			Observations: processorObservations, Compatibility: processorCompatibility,
 		}),
-		authority:  bundleauthority.New(bundleLoader, sourceRunner, trustStore, terminalconfirm.New(), processorRunner),
-		previews:   planpreview.New(bundleLoader, trustStore, sourceRunner),
-		executions: bundleexecute.NewWithApplier(planApplier),
-		wrapperRenders: wrapperrender.New(runtime.GOOS, bundleLoader, trustStore, sourceRunner, currentExecutable, runtimeVerifier, posixwrapper.New(), wrapperrender.ProcessorPorts{
-			Identity: processorRunner, Compatibility: processorCompatibility,
-		}),
-		wrapperRuns: wrapperrun.New(currentExecutable, sourceRunner, planApplier),
+		authority:      bundleauthority.New(bundleLoader, sourceRunner, trustStore, terminalconfirm.New(), processorRunner),
+		previews:       planpreview.New(bundleLoader, trustStore, sourceRunner),
+		executions:     bundleexecute.NewWithApplier(planApplier),
+		wrapperRenders: wrapperRenderer,
+		wrapperRuns:    wrapperrun.New(currentExecutable, sourceRunner, planApplier),
+		wrapperShims:   wrappershimcmd.New(runtime.GOOS, wrapperRenderer, posixshim.New(), wrapperShimStore),
 	}
 }
 

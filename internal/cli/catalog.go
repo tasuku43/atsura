@@ -11,6 +11,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/tasuku43/atsura/internal/app/wrappershimcmd"
 	"github.com/tasuku43/atsura/internal/domain/authn"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
@@ -767,6 +768,100 @@ func wrapperRenderErrors() []CommandError {
 		declaredCommandError(fault.KindInternal, "internal_error", false, "bundle status", "Inspect bundle, adoption, source, runtime, and renderer wiring."),
 		declaredCommandError(fault.KindInternal, "output_write_failed", true, "wrapper render", "Retry with a writable output stream."),
 		declaredCommandError(fault.KindCanceled, "operation_canceled", true, "wrapper render", "Retry when the caller is ready."),
+	)
+}
+
+func wrapperMaterializationErrors() []CommandError {
+	excluded := map[string]struct{}{
+		"invalid_arguments": {}, "wrapper_platform_not_supported": {}, "wrapper_render_failed": {},
+		"output_contract_exceeded": {}, "output_encoding_failed": {}, "output_write_failed": {}, "operation_canceled": {},
+	}
+	result := make([]CommandError, 0, len(wrapperRenderErrors()))
+	for _, declared := range wrapperRenderErrors() {
+		if _, skip := excluded[declared.Code]; skip {
+			continue
+		}
+		action := fault.NextAction{Command: "help wrapper install", Reason: "Review the exact adopted-bundle and managed POSIX artifact requirements."}
+		switch declared.Code {
+		case "bundle_not_adopted":
+			action = fault.NextAction{Command: "bundle trust", Reason: "Review and adopt the exact bundle before installing its wrapper artifact."}
+		case "invalid_bundle_trust_store", "bundle_source_drift", "bundle_processor_drift", "source_executable_not_found", "source_identity_unavailable", "unsafe_source_executable", "source_identity_changed", "invalid_source_identity", "processor_identity_unavailable", "processor_identity_changed", "invalid_processor_executable", "unsafe_processor_executable", "invalid_processor_identity":
+			action = fault.NextAction{Command: "bundle status", Reason: "Reconcile the exact bundle, source, processor, and adoption state before installing."}
+		case "internal_error":
+			action = fault.NextAction{Command: "wrapper status", Reason: "Inspect managed artifact composition without repeating installation."}
+		}
+		declared.NextActions = []fault.NextAction{action}
+		result = append(result, declared)
+	}
+	return result
+}
+
+func wrapperArtifactCommonErrors(helpCommand string) []CommandError {
+	return []CommandError{
+		declaredCommandError(fault.KindUnsupported, "wrapper_artifact_platform_not_supported", false, helpCommand, "Use managed wrapper artifacts only on a supported Linux or macOS runtime."),
+		declaredCommandError(fault.KindInvalidInput, "invalid_wrapper_artifact", false, helpCommand, "Use only a complete fixed-template artifact request and an exact opaque status reference where required."),
+		declaredCommandError(fault.KindContract, "wrapper_artifact_store_contract", false, "wrapper status", "Reconcile and repair the bounded managed-artifact store contract."),
+		declaredCommandError(fault.KindRejected, "wrapper_artifact_store_unsafe", false, "wrapper status", "Reconcile the private managed store hierarchy without mutation."),
+		declaredCommandError(fault.KindRejected, "wrapper_artifact_capacity_exceeded", false, "wrapper status", "Review the finite managed artifact inventory before another install."),
+		declaredCommandError(fault.KindNotFound, "wrapper_artifact_not_found", false, "wrapper status", "Discover a current exact managed artifact reference."),
+		declaredCommandError(fault.KindRejected, "wrapper_artifact_collision", false, "wrapper status", "Reconcile the foreign or different command-path collision without replacement."),
+		declaredCommandError(fault.KindRejected, "wrapper_artifact_tampered", false, "wrapper status", "Reconcile the drifted immutable artifact without deleting unknown state."),
+	}
+}
+
+func wrapperInstallErrors() []CommandError {
+	errors := append([]CommandError{}, wrapperMaterializationErrors()...)
+	errors = append(errors,
+		declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help wrapper install", "Pass one exact absolute adopted bundle path."),
+		declaredCommandError(fault.KindContract, "wrapper_artifact_render_failed", false, "help wrapper install", "Repair the fixed executable-shim renderer or its validated product binding."),
+	)
+	errors = append(errors, wrapperArtifactCommonErrors("help wrapper install")...)
+	return append(errors,
+		declaredCommandError(fault.KindUnavailable, "wrapper_artifact_mutation_uncertain", false, "wrapper status", "Reconcile the managed artifact before any mutation replay."),
+		declaredCommandError(fault.KindContract, "invalid_mutation_contract", false, "help wrapper install", "Repair the fixed-target create mutation declaration."),
+		declaredCommandError(fault.KindContract, "missing_mutation_action", false, "help wrapper install", "Configure the exact managed-store create action."),
+		declaredCommandError(fault.KindRejected, "missing_mutation_policy", false, "help wrapper install", "Configure the exact-intent managed-artifact policy."),
+		declaredCommandError(fault.KindRejected, "mutation_rejected", false, "wrapper status", "Reconcile the requested exact artifact and mutation intent."),
+		declaredCommandError(fault.KindContract, "unclassified_mutation_outcome", false, "wrapper status", "Reconcile the managed artifact before any mutation replay."),
+		declaredCommandError(fault.KindContract, "output_contract_exceeded", false, "wrapper status", "Reconcile the confirmed installation result without repeating it."),
+		declaredCommandError(fault.KindContract, "output_encoding_failed", false, "wrapper status", "Reconcile the confirmed installation after deterministic output encoding failed."),
+		declaredCommandError(fault.KindInternal, "mutation_output_write_failed", false, "wrapper status", "Reconcile confirmed installation without repeating it."),
+		declaredCommandError(fault.KindCanceled, "operation_canceled", true, "wrapper install", "Retry only because cancellation occurred before a store mutation attempt."),
+	)
+}
+
+func wrapperStatusErrors() []CommandError {
+	errors := []CommandError{
+		declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help wrapper status", "Run wrapper status without command arguments."),
+	}
+	errors = append(errors, wrapperArtifactCommonErrors("help wrapper status")...)
+	return append(errors,
+		declaredCommandError(fault.KindUnavailable, "wrapper_artifact_status_unavailable", true, "wrapper status", "Retry the bounded read-only inventory after the store becomes stable."),
+		declaredCommandError(fault.KindContract, "output_contract_exceeded", false, "help wrapper status", "Repair the bounded managed-artifact collection result."),
+		declaredCommandError(fault.KindContract, "output_encoding_failed", false, "help wrapper status", "Repair deterministic managed-artifact JSON."),
+		declaredCommandError(fault.KindInternal, "internal_error", false, "wrapper status", "Inspect managed-artifact store and status wiring."),
+		declaredCommandError(fault.KindInternal, "output_write_failed", true, "wrapper status", "Retry with a writable output stream."),
+		declaredCommandError(fault.KindCanceled, "operation_canceled", true, "wrapper status", "Retry when the caller is ready."),
+	)
+}
+
+func wrapperRemoveErrors() []CommandError {
+	errors := []CommandError{
+		declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help wrapper remove", "Pass one exact opaque artifact reference from wrapper status."),
+	}
+	errors = append(errors, wrapperArtifactCommonErrors("help wrapper remove")...)
+	return append(errors,
+		declaredCommandError(fault.KindUnavailable, "wrapper_artifact_mutation_uncertain", false, "wrapper status", "Reconcile the managed artifact before any mutation replay."),
+		declaredCommandError(fault.KindContract, "invalid_mutation_contract", false, "help wrapper remove", "Repair the exact-reference write mutation declaration."),
+		declaredCommandError(fault.KindContract, "missing_mutation_action", false, "help wrapper remove", "Configure the exact managed-store removal action."),
+		declaredCommandError(fault.KindRejected, "missing_mutation_policy", false, "help wrapper remove", "Configure the exact-intent managed-artifact policy."),
+		declaredCommandError(fault.KindRejected, "mutation_rejected", false, "wrapper status", "Reconcile the exact requested artifact and mutation intent."),
+		declaredCommandError(fault.KindContract, "unclassified_mutation_outcome", false, "wrapper status", "Reconcile the managed artifact before any mutation replay."),
+		declaredCommandError(fault.KindContract, "output_contract_exceeded", false, "wrapper status", "Reconcile confirmed removal without repeating it."),
+		declaredCommandError(fault.KindContract, "output_encoding_failed", false, "wrapper status", "Reconcile confirmed removal after deterministic output encoding failed."),
+		declaredCommandError(fault.KindInternal, "internal_error", false, "wrapper status", "Inspect managed-artifact removal and store wiring."),
+		declaredCommandError(fault.KindInternal, "mutation_output_write_failed", false, "wrapper status", "Reconcile confirmed removal without repeating it."),
+		declaredCommandError(fault.KindCanceled, "operation_canceled", true, "wrapper remove", "Retry only because cancellation occurred before a store mutation attempt."),
 	)
 }
 
@@ -1608,6 +1703,111 @@ func DefaultCatalog() Catalog {
 				Errors: bundleExecuteErrors(),
 			},
 			handler: runBundleExecute,
+		},
+		CommandSpec{
+			Path:    "wrapper install",
+			Summary: "Install one exact adopted wrapper as a managed executable shim",
+			Args:    "--bundle <absolute-path>",
+			Effect:  operation.EffectCreate,
+			Role:    RoleAct,
+			Agent: AgentContract{
+				CapabilityID: "tailoring.wrapper.manage",
+				Outcome:      "Create one fixed-template executable shim for an exact adopted bundle inside the private user-local Atsura store and report the caller-owned command-resolution directory",
+				Inputs: []CommandInput{
+					{Name: "--bundle", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Use one exact absolute clean path to the bounded canonical JSON document emitted by bundle build.", AllowedValues: []string{}},
+				},
+				Output: CommandOutput{
+					Authority: OutputAuthorityCatalog,
+					Formats:   []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
+					Fields: []OutputField{
+						{Name: "command", Type: OutputFieldTypeString, Description: "Ordinary portable command name bound by the installed exact bundle."},
+						{Name: "path", Type: OutputFieldTypeString, Description: "Exact managed executable-shim path; Atsura does not add it to command resolution."},
+						{Name: "bin_path", Type: OutputFieldTypeString, Description: "Private user-local directory the caller may explicitly add to command resolution."},
+						{Name: "already_installed", Type: OutputFieldTypeBoolean, Description: "True only when the same valid active artifact already existed and no store mutation was needed."},
+						{Name: "source_process_attempts", Type: OutputFieldTypeInteger, Description: "Always zero; installation starts no source process."},
+						{Name: "processor_process_attempts", Type: OutputFieldTypeInteger, Description: "Always zero; installation starts no processor process."},
+					},
+					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable,
+					JSONEnvelope: "installation", JSONSchemaVersion: 1,
+				},
+				Prerequisites: []string{
+					"Linux or macOS, one absolute-path current-schema bundle whose exact digest is user-adopted, and current source, processor, plus Atsura executable identities.",
+					"The complete included surface must be admitted by the existing wrapper runtime; installation starts neither source nor processor and never selects raw fallback.",
+					"Atsura writes only its fixed user-local store and never edits PATH, startup files, hooks, coding-agent settings, or an existing different command path.",
+				},
+				FixedTarget: &FixedTarget{Kind: wrappershimcmd.StoreTargetKind, ID: wrappershimcmd.StoreTargetID, Description: "This Atsura installation's private user-local executable wrapper-shim store.", Scope: FixedTargetScopeToolLocal},
+				Mutation: &MutationContract{
+					TargetKind: wrappershimcmd.StoreTargetKind, TargetInputs: []string{}, Impact: wrappershimcmd.InstallImpact,
+				},
+				Errors: wrapperInstallErrors(),
+			},
+			handler: runWrapperInstall,
+		},
+		CommandSpec{
+			Path:    "wrapper status",
+			Summary: "Discover exact managed wrapper artifacts and detect unsafe collisions",
+			Effect:  operation.EffectRead,
+			Role:    RoleDiscover,
+			Agent: AgentContract{
+				CapabilityID: "tailoring.wrapper.manage",
+				Outcome:      "Return every bounded valid owned wrapper artifact and its opaque removal reference, or fail closed when a foreign, unsafe, or tampered collision is observed",
+				Inputs:       []CommandInput{},
+				Output: CommandOutput{
+					Authority: OutputAuthorityCatalog,
+					Formats:   []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
+					Fields: []OutputField{
+						{Name: "reference", Type: OutputFieldTypeString, Description: "Opaque exact artifact reference accepted unchanged by wrapper remove.", ReferenceKind: wrappershimcmd.ArtifactRefKind},
+						{Name: "command", Type: OutputFieldTypeString, Description: "Ordinary portable command name owned by this artifact."},
+						{Name: "state", Type: OutputFieldTypeString, Description: "Exact owned artifact state: owned_active or owned_inactive."},
+						{Name: "path", Type: OutputFieldTypeString, Description: "Expected managed executable-shim path for this record."},
+						{Name: "material_sha256", Type: OutputFieldTypeString, Description: "Exact lowercase SHA-256 identity bound by the immutable artifact manifest."},
+					},
+					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageExhaustive,
+					JSONEnvelope: "artifacts", JSONSchemaVersion: 1,
+				},
+				Prerequisites: []string{
+					"Linux or macOS. Status reads only the private bounded Atsura store and starts no source or processor process.",
+					"A foreign, symlinked, special, or tampered record fails the complete discovery instead of emitting an empty or fabricated opaque reference.",
+				},
+				Errors: wrapperStatusErrors(),
+			},
+			handler: runWrapperStatus,
+		},
+		CommandSpec{
+			Path:    "wrapper remove",
+			Summary: "Remove one exact validated managed wrapper artifact",
+			Args:    "--artifact <reference>",
+			Effect:  operation.EffectWrite,
+			Role:    RoleAct,
+			Agent: AgentContract{
+				CapabilityID: "tailoring.wrapper.manage",
+				Outcome:      "Remove only the exact valid managed wrapper artifact selected by one opaque reference returned from wrapper status, without treating absence as success",
+				Inputs: []CommandInput{
+					{Name: "--artifact", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Pass one exact opaque reference from wrapper status byte-for-byte without parsing or reconstruction.", AllowedValues: []string{}, ReferenceKind: wrappershimcmd.ArtifactRefKind},
+				},
+				Output: CommandOutput{
+					Authority: OutputAuthorityCatalog,
+					Formats:   []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
+					Fields: []OutputField{
+						{Name: "command", Type: OutputFieldTypeString, Description: "Ordinary command name formerly owned by the removed artifact."},
+						{Name: "path", Type: OutputFieldTypeString, Description: "Exact managed command path removed after ownership validation."},
+						{Name: "removed", Type: OutputFieldTypeBoolean, Description: "Always true on success; an unknown reference is a not-found failure."},
+						{Name: "source_process_attempts", Type: OutputFieldTypeInteger, Description: "Always zero; removal starts no source process."},
+						{Name: "processor_process_attempts", Type: OutputFieldTypeInteger, Description: "Always zero; removal starts no processor process."},
+					},
+					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable,
+					JSONEnvelope: "removal", JSONSchemaVersion: 1,
+				},
+				Prerequisites: []string{
+					"One exact opaque reference returned by the current wrapper status inventory on Linux or macOS.",
+					"Removal revalidates the immutable manifest and active artifact; foreign, symlinked, special, tampered, multiply matched, unknown, or uncertain state is never deleted.",
+				},
+				Mutation: &MutationContract{
+					TargetKind: wrappershimcmd.ArtifactRefKind, TargetInputs: []string{"--artifact"}, TargetIDInput: "--artifact", Impact: wrappershimcmd.RemoveImpact,
+				},
+				Errors: wrapperRemoveErrors(),
+			},
+			handler: runWrapperRemove,
 		},
 		CommandSpec{
 			Path:    "wrapper render",

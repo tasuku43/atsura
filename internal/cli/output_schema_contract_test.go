@@ -52,6 +52,12 @@ func TestJSONOutputMatchesCatalogContract(t *testing.T) {
 		command.wrapperRenders = &cliWrapperRenderStub{result: wrapperResult}
 		return command, stdout, stderr
 	}
+	wrapperShimService, wrapperShimReference, wrapperShimBundle := testWrapperShimService(t)
+	newWrapperShim := func() (*CLI, *bytes.Buffer, *bytes.Buffer) {
+		command, stdout, stderr := newDefault()
+		command.wrapperShims = wrapperShimService
+		return command, stdout, stderr
+	}
 	probes := []probe{
 		{
 			path: "doctor", args: []string{"doctor", "--format=json"},
@@ -67,6 +73,9 @@ func TestJSONOutputMatchesCatalogContract(t *testing.T) {
 		{path: "bundle preview", args: []string{"bundle", "preview", "--bundle", bundlePath, "--", os.Args[0], "item", "list"}, build: newBundleAuthority},
 		{path: "bundle execute", args: []string{"bundle", "execute", "--bundle", bundlePath, "--", os.Args[0], "item", "list"}, build: newBundleExecution},
 		{path: "wrapper render", args: []string{"wrapper", "render", "--bundle", wrapperResult.Binding.BundleLocator, "--format=json"}, build: newWrapperRender},
+		{path: "wrapper install", args: []string{"wrapper", "install", "--bundle", wrapperShimBundle}, build: newWrapperShim},
+		{path: "wrapper status", args: []string{"wrapper", "status"}, build: newWrapperShim},
+		{path: "wrapper remove", args: []string{"wrapper", "remove", "--artifact", wrapperShimReference.String()}, build: newWrapperShim},
 		{path: "bundle trust", args: []string{"bundle", "trust", "--bundle", bundlePath}, build: newBundleAuthority},
 		{path: "sample list", args: []string{"sample", "list", "--format=json"}, build: newDefault},
 		{path: "sample read", args: []string{"sample", "read", "--id", "smp_2f4a6c8e0b1d", "--format=json"}, build: newDefault},

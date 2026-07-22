@@ -35,6 +35,11 @@
     "reason": ""
   },
   {
+    "id": "tailoring.wrapper.manage",
+    "status": "public",
+    "reason": ""
+  },
+  {
     "id": "tailoring.output.optimize",
     "status": "public",
     "reason": ""
