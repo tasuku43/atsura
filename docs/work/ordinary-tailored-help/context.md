@@ -129,10 +129,14 @@ go test ./internal/domain/tailoringbundle ./internal/domain/wrapperbinding \
 ```
 
 This passed on 2026-07-22. `task check`, `task security`,
-`task public:check`, and `task release:check` also passed on that date. Native
-installed-artifact execution remains pending because `task release:check`
-validates the release contract and workflow rather than replaying a local
-archive.
+`task public:check`, and `task release:check` also passed on that date. The
+release gate includes current-host installed-artifact replay. A separate replay
+from a clean worktree of packaged revision
+`1232913ba6d8458f3cdd9dde872f8d11b70a5228` also passed on Darwin arm64 and
+emitted schema 6. Its `tailored_help` proof recorded contract 2, three exact
+views, both fail-closed fallthrough faults, a non-executable runtime during
+successful help, and zero source and processor attempts. The multi-platform
+native CI aggregate remains pending.
 
 ## Security and public-boundary notes
 

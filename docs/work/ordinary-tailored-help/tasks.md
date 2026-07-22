@@ -50,10 +50,14 @@
 - [x] `task public:check` passes. Evidence: local public-boundary gate passed on
       2026-07-22.
 - [x] `task release:check` passes. Evidence: local release-contract gate passed
-      on 2026-07-22; installed-artifact replay remains a separate item below.
+      on 2026-07-22, including its current-host archive replay.
 - [ ] Runtime-only behavior was observed on supported POSIX targets. Evidence:
-- [ ] One ordinary help invocation discovers the complete finite command-path
-      surface with zero external processing. Evidence:
+- [x] One ordinary help invocation discovers the complete finite command-path
+      surface with zero external processing. Evidence: schema-6 replay of the
+      packaged `darwin/arm64` archive for revision
+      `1232913ba6d8458f3cdd9dde872f8d11b70a5228` recorded the root view with
+      zero source and processor attempts while the packaged `atr` was not
+      executable.
 - [x] Generated diff and repository status are understood. Evidence: scoped
       `git status --short`, implementation diff review, and packet whitespace
       check on 2026-07-22; no unrelated path was edited by this packet task.

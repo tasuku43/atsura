@@ -36,9 +36,10 @@
 - [x] Scope, pagination, and uncertain semantic states are not applicable.
 - [x] Same-name, order, quoted-prose, raw-notation, and indentation canaries
       create no unsupported inference.
-- [ ] Hidden and unknown recovery obey existing executable argv grammar in the
-      installed artifact; the schema-6 journey and validator are implemented,
-      but native execution remains pending.
+- [x] Hidden and unknown recovery obey existing executable argv grammar in the
+      installed Darwin arm64 artifact: schema 6 records
+      `command_not_in_surface` and `invalid_invocation`, each with zero source
+      and processor attempts.
 
 ## Reproducible comparison
 
@@ -46,7 +47,7 @@
 |---|---:|---:|
 | Golden path | ordinary `--help` fault | exact `/bin/sh` renderer golden and schema-6 target evidence |
 | Golden SHA-256 | not applicable (no successful output) | recomputed from each recorded bundle digest |
-| UTF-8 bytes | not applicable (no successful output) | exact bytes asserted by focused tests; target values pending native run |
+| UTF-8 bytes | not applicable (no successful output) | exact bytes asserted by focused tests and Darwin arm64 schema-6 replay |
 | Task invocations | 1 unsuccessful | 1 successful |
 | External reconstruction steps | at least 1 | 0 |
 
@@ -62,11 +63,14 @@
 
 - Outcome: Static bundle-derived help is semantically eligible and implemented;
   focused domain, renderer, application, CLI, journey, and evidence tests pass.
-  Installed native artifact proof remains pending.
+  The packaged Darwin arm64 artifact for revision
+  `1232913ba6d8458f3cdd9dde872f8d11b70a5228` passed schema-6 replay; the full
+  native target matrix remains pending.
 - Eligible candidates: static bundle-derived wrapper help
 - Failed or invalidated candidates: runtime fresh-plan help is ineligible
   because help is not a source execution plan
-- Raw evidence retained at: temporary work packet until promotion
+- Raw evidence retained at: CI artifacts; this temporary work packet retains
+  only the reviewed result and exact revision, never raw command output
 - Documented gates not implemented by the scorer: native installed-artifact
   matrix. The complete local repository gates passed on 2026-07-22.
 

@@ -284,6 +284,10 @@ func TestValidateEvidenceRejectsInvalidContracts(t *testing.T) {
 		{"tailored help wrapper binding", func(value *evidenceDocument) {
 			value.ArtifactJourney.TailoredHelp.WrapperSourceSHA256 = strings.Repeat("f", digestLength)
 		}},
+		{"tailored help empty linked wrapper binding", func(value *evidenceDocument) {
+			value.ArtifactJourney.WrapperCases[0].WrapperSourceSHA256 = emptySHA256
+			value.ArtifactJourney.TailoredHelp.WrapperSourceSHA256 = emptySHA256
+		}},
 		{"tailored help contract", func(value *evidenceDocument) { value.ArtifactJourney.TailoredHelp.WrapperContractVersion++ }},
 		{"tailored help views absent", func(value *evidenceDocument) { value.ArtifactJourney.TailoredHelp.Views = nil }},
 		{"tailored help view missing", func(value *evidenceDocument) {

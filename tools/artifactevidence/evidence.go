@@ -574,7 +574,8 @@ func validateTailoredHelp(evidence tailoredHelpEvidence, journey artifactJourney
 		return nil
 	}
 	if evidence.Outcome != "compiled_views_verified" || evidence.BundleDigest != journey.BundleDigest ||
-		len(journey.WrapperCases) == 0 || evidence.WrapperSourceSHA256 != journey.WrapperCases[0].WrapperSourceSHA256 ||
+		len(journey.WrapperCases) == 0 || evidence.WrapperSourceSHA256 == emptySHA256 ||
+		evidence.WrapperSourceSHA256 != journey.WrapperCases[0].WrapperSourceSHA256 ||
 		evidence.WrapperContractVersion != wrapperbinding.ContractVersion || !evidence.RuntimeNonExecutableDuringSuccess ||
 		evidence.SourceProcessAttempts != 0 || evidence.ProcessorProcessAttempts != 0 {
 		return fmt.Errorf("POSIX tailored help binding evidence is invalid")
