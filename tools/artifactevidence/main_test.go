@@ -211,7 +211,7 @@ func TestDecodeEvidenceRejectsUnknownDuplicateAndTrailingJSON(t *testing.T) {
 		unknown,
 		duplicate,
 		append(append([]byte{}, valid...), []byte(` {}`)...),
-		[]byte(`{"schema_version":3,"artifact_journey":`),
+		[]byte(`{"schema_version":4,"artifact_journey":`),
 	} {
 		if _, err := decodeEvidence(value); err == nil {
 			t.Fatalf("invalid JSON was accepted: %s", value)
@@ -277,6 +277,27 @@ func TestValidateEvidenceRejectsInvalidContracts(t *testing.T) {
 		}},
 		{"credential assertion", func(value *evidenceDocument) { value.ArtifactJourney.CredentialEnvironmentAbsent = false }},
 		{"canary assertion", func(value *evidenceDocument) { value.ArtifactJourney.SecretCanariesAbsent = false }},
+		{"Go adapter", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.AdapterKind = "atsura.source.other" }},
+		{"Go contract", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.AdapterContractVersion++ }},
+		{"Go version", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.SourceVersion = "go1.27.0" }},
+		{"Go catalog digest", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.CatalogDigest = "abc" }},
+		{"Go inspection count", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.SourceInspectionAttempts-- }},
+		{"Go command", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.CommandsVerified[0] = "build" }},
+		{"Go bundle digest", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.BundleDigest = "abc" }},
+		{"Go plan digest", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.PlanDigest = "abc" }},
+		{"Go wrapper outcome", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.WrapperOutcome = "other" }},
+		{"Go wrapper case", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.WrapperCases[0].Name = "other" }},
+		{"Go wrapper stdout", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.WrapperCases[0].StdoutSHA256 = emptySHA256
+		}},
+		{"Go wrapper stderr", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.WrapperCases[0].StderrSHA256 = strings.Repeat("f", digestLength)
+		}},
+		{"Go wrapper attempts", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.WrapperSourceAttempts++ }},
+		{"Go zero-attempt count", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.ZeroAttemptRejections = 0 }},
+		{"Go empty wrapper source", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.WrapperCases[0].WrapperSourceSHA256 = emptySHA256
+		}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -304,6 +325,12 @@ func TestValidateEvidenceRequiresStructuredUnsupportedWindowsWrapperCases(t *tes
 		func(value *evidenceDocument) { value.ArtifactJourney.WrapperOutcome = "ordinary_command_verified" },
 		func(value *evidenceDocument) { value.ArtifactJourney.WrapperSourceAttempts = 1 },
 		func(value *evidenceDocument) { value.ArtifactJourney.FixtureAttempts = wantedPOSIXAttempts },
+		func(value *evidenceDocument) { value.ArtifactJourney.GoSource.WrapperCases = nil },
+		func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.WrapperOutcome = "ordinary_command_verified"
+		},
+		func(value *evidenceDocument) { value.ArtifactJourney.GoSource.WrapperSourceAttempts = 1 },
+		func(value *evidenceDocument) { value.ArtifactJourney.GoSource.ZeroAttemptRejections = 0 },
 	}
 	for index, mutate := range mutations {
 		value := cloneEvidence(t, base)
@@ -346,7 +373,7 @@ func writeValidEvidenceSet(t *testing.T, directory, archives string) []string {
 
 func validEvidence(target, archiveName, archiveDigest string) evidenceDocument {
 	result := evidenceDocument{
-		SchemaVersion: 3,
+		SchemaVersion: 4,
 		ArtifactJourney: artifactJourneyEvidence{
 			Target: target, ObservedHost: target, ArchiveName: archiveName, ArchiveSHA256: archiveDigest,
 			Version: testVersion, Revision: testRevision,
@@ -357,6 +384,12 @@ func validEvidence(target, archiveName, archiveDigest string) evidenceDocument {
 			SourceInspectionAttempts: wantedInspections, ZeroAttemptRejections: wantedRejections,
 			PostStartFaults:             append([]string{}, wantedFaults...),
 			CredentialEnvironmentAbsent: true, SecretCanariesAbsent: true,
+			GoSource: goSourceEvidence{
+				AdapterKind: goAdapterKind, AdapterContractVersion: goAdapterContractVersion,
+				SourceVersion: "go1.26.5", CatalogDigest: strings.Repeat("8", digestLength),
+				SourceInspectionAttempts: wantedGoInspections, CommandsVerified: []string{"test"},
+				BundleDigest: strings.Repeat("9", digestLength), PlanDigest: strings.Repeat("0", digestLength),
+			},
 		},
 	}
 	if target == "windows/amd64" {
@@ -364,6 +397,10 @@ func validEvidence(target, archiveName, archiveDigest string) evidenceDocument {
 		result.ArtifactJourney.WrapperCases = []wrapperCaseEvidence{}
 		result.ArtifactJourney.WrapperSourceAttempts = 0
 		result.ArtifactJourney.FixtureAttempts = wantedWindowsAttempts
+		result.ArtifactJourney.GoSource.WrapperOutcome = "platform_not_supported"
+		result.ArtifactJourney.GoSource.WrapperCases = []wrapperCaseEvidence{}
+		result.ArtifactJourney.GoSource.WrapperSourceAttempts = 0
+		result.ArtifactJourney.GoSource.ZeroAttemptRejections = 1
 	} else {
 		result.ArtifactJourney.WrapperOutcome = "ordinary_command_verified"
 		result.ArtifactJourney.WrapperCases = []wrapperCaseEvidence{
@@ -388,6 +425,15 @@ func validEvidence(target, archiveName, archiveDigest string) evidenceDocument {
 		}
 		result.ArtifactJourney.WrapperSourceAttempts = wantedPOSIXWrappers
 		result.ArtifactJourney.FixtureAttempts = wantedPOSIXAttempts
+		result.ArtifactJourney.GoSource.WrapperOutcome = "ordinary_command_verified"
+		result.ArtifactJourney.GoSource.WrapperCases = []wrapperCaseEvidence{{
+			Name: "go_test_identity", WrapperKind: "identity", ResultMode: "source_stream_passthrough",
+			BundleDigest: strings.Repeat("9", digestLength), PlanDigest: strings.Repeat("0", digestLength),
+			WrapperSourceSHA256: strings.Repeat("1", digestLength), StdoutSHA256: strings.Repeat("2", digestLength), StderrSHA256: emptySHA256,
+			SourceExitCode: 0, SourceProcessAttempts: 1,
+		}}
+		result.ArtifactJourney.GoSource.WrapperSourceAttempts = wantedGoPOSIXWrappers
+		result.ArtifactJourney.GoSource.ZeroAttemptRejections = 1
 	}
 	return result
 }

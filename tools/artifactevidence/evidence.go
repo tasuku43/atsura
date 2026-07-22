@@ -21,10 +21,12 @@ const (
 	maxAggregateBytes     = 4 * 1024
 	wantedHelpContracts   = 8
 	wantedInspections     = 4
+	wantedGoInspections   = 3
 	wantedRejections      = 8
 	wantedPOSIXAttempts   = 13
 	wantedWindowsAttempts = 10
 	wantedPOSIXWrappers   = 3
+	wantedGoPOSIXWrappers = 1
 )
 
 const (
@@ -37,6 +39,13 @@ const (
 )
 
 var releaseTagPattern = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$`)
+
+var go126VersionPattern = regexp.MustCompile(`^go1\.26\.(0|[1-9][0-9]*)$`)
+
+const (
+	goAdapterKind            = "atsura.source.go_cli"
+	goAdapterContractVersion = 1
+)
 
 var wantedFaults = []string{
 	"source_command_failed",
@@ -97,6 +106,25 @@ type artifactJourneyEvidence struct {
 	FixtureAttempts             int                   `json:"fixture_attempts"`
 	CredentialEnvironmentAbsent bool                  `json:"credential_environment_absent"`
 	SecretCanariesAbsent        bool                  `json:"secret_canaries_absent"`
+	GoSource                    goSourceEvidence      `json:"go_source"`
+}
+
+// goSourceEvidence is the bounded second-source proof. It deliberately uses
+// the same wrapper-case shape as the first source while retaining only
+// adapter identity, digests, counters, and conventional process status.
+type goSourceEvidence struct {
+	AdapterKind              string                `json:"adapter_kind"`
+	AdapterContractVersion   int                   `json:"adapter_contract_version"`
+	SourceVersion            string                `json:"source_version"`
+	CatalogDigest            string                `json:"catalog_digest"`
+	SourceInspectionAttempts int                   `json:"source_inspection_attempts"`
+	CommandsVerified         []string              `json:"commands_verified"`
+	BundleDigest             string                `json:"bundle_digest"`
+	PlanDigest               string                `json:"plan_digest"`
+	WrapperOutcome           string                `json:"wrapper_outcome"`
+	WrapperCases             []wrapperCaseEvidence `json:"wrapper_cases"`
+	WrapperSourceAttempts    int                   `json:"wrapper_source_process_attempts"`
+	ZeroAttemptRejections    int                   `json:"zero_attempt_rejections"`
 }
 
 type wrapperCaseEvidence struct {
@@ -385,7 +413,7 @@ func requireJSONEOF(decoder *json.Decoder) error {
 
 func validateEvidence(document evidenceDocument, target, archiveName, version, revision string) error {
 	journey := document.ArtifactJourney
-	if document.SchemaVersion != 3 {
+	if document.SchemaVersion != 4 {
 		return fmt.Errorf("evidence schema version is invalid")
 	}
 	if journey.Target != target || journey.ObservedHost != target || journey.ArchiveName != archiveName || journey.Version != version || journey.Revision != revision {
@@ -421,6 +449,40 @@ func validateEvidence(document evidenceDocument, target, archiveName, version, r
 	}
 	if !journey.CredentialEnvironmentAbsent || !journey.SecretCanariesAbsent {
 		return fmt.Errorf("evidence safety assertions are invalid")
+	}
+	if err := validateGoSourceEvidence(journey.GoSource, target); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateGoSourceEvidence(evidence goSourceEvidence, target string) error {
+	if evidence.AdapterKind != goAdapterKind || evidence.AdapterContractVersion != goAdapterContractVersion ||
+		!go126VersionPattern.MatchString(evidence.SourceVersion) ||
+		!lowercaseHex(evidence.CatalogDigest, digestLength) ||
+		!lowercaseHex(evidence.BundleDigest, digestLength) ||
+		!lowercaseHex(evidence.PlanDigest, digestLength) ||
+		evidence.SourceInspectionAttempts != wantedGoInspections ||
+		!equalStrings(evidence.CommandsVerified, []string{"test"}) {
+		return fmt.Errorf("Go source evidence identity is invalid")
+	}
+	if target == "windows/amd64" {
+		if evidence.WrapperOutcome != "platform_not_supported" || evidence.WrapperCases == nil || len(evidence.WrapperCases) != 0 ||
+			evidence.WrapperSourceAttempts != 0 || evidence.ZeroAttemptRejections != 1 {
+			return fmt.Errorf("Windows Go wrapper evidence is invalid")
+		}
+		return nil
+	}
+	if evidence.WrapperOutcome != "ordinary_command_verified" || evidence.WrapperSourceAttempts != wantedGoPOSIXWrappers ||
+		evidence.ZeroAttemptRejections != 1 || len(evidence.WrapperCases) != wantedGoPOSIXWrappers {
+		return fmt.Errorf("POSIX Go wrapper evidence is invalid")
+	}
+	actual := evidence.WrapperCases[0]
+	if actual.Name != "go_test_identity" || actual.WrapperKind != "identity" || actual.ResultMode != "source_stream_passthrough" ||
+		actual.BundleDigest != evidence.BundleDigest || actual.PlanDigest != evidence.PlanDigest ||
+		!lowercaseHex(actual.WrapperSourceSHA256, digestLength) || actual.WrapperSourceSHA256 == emptySHA256 || !lowercaseHex(actual.StdoutSHA256, digestLength) ||
+		actual.StdoutSHA256 == emptySHA256 || actual.StderrSHA256 != emptySHA256 || actual.SourceExitCode != 0 || actual.SourceProcessAttempts != 1 {
+		return fmt.Errorf("POSIX Go wrapper case is invalid")
 	}
 	return nil
 }

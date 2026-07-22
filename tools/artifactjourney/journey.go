@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -30,6 +31,14 @@ const (
 	commandTimeout        = 40 * time.Second
 	fixtureAttemptEnv     = "ATSURA_SOURCE_FIXTURE_ATTEMPT_LOG"
 	fixtureModeEnv        = "ATSURA_SOURCE_FIXTURE_MODE"
+	goTestAttemptEnv      = "ATSURA_GO_TEST_ATTEMPT_LOG"
+	goAdapterKind         = "atsura.source.go_cli"
+	goAdapterContract     = 1
+)
+
+var (
+	go126VersionPattern = regexp.MustCompile(`^go1\.26\.(0|[1-9][0-9]*)$`)
+	goTestOutputPattern = regexp.MustCompile(`^PASS\nok[ \t]+example\.com/atsura-artifact-go[ \t]+[0-9]+(?:\.[0-9]+)?s\n$`)
 )
 
 var secretCanaries = []string{
@@ -65,6 +74,22 @@ type artifactJourneyEvidence struct {
 	FixtureAttempts             int                   `json:"fixture_attempts"`
 	CredentialEnvironmentAbsent bool                  `json:"credential_environment_absent"`
 	SecretCanariesAbsent        bool                  `json:"secret_canaries_absent"`
+	GoSource                    goSourceEvidence      `json:"go_source"`
+}
+
+type goSourceEvidence struct {
+	AdapterKind              string                `json:"adapter_kind"`
+	AdapterContractVersion   int                   `json:"adapter_contract_version"`
+	SourceVersion            string                `json:"source_version"`
+	CatalogDigest            string                `json:"catalog_digest"`
+	SourceInspectionAttempts int                   `json:"source_inspection_attempts"`
+	CommandsVerified         []string              `json:"commands_verified"`
+	BundleDigest             string                `json:"bundle_digest"`
+	PlanDigest               string                `json:"plan_digest"`
+	WrapperOutcome           string                `json:"wrapper_outcome"`
+	WrapperCases             []wrapperCaseEvidence `json:"wrapper_cases"`
+	WrapperSourceAttempts    int                   `json:"wrapper_source_process_attempts"`
+	ZeroAttemptRejections    int                   `json:"zero_attempt_rejections"`
 }
 
 // wrapperCaseEvidence retains only identities, digests, conventional status,
@@ -343,6 +368,13 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 	zeroAttemptRejections += wrapperEvidence.zeroAttemptRejections
 	wantedAttempts += wrapperEvidence.sourceProcessAttempts
 
+	goEvidence, goBoundaries, err := verifyGoSourceJourney(
+		ctx, runner, helpEvidence, configuration.goos, executablePath, trustPath, attemptLog, wantedAttempts, workRoot,
+	)
+	if err != nil {
+		return evidenceDocument{}, err
+	}
+
 	trustBytes, err := readBoundedFile(trustPath, maxAttemptLogBytes)
 	if err != nil {
 		return evidenceDocument{}, fmt.Errorf("isolated receipt evidence is unreadable")
@@ -353,6 +385,7 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 	}
 	canaryBoundaries := [][]byte{inspection.stdout, prExecution.stdout, issueExecution.stdout, trustBytes, attemptBytes}
 	canaryBoundaries = append(canaryBoundaries, wrapperEvidence.boundaries...)
+	canaryBoundaries = append(canaryBoundaries, goBoundaries...)
 	canaryBoundaries = append(canaryBoundaries, prJourney.boundaries...)
 	canaryBoundaries = append(canaryBoundaries, issueJourney.boundaries...)
 	canaryBoundaries = append(canaryBoundaries, helpEvidence.outputs...)
@@ -363,7 +396,7 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 		return evidenceDocument{}, fmt.Errorf("fixture attempt sequence is invalid")
 	}
 
-	return evidenceDocument{SchemaVersion: 3, ArtifactJourney: artifactJourneyEvidence{
+	return evidenceDocument{SchemaVersion: 4, ArtifactJourney: artifactJourneyEvidence{
 		Target: configuration.goos + "/" + configuration.goarch, ObservedHost: runtime.GOOS + "/" + runtime.GOARCH,
 		ArchiveName: filepath.Base(archivePath), ArchiveSHA256: digest,
 		Version: strings.TrimPrefix(configuration.tag, "v"), Revision: configuration.revision, HelpContractsVerified: len(helpEvidence.outputs),
@@ -375,6 +408,7 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 		SourceInspectionAttempts: 4, ZeroAttemptRejections: zeroAttemptRejections,
 		PostStartFaults: faultCodes, FixtureAttempts: wantedAttempts,
 		CredentialEnvironmentAbsent: true, SecretCanariesAbsent: true,
+		GoSource: goEvidence,
 	}}, nil
 }
 
@@ -498,7 +532,7 @@ func verifyPackagedWrappers(
 			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d text and JSON source differ", index)
 		}
 		sourceDigest := digestBytes(textRender.stdout)
-		if err := validateWrapperRenderEvidence(document, input.journey, executablePath, runtimeDigest, runtimeSize, sourceDigest); err != nil {
+		if err := validateWrapperRenderEvidence(document, input.journey, "gh", executablePath, runtimeDigest, runtimeSize, sourceDigest); err != nil {
 			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d render binding evidence is invalid: %w", index, err)
 		}
 		if err := requireAttempts(attemptLog, existingAttempts+index); err != nil {
@@ -537,7 +571,7 @@ func verifyPackagedWrappers(
 		if err := writePrivate(wrapperPath, textRender.stdout); err != nil {
 			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d caller-owned fixture write failed", index)
 		}
-		invocation, invokeErr := runPOSIXCaller(ctx, runner, wrapperPath, input.callerArgs, input.wantExitCode)
+		invocation, invokeErr := runPOSIXCaller(ctx, runner, "gh", wrapperPath, input.callerArgs, input.wantExitCode)
 		if invokeErr != nil {
 			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d caller-owned invocation failed", index)
 		}
@@ -559,8 +593,257 @@ func verifyPackagedWrappers(
 	return result, nil
 }
 
-func validateWrapperRenderEvidence(document wrapperRenderDocument, journey preparedCommandJourney, executablePath, runtimeDigest string, runtimeSize int64, sourceDigest string) error {
-	if document.SchemaVersion != 1 || document.Wrapper.Command != "gh" || document.Wrapper.Contract.Version != 1 || document.Wrapper.Contract.Shell != "posix" {
+func verifyGoSourceJourney(
+	ctx context.Context,
+	runner journeyRunner,
+	help packagedHelpEvidence,
+	goos, executablePath, trustPath, attemptLog string,
+	existingFixtureAttempts int,
+	workRoot string,
+) (goSourceEvidence, [][]byte, error) {
+	goExecutable, err := exec.LookPath("go")
+	if err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source executable is unavailable")
+	}
+	goExecutable, err = filepath.Abs(goExecutable)
+	if err != nil || !filepath.IsAbs(goExecutable) || filepath.Clean(goExecutable) != goExecutable {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source executable identity is invalid")
+	}
+	// Resolve the portable public spelling only through the exact toolchain
+	// directory selected by the native artifact runner.
+	runner.environment = replaceEnvironment(runner.environment, map[string]string{"PATH": filepath.Dir(goExecutable)})
+
+	inspection, err := runner.success(ctx, "success", "source", "inspect", "--adapter", "go-cli", "--executable", "go")
+	if err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source inspection failed")
+	}
+	inspectionPayload, err := decodeInspection(inspection.stdout)
+	if err != nil || inspectionPayload.SourceProcessAttempts != 3 ||
+		inspectionPayload.Catalog.Adapter.Kind != goAdapterKind || inspectionPayload.Catalog.Adapter.ContractVersion != goAdapterContract ||
+		inspectionPayload.Catalog.Source.RequestedExecutable != "go" || !go126VersionPattern.MatchString(inspectionPayload.Catalog.Source.Version) ||
+		inspectionPayload.Catalog.Probe.Attempts != 3 || !inspectionHasCommand(inspectionPayload, []string{"test"}) ||
+		!digestValue(inspectionPayload.CatalogDigest) {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source inspection evidence is invalid")
+	}
+	if err := requireAttempts(attemptLog, existingFixtureAttempts); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source inspection started the GitHub source fixture")
+	}
+
+	catalogPath := filepath.Join(workRoot, "go-catalog.json")
+	if err := writePrivate(catalogPath, inspection.stdout); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go catalog evidence write failed")
+	}
+	goAttemptLog := filepath.Join(workRoot, "go-test-attempts.log")
+	if err := createGoTestModule(workRoot); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source module fixture creation failed")
+	}
+	if err := requireGoTestAttempts(goAttemptLog, 0); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source attempt fixture is not initially empty")
+	}
+
+	draft, err := runner.success(ctx, "success", "spec", "init", "--catalog", catalogPath, "--", "test")
+	if err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source specification draft failed")
+	}
+	specificationPath := filepath.Join(workRoot, "go-specification.yaml")
+	if err := writePrivate(specificationPath, draft.stdout); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source specification write failed")
+	}
+	validation, err := runner.success(ctx, "success", "spec", "validate", "--catalog", catalogPath, "--spec", specificationPath)
+	if err != nil || validateSpecificationEvidence(validation.stdout, inspectionPayload.CatalogDigest, 1, 0) != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source specification validation evidence is invalid")
+	}
+	built, err := runner.success(ctx, "success", "bundle", "build", "--catalog", catalogPath, "--spec", specificationPath)
+	if err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source bundle build failed")
+	}
+	bundleDigest, err := decodeBundleDigest(built.stdout)
+	if err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source bundle evidence is invalid")
+	}
+	bundlePath := filepath.Join(workRoot, "go-bundle.json")
+	if err := writePrivate(bundlePath, built.stdout); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source bundle write failed")
+	}
+	store := trustfile.New(trustPath)
+	changed, err := store.Add(ctx, bundleDigest)
+	if err != nil || !changed || store.Inspect(ctx, bundleDigest) != bundletrust.StateAdopted {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source exact receipt seeding failed")
+	}
+	status, err := runner.success(ctx, "success", "bundle", "status", "--bundle", bundlePath)
+	if err != nil || validateStatus(status.stdout, bundleDigest, bundletrust.StateAdopted) != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source adopted status evidence is invalid")
+	}
+	baseInvocation := []string{"--bundle", bundlePath, "--", inspectionPayload.Catalog.Source.ResolvedPath, "test"}
+	preview, err := runner.success(ctx, "success", append([]string{"bundle", "preview"}, baseInvocation...)...)
+	if err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source preview failed")
+	}
+	previewPayload, err := decodePreview(preview.stdout)
+	if err != nil || previewPayload.SourceProcessAttempts != 0 || !digestValue(previewPayload.PlanDigest) ||
+		previewPayload.Plan.WrapperKind != "identity" || previewPayload.Plan.ResultMode != "source_stream_passthrough" {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source preview evidence is invalid")
+	}
+	if err := requireGoTestAttempts(goAttemptLog, 0); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source preparation started the test command")
+	}
+	journey := preparedCommandJourney{
+		bundleDigest: bundleDigest, planDigest: previewPayload.PlanDigest,
+		wrapperKind: previewPayload.Plan.WrapperKind, resultMode: previewPayload.Plan.ResultMode,
+		baseInvocation: baseInvocation,
+	}
+	boundaries := [][]byte{inspection.stdout, draft.stdout, validation.stdout, built.stdout, status.stdout, preview.stdout}
+	evidence := goSourceEvidence{
+		AdapterKind: goAdapterKind, AdapterContractVersion: goAdapterContract,
+		SourceVersion: inspectionPayload.Catalog.Source.Version, CatalogDigest: inspectionPayload.CatalogDigest,
+		SourceInspectionAttempts: 3, CommandsVerified: []string{"test"},
+		BundleDigest: bundleDigest, PlanDigest: previewPayload.PlanDigest,
+	}
+
+	if goos == "windows" {
+		declaration, declarationErr := help.fault("wrapper render", "wrapper_platform_not_supported")
+		if declarationErr != nil || declaration.Kind != "unsupported" || declaration.Retryable {
+			return goSourceEvidence{}, nil, fmt.Errorf("Go source Windows wrapper help contract is invalid")
+		}
+		failure, failureErr := runner.failure(ctx, "success", 12, declaration,
+			"--error-format=json", "wrapper", "render", "--bundle", bundlePath, "--format", "json")
+		if failureErr != nil {
+			return goSourceEvidence{}, nil, fmt.Errorf("Go source unsupported wrapper evidence is invalid")
+		}
+		if err := requireGoTestAttempts(goAttemptLog, 0); err != nil {
+			return goSourceEvidence{}, nil, fmt.Errorf("Go source unsupported wrapper started the test command")
+		}
+		evidence.WrapperOutcome = "platform_not_supported"
+		evidence.WrapperCases = []wrapperCaseEvidence{}
+		evidence.ZeroAttemptRejections = 1
+		return evidence, append(boundaries, failure.stdout, failure.stderr), nil
+	}
+	if goos != "linux" && goos != "darwin" {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source wrapper target is unsupported")
+	}
+
+	runtimeDigest, runtimeSize, err := regularFileIdentity(executablePath)
+	if err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source packaged runtime identity is unreadable")
+	}
+	jsonRender, err := runner.success(ctx, "success", "wrapper", "render", "--bundle", bundlePath, "--format", "json")
+	if err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source wrapper JSON rendering failed")
+	}
+	document, err := decodeWrapperRender(jsonRender.stdout)
+	if err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source wrapper JSON evidence is invalid")
+	}
+	textRender, err := runner.success(ctx, "success", "wrapper", "render", "--bundle", bundlePath)
+	if err != nil || string(textRender.stdout) != document.Wrapper.Source {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source wrapper text rendering is invalid")
+	}
+	sourceDigest := digestBytes(textRender.stdout)
+	if err := validateWrapperRenderEvidence(document, journey, "go", executablePath, runtimeDigest, runtimeSize, sourceDigest); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source wrapper binding evidence is invalid: %w", err)
+	}
+	if err := requireGoTestAttempts(goAttemptLog, 0); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source rendering started the test command")
+	}
+	wrapperPath := filepath.Join(workRoot, "caller-owned-go-wrapper.sh")
+	if err := writePrivate(wrapperPath, textRender.stdout); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source caller-owned wrapper write failed")
+	}
+	rejectionDeclaration, err := help.fault("wrapper run", "wrapper_runtime_not_supported")
+	if err != nil || rejectionDeclaration.Kind != "unsupported" || rejectionDeclaration.Retryable {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source argv rejection help contract is invalid")
+	}
+	rejection, err := runPOSIXCaller(ctx, runner, "go", wrapperPath, []string{"test", "extra"}, 12)
+	if err != nil || len(rejection.stdout) != 0 || validateFault(rejection.stderr, rejectionDeclaration) != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source additional-argument rejection is invalid")
+	}
+	if err := requireGoTestAttempts(goAttemptLog, 0); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source additional-argument rejection started the test command")
+	}
+	invocation, err := runPOSIXCaller(ctx, runner, "go", wrapperPath, []string{"test"}, 0)
+	if err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source caller-owned invocation failed")
+	}
+	if !goTestOutputPattern.Match(invocation.stdout) || len(invocation.stderr) != 0 {
+		return goSourceEvidence{}, nil, fmt.Errorf(
+			"Go source caller-owned result is invalid (stdout_bytes=%d stderr_bytes=%d lines=%d ok_prefix=%t module_marker=%t final_lf=%t)",
+			len(invocation.stdout), len(invocation.stderr), bytes.Count(invocation.stdout, []byte{'\n'}),
+			bytes.HasPrefix(invocation.stdout, []byte("ok")), bytes.Contains(invocation.stdout, []byte("example.com/atsura-artifact-go")),
+			bytes.HasSuffix(invocation.stdout, []byte{'\n'}),
+		)
+	}
+	if err := requireGoTestAttempts(goAttemptLog, 1); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source one-attempt evidence is invalid")
+	}
+	if err := requireAttempts(attemptLog, existingFixtureAttempts); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source journey started the GitHub source fixture")
+	}
+	evidence.WrapperOutcome = "ordinary_command_verified"
+	evidence.WrapperCases = []wrapperCaseEvidence{{
+		Name: "go_test_identity", WrapperKind: journey.wrapperKind, ResultMode: journey.resultMode,
+		BundleDigest: journey.bundleDigest, PlanDigest: journey.planDigest,
+		WrapperSourceSHA256: sourceDigest, StdoutSHA256: digestBytes(invocation.stdout), StderrSHA256: digestBytes(invocation.stderr),
+		SourceExitCode: invocation.exitCode, SourceProcessAttempts: 1,
+	}}
+	evidence.WrapperSourceAttempts = 1
+	evidence.ZeroAttemptRejections = 1
+	boundaries = append(boundaries, jsonRender.stdout, textRender.stdout, rejection.stdout, rejection.stderr, invocation.stdout, invocation.stderr)
+	return evidence, boundaries, nil
+}
+
+func createGoTestModule(workRoot string) error {
+	module := []byte("module example.com/atsura-artifact-go\n\ngo 1.26.0\n")
+	testSource := []byte(`package artifactgo
+
+import (
+	"io"
+	"os"
+	"testing"
+)
+
+func TestPass(t *testing.T) {
+	path := os.Getenv("ATSURA_GO_TEST_ATTEMPT_LOG")
+	if path == "" {
+		t.Fatal("attempt log is not configured")
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatal("attempt log could not be opened")
+	}
+	if _, err := io.WriteString(file, "attempt\n"); err != nil {
+		_ = file.Close()
+		t.Fatal("attempt log could not be written")
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal("attempt log could not be closed")
+	}
+}
+`)
+	if err := writePrivate(filepath.Join(workRoot, "go.mod"), module); err != nil {
+		return err
+	}
+	return writePrivate(filepath.Join(workRoot, "artifact_test.go"), testSource)
+}
+
+func requireGoTestAttempts(path string, wanted int) error {
+	if wanted < 0 || wanted > 1 {
+		return fmt.Errorf("Go source attempt bound is invalid")
+	}
+	if wanted == 0 {
+		if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("Go source attempt log exists before execution")
+	}
+	value, err := readBoundedFile(path, 64)
+	if err != nil || string(value) != "attempt\n" {
+		return fmt.Errorf("Go source attempt log is invalid")
+	}
+	return nil
+}
+
+func validateWrapperRenderEvidence(document wrapperRenderDocument, journey preparedCommandJourney, ordinaryCommand, executablePath, runtimeDigest string, runtimeSize int64, sourceDigest string) error {
+	if document.SchemaVersion != 1 || document.Wrapper.Command != ordinaryCommand || document.Wrapper.Contract.Version != 1 || document.Wrapper.Contract.Shell != "posix" {
 		return fmt.Errorf("contract identity mismatch")
 	}
 	if document.Wrapper.Bundle.Locator != journey.bundlePath() || document.Wrapper.Bundle.Digest != journey.bundleDigest {
@@ -623,8 +906,8 @@ func digestBytes(value []byte) string {
 	return fmt.Sprintf("%x", sha256.Sum256(value))
 }
 
-func runPOSIXCaller(ctx context.Context, runner journeyRunner, wrapperPath string, callerArgs []string, wantedExit int) (commandOutcome, error) {
-	if callerArgs == nil || wantedExit < 0 {
+func runPOSIXCaller(ctx context.Context, runner journeyRunner, ordinaryCommand, wrapperPath string, callerArgs []string, wantedExit int) (commandOutcome, error) {
+	if (ordinaryCommand != "gh" && ordinaryCommand != "go") || callerArgs == nil || wantedExit < 0 {
 		return commandOutcome{}, fmt.Errorf("generic caller contract is invalid")
 	}
 	injectionPath := filepath.Join(runner.directory, "atsura-artifact-injection")
@@ -642,7 +925,7 @@ func runPOSIXCaller(ctx context.Context, runner journeyRunner, wrapperPath strin
 	command := exec.CommandContext(runContext, "/bin/sh", shellArgs...)
 	command.Dir = runner.directory
 	command.Env = replaceEnvironment(runner.environment, map[string]string{fixtureModeEnv: "success"})
-	command.Stdin = strings.NewReader("set -eu\n. \"$1\"\nshift\ngh \"$@\"\n")
+	command.Stdin = strings.NewReader("set -eu\n. \"$1\"\nshift\n" + ordinaryCommand + " \"$@\"\n")
 	command.WaitDelay = 2 * time.Second
 	stdout := &boundedBuffer{limit: maxCommandOutputBytes}
 	stderr := &boundedBuffer{limit: maxCommandOutputBytes}
@@ -1065,9 +1348,10 @@ func validateHelpFaultMatrix(got, wanted []helpFaultDeclaration) error {
 }
 
 type helpOutputFieldProjection struct {
-	Name   string                `json:"name"`
-	Type   string                `json:"type"`
-	Schema *helpSchemaProjection `json:"schema"`
+	Name        string                `json:"name"`
+	Type        string                `json:"type"`
+	Description string                `json:"description"`
+	Schema      *helpSchemaProjection `json:"schema"`
 }
 
 type helpOutputSchemaReference struct {
@@ -1443,8 +1727,12 @@ func validateScopedHelp(path string, value []byte) (helpCommandProjection, error
 	prerequisites := strings.Join(command.Contract.Prerequisites, "\n")
 	switch path {
 	case "source inspect":
-		if command.Usage != "atr source inspect --adapter=github-cli --executable <path-or-name>" || validateInputs(command.Contract.Inputs, []helpInputProjection{input("--adapter", "flag", "single", "github-cli"), input("--executable", "flag", "single")}) != nil {
+		if command.Usage != "atr source inspect --adapter=github-cli|go-cli --executable <path-or-name>" || validateInputs(command.Contract.Inputs, []helpInputProjection{input("--adapter", "flag", "single", "github-cli", "go-cli"), input("--executable", "flag", "single")}) != nil {
 			return helpCommandProjection{}, fmt.Errorf("source inspection invocation contract is incomplete")
+		}
+		if len(command.Contract.Output.Fields) != 3 || command.Contract.Output.Fields[2].Name != "source_process_attempts" ||
+			command.Contract.Output.Fields[2].Description != "Exact bounded offline probe attempts: four for github-cli contract 2 and three for go-cli contract 1." {
+			return helpCommandProjection{}, fmt.Errorf("source inspection attempt contract is incomplete")
 		}
 		if err := validateOutputSchema(command, "catalog", "source-command-catalog", 1, sourceCatalogSchemaFields); err != nil {
 			return helpCommandProjection{}, fmt.Errorf("source catalog schema is incomplete")
@@ -1646,8 +1934,14 @@ func isolatedEnvironment(workRoot, sourceBin, attemptLog string) (string, []stri
 	environment := replaceEnvironment(minimalChildEnvironment(os.Environ()), map[string]string{
 		"HOME": home, "USERPROFILE": home, "XDG_CONFIG_HOME": config,
 		"APPDATA": config, "LOCALAPPDATA": config,
-		"PATH":            sourceBin,
+		"PATH":        sourceBin,
+		"GO111MODULE": "on", "GOENV": "off", "GOEXPERIMENT": "", "GOFIPS140": "off",
+		"GOFLAGS": "-buildvcs=false", "GOTOOLCHAIN": "local", "GOWORK": "off",
+		"GOPROXY": "off", "GOSUMDB": "off", "CGO_ENABLED": "0",
+		"GOCACHE": filepath.Join(workRoot, "go-cache"), "GOMODCACHE": filepath.Join(workRoot, "go-mod-cache"),
+		"GOPATH": filepath.Join(workRoot, "go-path"), "LC_ALL": "C",
 		fixtureAttemptEnv: attemptLog, fixtureModeEnv: "success",
+		goTestAttemptEnv: filepath.Join(workRoot, "go-test-attempts.log"),
 	})
 	return filepath.Join(config, "atsura", "bundle-trust.json"), environment, nil
 }
@@ -1956,12 +2250,33 @@ func transformSourceStreamDraft(value []byte, name string, command []string) ([]
 type inspectionEvidence struct {
 	CatalogDigest string `json:"catalog_digest"`
 	Catalog       struct {
+		Adapter struct {
+			Kind            string `json:"kind"`
+			ContractVersion int    `json:"contract_version"`
+		} `json:"adapter"`
 		Source struct {
 			RequestedExecutable string `json:"requested_executable"`
 			ResolvedPath        string `json:"resolved_path"`
+			Version             string `json:"version"`
 		} `json:"source"`
+		Probe struct {
+			Attempts int `json:"attempts"`
+		} `json:"probe"`
+		Commands []struct {
+			Path []string `json:"path"`
+		} `json:"commands"`
 	} `json:"catalog"`
 	SourceProcessAttempts int `json:"source_process_attempts"`
+}
+
+func inspectionHasCommand(inspection inspectionEvidence, wanted []string) bool {
+	matches := 0
+	for _, command := range inspection.Catalog.Commands {
+		if strings.Join(command.Path, "\x00") == strings.Join(wanted, "\x00") {
+			matches++
+		}
+	}
+	return matches == 1
 }
 
 func decodeInspection(value []byte) (inspectionEvidence, error) {

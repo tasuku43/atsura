@@ -231,6 +231,78 @@ func TestStageSourceFixtureUsesOrdinaryCommandSpellingInIsolatedPath(t *testing.
 	if trustPath == "" || !strings.Contains(strings.Join(environment, "\n"), "PATH="+binPath) {
 		t.Fatalf("isolated environment = %q", environment)
 	}
+	joined := strings.Join(environment, "\n")
+	for _, required := range []string{
+		"GOTOOLCHAIN=local", "GOPROXY=off", "CGO_ENABLED=0",
+		goTestAttemptEnv + "=" + filepath.Join(workRoot, "go-test-attempts.log"),
+	} {
+		if !strings.Contains(joined, required) {
+			t.Fatalf("isolated environment missing %q: %q", required, environment)
+		}
+	}
+}
+
+func TestGoSourceFixtureAndInspectionEvidenceAreFinite(t *testing.T) {
+	root := t.TempDir()
+	if err := createGoTestModule(root); err != nil {
+		t.Fatal(err)
+	}
+	module, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	if err != nil || string(module) != "module example.com/atsura-artifact-go\n\ngo 1.26.0\n" {
+		t.Fatalf("module = %q, %v", module, err)
+	}
+	testSource, err := os.ReadFile(filepath.Join(root, "artifact_test.go"))
+	if err != nil || !bytes.Contains(testSource, []byte(goTestAttemptEnv)) || !bytes.Contains(testSource, []byte("func TestPass")) {
+		t.Fatalf("test source = %q, %v", testSource, err)
+	}
+	attemptLog := filepath.Join(root, "go-test-attempts.log")
+	if err := requireGoTestAttempts(attemptLog, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(attemptLog, []byte("attempt\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := requireGoTestAttempts(attemptLog, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(attemptLog, []byte("attempt\nattempt\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := requireGoTestAttempts(attemptLog, 1); err == nil {
+		t.Fatal("two Go source attempts were accepted")
+	}
+
+	inspection := inspectionEvidence{}
+	inspection.Catalog.Commands = append(inspection.Catalog.Commands,
+		struct {
+			Path []string `json:"path"`
+		}{Path: []string{"test"}},
+	)
+	if !inspectionHasCommand(inspection, []string{"test"}) || inspectionHasCommand(inspection, []string{"build"}) {
+		t.Fatal("Go inspection command matching is not exact")
+	}
+	inspection.Catalog.Commands = append(inspection.Catalog.Commands, inspection.Catalog.Commands[0])
+	if inspectionHasCommand(inspection, []string{"test"}) {
+		t.Fatal("duplicate Go inspection command was accepted")
+	}
+	for _, output := range []string{
+		"PASS\nok  \texample.com/atsura-artifact-go\t0.003s\n",
+		"PASS\nok example.com/atsura-artifact-go 1s\n",
+	} {
+		if !goTestOutputPattern.MatchString(output) {
+			t.Fatalf("valid Go test output rejected: %q", output)
+		}
+	}
+	for _, output := range []string{
+		"ok  \texample.com/atsura-artifact-go\t0.003s\n",
+		"? example.com/atsura-artifact-go [no test files]\n",
+		"ok example.com/other 0.003s\n",
+		"ok example.com/atsura-artifact-go (cached)\n",
+	} {
+		if goTestOutputPattern.MatchString(output) {
+			t.Fatalf("invalid Go test output accepted: %q", output)
+		}
+	}
 }
 
 func TestAttemptsFaultsAndCanariesAreStrict(t *testing.T) {
