@@ -353,7 +353,11 @@ plan schema 5. It binds exact caller argv `go test`, source argv
 - controlled application/infrastructure fixtures own every disposition,
   source/processor attempt combination, isolation classification, hostile
   source data, and arbitrary processor failure that a real official artifact
-  cannot safely fabricate; and
+  cannot safely fabricate;
+- process-runner cleanup tests pin the original root and owner marker across
+  unlink/recreate, reject both early and late root replacement, preserve a
+  replacement sentinel, and prove cleanup never recursively follows a replaced
+  top-level pathname; and
 - native release evidence replays the exact official artifact on all four
   claimed platforms, records Apache-2.0 provenance, verifies the supplied
   isolated environment/root contract, exact caller/source/processor argv,
@@ -361,9 +365,9 @@ plan schema 5. It binds exact caller argv `go test`, source argv
   optimized and reachable pre-processor preservation journeys. It does not
   claim absence of child
   processes, outside-root filesystem access, or network attempts without a
-  separately implemented and validated external observer. Until evidence
-  schema 5 and aggregate schema 2 pass the five-target matrix on one revision,
-  implementation completion is distinct from a release-quality native claim.
+  separately implemented and validated external observer. A release-quality
+  native claim belongs only to an exact revision whose evidence schema 5 rows
+  and aggregate schema 2 pass the required five-target workflow.
 
 ADR 0009's rejected `git-log` tuple remains a negative fixture: executable
 identity, status zero, empty stderr, and smaller output never substitute for

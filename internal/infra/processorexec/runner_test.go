@@ -347,6 +347,78 @@ func TestCleanupRequiresOriginalOwnerMarkerAndRootIdentity(t *testing.T) {
 	}
 }
 
+func TestCleanupNeverRecursivelyRemovesLateReplacementRoot(t *testing.T) {
+	runner := New()
+	isolated, err := runner.prepareIsolation()
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved := isolated.root + "-moved"
+	sentinel := filepath.Join(isolated.root, "unrelated")
+	runner.removeRoot = func(string) error {
+		if err := os.Rename(isolated.root, moved); err != nil {
+			return err
+		}
+		if err := os.Mkdir(isolated.root, 0o700); err != nil {
+			return err
+		}
+		return os.WriteFile(sentinel, []byte("keep"), 0o600)
+	}
+	if err := runner.cleanupIsolation(isolated); err == nil {
+		t.Fatal("cleanup accepted a root replaced after initial validation")
+	}
+	if raw, err := os.ReadFile(sentinel); err != nil || string(raw) != "keep" {
+		t.Fatalf("late replacement root changed: %q, %v", raw, err)
+	}
+	if err := os.RemoveAll(isolated.root); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(moved); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRemovePinnedRootContentsHonorsExactBound(t *testing.T) {
+	for _, count := range []int{maxCleanupEntries, maxCleanupEntries + 1} {
+		t.Run(fmt.Sprintf("entries_%d", count), func(t *testing.T) {
+			path := t.TempDir()
+			root, err := os.OpenRoot(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer root.Close()
+			for index := 0; index < count; index++ {
+				name := fmt.Sprintf("entry-%04d", index)
+				file, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := file.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			err = removePinnedRootContents(root)
+			if count == maxCleanupEntries {
+				if err != nil {
+					t.Fatal(err)
+				}
+				entries, err := os.ReadDir(path)
+				if err != nil || len(entries) != 0 {
+					t.Fatalf("exact-bound entries=%d err=%v", len(entries), err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("cleanup accepted more than the bounded entry count")
+			}
+			entries, readErr := os.ReadDir(path)
+			if readErr != nil || len(entries) != 1 {
+				t.Fatalf("over-bound entries=%d err=%v", len(entries), readErr)
+			}
+		})
+	}
+}
+
 func TestRunClassifiesCancellationAndWaitUncertainty(t *testing.T) {
 	runner := New()
 	request := helperRequest(t, runner, "sleep")

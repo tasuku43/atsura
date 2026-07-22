@@ -359,6 +359,17 @@ state, and application-data roots plus finite RTK-owned controls. An ambient
 host variable is therefore not inherited, and default host configuration is
 outside the isolated home. Retired v1 evidence fails compatibility checks.
 
+The isolated root and its owner marker remain pinned by open handles for the
+entire processor lifetime. Cleanup performs at most 4,096 root-relative
+top-level removals, keeps every recursive traversal anchored to that held root,
+revalidates the top-level identity, and performs only a nonrecursive final
+directory removal. Observed marker or root replacement fails cleanup, and
+additions that keep the held root nonempty beyond the bound also fail. The
+nonrecursive final operation ensures an unresolved name race cannot recursively
+delete replacement contents. A same-user racer may still cause residue or the
+removal of an unrelated empty top-level directory; this is cleanup containment,
+not an OS sandbox.
+
 Successful processor status is not semantic validation. The one admitted tuple
 is `atsura.output.rtk_go_test_pass.v1`: source-catalog schema 2, Go contract 2,
 an inspection-time stable Go 1.26.x observation, exact no-argument caller

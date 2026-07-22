@@ -95,6 +95,10 @@ re-inspected and rebuilt under v2.
   compatibility value; explicit negative tests reject v1.
 - The process-runner test compares the complete POSIX environment-key set and
   proves ambient `CLAUDE_CONFIG_DIR`, `PATH`, and a secret canary are absent.
+- The process runner pins the isolation root and owner marker with live handles;
+  cleanup removes descendants through the pinned root and uses only a
+  revalidated nonrecursive removal for the top-level path. Replacement and
+  inode-reuse tests preserve unrelated sentinels and fail cleanup.
 - Architecture and catalog tests continue to reject coding-agent-host fields,
   commands, and adapters from the core surface.
 - Native artifact replay inspects and runs the official RTK artifact under v2.

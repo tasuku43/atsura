@@ -24,6 +24,7 @@ import (
 const (
 	ownerMarkerName    = ".atsura-processor-owner"
 	ownerMarkerContent = "atsura.processor.root.v1\n"
+	maxCleanupEntries  = 4096
 )
 
 // Runner is the production processor boundary. Its private seams exist only
@@ -165,11 +166,13 @@ func (r *Runner) runPrepared(ctx context.Context, request processorprocess.Reque
 }
 
 type isolation struct {
-	root        string
-	work        string
-	environment []string
-	rootInfo    os.FileInfo
-	markerInfo  os.FileInfo
+	root         string
+	work         string
+	environment  []string
+	rootInfo     os.FileInfo
+	markerInfo   os.FileInfo
+	rootHandle   *os.Root
+	markerHandle *os.File
 }
 
 func (r *Runner) prepareIsolation() (isolation, error) {
@@ -203,22 +206,40 @@ func (r *Runner) prepareIsolation() (isolation, error) {
 	if err := os.Chmod(root, 0o700); err != nil {
 		return isolation{}, err
 	}
-	markerInfo, err := createOwnerMarker(root)
+	parent, name := filepath.Split(root)
+	parentHandle, err := os.OpenRoot(parent)
 	if err != nil {
-		if cleanupErr := removeUnmarkedRoot(root, info); cleanupErr != nil {
-			return isolation{}, errors.Join(err, fmt.Errorf("remove unmarked isolation root: %w", cleanupErr))
+		return isolation{}, errors.Join(err, removeUnmarkedRoot(root, info, nil))
+	}
+	rootHandle, openRootErr := parentHandle.OpenRoot(name)
+	closeParentErr := parentHandle.Close()
+	if openRootErr != nil || closeParentErr != nil {
+		cause := errors.Join(openRootErr, closeParentErr)
+		return isolation{}, errors.Join(cause, removeUnmarkedRoot(root, info, rootHandle))
+	}
+	pinnedRootInfo, err := rootHandle.Stat(".")
+	if err != nil || !pinnedRootInfo.IsDir() || !os.SameFile(info, pinnedRootInfo) {
+		cause := errors.Join(err, fmt.Errorf("isolated root changed while it was pinned"))
+		return isolation{}, errors.Join(cause, removeUnmarkedRoot(root, info, rootHandle))
+	}
+	markerHandle, markerInfo, err := createOwnerMarker(rootHandle)
+	if err != nil {
+		cleanupErr := removeUnmarkedRoot(root, pinnedRootInfo, rootHandle)
+		if cleanupErr != nil {
+			err = errors.Join(err, fmt.Errorf("remove unmarked isolation root: %w", cleanupErr))
 		}
 		return isolation{}, err
 	}
-	isolated := isolation{root: root, rootInfo: info, markerInfo: markerInfo}
+	isolated := isolation{
+		root:         root,
+		rootInfo:     pinnedRootInfo,
+		markerInfo:   markerInfo,
+		rootHandle:   rootHandle,
+		markerHandle: markerHandle,
+	}
 
 	directories := []string{"work", "home", "tmp", "state", "config", "data", "cache", "appdata", "localappdata"}
 	paths := make(map[string]string, len(directories))
-	rootHandle, err := os.OpenRoot(root)
-	if err != nil {
-		return isolation{}, r.setupFailure(isolated, err)
-	}
-	defer rootHandle.Close()
 	for _, name := range directories {
 		path := filepath.Join(root, name)
 		if err := rootHandle.Mkdir(name, 0o700); err != nil {
@@ -263,12 +284,23 @@ func (r *Runner) prepareIsolation() (isolation, error) {
 	return isolated, nil
 }
 
-func (r *Runner) cleanupIsolation(isolated isolation) error {
+func (r *Runner) cleanupIsolation(isolated isolation) (cleanupErr error) {
+	defer func() {
+		cleanupErr = errors.Join(cleanupErr, closeIsolationHandles(isolated))
+	}()
 	if isolated.root == "" {
 		return nil
 	}
-	if !validIsolationRootPath(isolated.root) || isolated.rootInfo == nil || isolated.markerInfo == nil {
+	if !validIsolationRootPath(isolated.root) || isolated.rootInfo == nil || isolated.markerInfo == nil || isolated.rootHandle == nil || isolated.markerHandle == nil {
 		return fmt.Errorf("refusing to remove an invalid isolation root")
+	}
+	pinnedRoot, err := isolated.rootHandle.Stat(".")
+	if err != nil || !pinnedRoot.IsDir() || !os.SameFile(isolated.rootInfo, pinnedRoot) {
+		return errors.Join(err, fmt.Errorf("isolated root pin changed before cleanup"))
+	}
+	pinnedMarker, err := isolated.markerHandle.Stat()
+	if err != nil || !pinnedMarker.Mode().IsRegular() || !os.SameFile(isolated.markerInfo, pinnedMarker) {
+		return errors.Join(err, fmt.Errorf("isolated root owner marker pin changed before cleanup"))
 	}
 	parent, name := filepath.Split(isolated.root)
 	parentRoot, err := os.OpenRoot(parent)
@@ -280,45 +312,96 @@ func (r *Runner) cleanupIsolation(isolated isolation) error {
 	if err != nil {
 		return fmt.Errorf("isolated root identity changed before cleanup: %w", err)
 	}
-	if !currentRoot.IsDir() || currentRoot.Mode()&os.ModeSymlink != 0 || !os.SameFile(isolated.rootInfo, currentRoot) {
+	if !currentRoot.IsDir() || currentRoot.Mode()&os.ModeSymlink != 0 || !os.SameFile(pinnedRoot, currentRoot) {
 		return fmt.Errorf("isolated root identity changed before cleanup")
 	}
-	childRoot, err := parentRoot.OpenRoot(name)
+	marker, err := isolated.rootHandle.Lstat(ownerMarkerName)
 	if err != nil {
-		return err
-	}
-	marker, err := childRoot.Lstat(ownerMarkerName)
-	if err != nil {
-		_ = childRoot.Close()
 		return fmt.Errorf("isolated root owner marker changed before cleanup: %w", err)
 	}
-	if !marker.Mode().IsRegular() || marker.Mode()&os.ModeSymlink != 0 || !os.SameFile(isolated.markerInfo, marker) {
-		_ = childRoot.Close()
+	if !marker.Mode().IsRegular() || marker.Mode()&os.ModeSymlink != 0 || !os.SameFile(pinnedMarker, marker) {
 		return fmt.Errorf("isolated root owner marker changed before cleanup")
 	}
-	markerBytes, err := childRoot.ReadFile(ownerMarkerName)
+	currentMarker, err := isolated.rootHandle.Open(ownerMarkerName)
 	if err != nil {
-		_ = childRoot.Close()
-		return fmt.Errorf("isolated root owner marker is invalid: %w", err)
+		return fmt.Errorf("isolated root owner marker changed before cleanup: %w", err)
+	}
+	currentMarkerInfo, statErr := currentMarker.Stat()
+	markerBytes, readErr := io.ReadAll(io.LimitReader(currentMarker, int64(len(ownerMarkerContent)+1)))
+	closeMarkerErr := currentMarker.Close()
+	if statErr != nil || readErr != nil || closeMarkerErr != nil {
+		return errors.Join(statErr, readErr, closeMarkerErr, fmt.Errorf("isolated root owner marker is invalid"))
+	}
+	if !currentMarkerInfo.Mode().IsRegular() || !os.SameFile(pinnedMarker, currentMarkerInfo) || !os.SameFile(marker, currentMarkerInfo) {
+		return fmt.Errorf("isolated root owner marker changed before cleanup")
 	}
 	if string(markerBytes) != ownerMarkerContent {
-		_ = childRoot.Close()
 		return fmt.Errorf("isolated root owner marker is invalid")
 	}
-	if err := childRoot.Close(); err != nil {
+	if r != nil && r.removeRoot != nil {
+		if err := r.removeRoot(isolated.root); err != nil {
+			return err
+		}
+	}
+	if err := removePinnedRootContents(isolated.rootHandle); err != nil {
 		return err
 	}
-	remove := func(_ string) error { return parentRoot.RemoveAll(name) }
-	if r != nil && r.removeRoot != nil {
-		remove = r.removeRoot
+	currentRoot, err = parentRoot.Lstat(name)
+	if err != nil {
+		return fmt.Errorf("isolated root identity changed during cleanup: %w", err)
 	}
-	if err := remove(isolated.root); err != nil {
+	if !currentRoot.IsDir() || currentRoot.Mode()&os.ModeSymlink != 0 || !os.SameFile(pinnedRoot, currentRoot) {
+		return fmt.Errorf("isolated root identity changed during cleanup")
+	}
+	if err := parentRoot.Remove(name); err != nil {
 		return err
 	}
 	if _, err := parentRoot.Lstat(name); !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("isolated root still exists after cleanup")
 	}
 	return nil
+}
+
+func closeIsolationHandles(isolated isolation) error {
+	var markerErr, rootErr error
+	if isolated.markerHandle != nil {
+		markerErr = isolated.markerHandle.Close()
+	}
+	if isolated.rootHandle != nil {
+		rootErr = isolated.rootHandle.Close()
+	}
+	return errors.Join(markerErr, rootErr)
+}
+
+func removePinnedRootContents(root *os.Root) error {
+	removed := 0
+	for {
+		directory, err := root.Open(".")
+		if err != nil {
+			return err
+		}
+		entries, readErr := directory.ReadDir(1)
+		closeErr := directory.Close()
+		if errors.Is(readErr, io.EOF) {
+			readErr = nil
+		}
+		if readErr != nil || closeErr != nil {
+			return errors.Join(readErr, closeErr)
+		}
+		if len(entries) == 0 {
+			return nil
+		}
+		if len(entries) != 1 {
+			return fmt.Errorf("isolated root cleanup returned an invalid entry batch")
+		}
+		if removed == maxCleanupEntries {
+			return fmt.Errorf("isolated root exceeded the bounded cleanup entry count")
+		}
+		if err := root.RemoveAll(entries[0].Name()); err != nil {
+			return err
+		}
+		removed++
+	}
 }
 
 func (r *Runner) setupFailure(isolated isolation, cause error) error {
@@ -328,15 +411,10 @@ func (r *Runner) setupFailure(isolated isolation, cause error) error {
 	return cause
 }
 
-func createOwnerMarker(root string) (os.FileInfo, error) {
-	rootHandle, err := os.OpenRoot(root)
+func createOwnerMarker(rootHandle *os.Root) (*os.File, os.FileInfo, error) {
+	marker, err := rootHandle.OpenFile(ownerMarkerName, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
-		return nil, err
-	}
-	defer rootHandle.Close()
-	marker, err := rootHandle.OpenFile(ownerMarkerName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	written, writeErr := marker.Write([]byte(ownerMarkerContent))
 	if writeErr == nil && written != len(ownerMarkerContent) {
@@ -346,30 +424,31 @@ func createOwnerMarker(root string) (os.FileInfo, error) {
 		writeErr = marker.Sync()
 	}
 	openedInfo, statErr := marker.Stat()
-	closeErr := marker.Close()
 	if writeErr != nil {
-		return nil, writeErr
+		_ = marker.Close()
+		return nil, nil, writeErr
 	}
 	if statErr != nil {
-		return nil, fmt.Errorf("opened owner marker is not a stable regular file: %w", statErr)
+		_ = marker.Close()
+		return nil, nil, fmt.Errorf("opened owner marker is not a stable regular file: %w", statErr)
 	}
 	if !openedInfo.Mode().IsRegular() {
-		return nil, fmt.Errorf("opened owner marker is not a stable regular file")
-	}
-	if closeErr != nil {
-		return nil, closeErr
+		_ = marker.Close()
+		return nil, nil, fmt.Errorf("opened owner marker is not a stable regular file")
 	}
 	info, err := rootHandle.Lstat(ownerMarkerName)
 	if err != nil {
-		return nil, fmt.Errorf("owner marker is not a stable regular file: %w", err)
+		_ = marker.Close()
+		return nil, nil, fmt.Errorf("owner marker is not a stable regular file: %w", err)
 	}
 	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || !os.SameFile(openedInfo, info) {
-		return nil, fmt.Errorf("owner marker is not a stable regular file")
+		_ = marker.Close()
+		return nil, nil, fmt.Errorf("owner marker is not a stable regular file")
 	}
-	return openedInfo, nil
+	return marker, openedInfo, nil
 }
 
-func removeUnmarkedRoot(root string, expected os.FileInfo) error {
+func removeUnmarkedRoot(root string, expected os.FileInfo, pinned *os.Root) (cleanupErr error) {
 	if !validIsolationRootPath(root) || expected == nil {
 		return fmt.Errorf("invalid unmarked isolation root")
 	}
@@ -386,13 +465,21 @@ func removeUnmarkedRoot(root string, expected os.FileInfo) error {
 	if !current.IsDir() || current.Mode()&os.ModeSymlink != 0 || !os.SameFile(expected, current) {
 		return fmt.Errorf("unmarked isolation root identity changed")
 	}
-	child, err := parentRoot.OpenRoot(name)
-	if err != nil {
-		return err
+	if pinned == nil {
+		pinned, err = parentRoot.OpenRoot(name)
+		if err != nil {
+			return err
+		}
 	}
-	directory, openErr := child.Open(".")
+	defer func() {
+		cleanupErr = errors.Join(cleanupErr, pinned.Close())
+	}()
+	pinnedInfo, err := pinned.Stat(".")
+	if err != nil || !pinnedInfo.IsDir() || !os.SameFile(expected, pinnedInfo) || !os.SameFile(current, pinnedInfo) {
+		return errors.Join(err, fmt.Errorf("unmarked isolation root identity changed"))
+	}
+	directory, openErr := pinned.Open(".")
 	if openErr != nil {
-		_ = child.Close()
 		return openErr
 	}
 	entries, readErr := directory.ReadDir(1)
@@ -400,11 +487,20 @@ func removeUnmarkedRoot(root string, expected os.FileInfo) error {
 		readErr = nil
 	}
 	closeDirectoryErr := directory.Close()
-	closeRootErr := child.Close()
-	if readErr != nil || closeDirectoryErr != nil || closeRootErr != nil || len(entries) != 0 {
-		return errors.Join(readErr, closeDirectoryErr, closeRootErr, fmt.Errorf("unmarked isolation root is not empty"))
+	if readErr != nil || closeDirectoryErr != nil || len(entries) != 0 {
+		return errors.Join(readErr, closeDirectoryErr, fmt.Errorf("unmarked isolation root is not empty"))
 	}
-	return parentRoot.RemoveAll(name)
+	current, err = parentRoot.Lstat(name)
+	if err != nil || !current.IsDir() || current.Mode()&os.ModeSymlink != 0 || !os.SameFile(pinnedInfo, current) {
+		return errors.Join(err, fmt.Errorf("unmarked isolation root identity changed"))
+	}
+	if err := parentRoot.Remove(name); err != nil {
+		return err
+	}
+	if _, err := parentRoot.Lstat(name); !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("unmarked isolation root still exists after cleanup")
+	}
+	return nil
 }
 
 func validIsolationRootPath(root string) bool {
