@@ -1,4 +1,4 @@
-//go:build linux || darwin
+//go:build (linux || darwin) && (amd64 || arm64)
 
 package shimstore
 
@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -39,6 +40,7 @@ func TestStoreLifecyclePublishesIdempotentHardLinkAndRemovesExactReference(t *te
 	assertMode(t, root, os.ModeDir|0o700)
 	assertMode(t, filepath.Join(root, binDirectoryName), os.ModeDir|0o700)
 	assertMode(t, filepath.Join(root, recordsDirectoryName), os.ModeDir|0o700)
+	assertMode(t, filepath.Join(root, stagingDirectoryName), os.ModeDir|0o700)
 	recordPath := filepath.Join(root, recordsDirectoryName, manifest.Reference.String())
 	assertMode(t, recordPath, os.ModeDir|0o700)
 	assertMode(t, filepath.Join(recordPath, manifestFileName), 0o600)
@@ -89,6 +91,377 @@ func TestStoreLifecyclePublishesIdempotentHardLinkAndRemovesExactReference(t *te
 	if err != nil || len(after.Records) != 0 || len(after.Collisions) != 0 {
 		t.Fatalf("final Status() = %+v, %v", after, err)
 	}
+}
+
+func TestPublishExclusiveNeverReplacesTargetCreatedAfterAbsenceCheck(t *testing.T) {
+	t.Run("empty directory inode", func(t *testing.T) {
+		root := filepath.Join(t.TempDir(), "store")
+		prepareEmptyStore(t, root)
+		stagingPath := filepath.Join(root, stagingDirectoryName)
+		recordsPath := filepath.Join(root, recordsDirectoryName)
+		expectedStaging, err := os.Lstat(stagingPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expectedRecords, err := os.Lstat(recordsPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stageName := ".stage-race"
+		targetName := "wsh1_" + strings.Repeat("a", 64)
+		for _, name := range []string{stageName, targetName} {
+			parent := stagingPath
+			if name == targetName {
+				parent = recordsPath
+			}
+			if err := os.Mkdir(filepath.Join(parent, name), 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}
+		stageBefore, err := os.Lstat(filepath.Join(stagingPath, stageName))
+		if err != nil {
+			t.Fatal(err)
+		}
+		targetBefore, err := os.Lstat(filepath.Join(recordsPath, targetName))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = publishExclusive(root, expectedStaging, stageName, expectedRecords, targetName)
+		if !errors.Is(err, os.ErrExist) {
+			t.Fatalf("publishExclusive(existing target) error = %v", err)
+		}
+		stageAfter, stageErr := os.Lstat(filepath.Join(stagingPath, stageName))
+		targetAfter, targetErr := os.Lstat(filepath.Join(recordsPath, targetName))
+		if stageErr != nil || targetErr != nil || !os.SameFile(stageBefore, stageAfter) || !os.SameFile(targetBefore, targetAfter) {
+			t.Fatalf("exclusive publication changed stage or foreign target: stage=%v target=%v", stageErr, targetErr)
+		}
+	})
+
+	t.Run("regular file bytes and inode", func(t *testing.T) {
+		root := filepath.Join(t.TempDir(), "store")
+		prepareEmptyStore(t, root)
+		stagingPath := filepath.Join(root, stagingDirectoryName)
+		recordsPath := filepath.Join(root, recordsDirectoryName)
+		expectedStaging, err := os.Lstat(stagingPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expectedRecords, err := os.Lstat(recordsPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stageName := ".stage-race"
+		targetName := "wsh1_" + strings.Repeat("c", 64)
+		if err := os.Mkdir(filepath.Join(stagingPath, stageName), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		targetPath := filepath.Join(recordsPath, targetName)
+		foreign := []byte("foreign-record-target")
+		writeFile(t, targetPath, foreign, 0o600)
+		targetBefore, err := os.Lstat(targetPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = publishExclusive(root, expectedStaging, stageName, expectedRecords, targetName)
+		if !errors.Is(err, os.ErrExist) {
+			t.Fatalf("publishExclusive(existing target) error = %v", err)
+		}
+		targetAfter, err := os.Lstat(targetPath)
+		got, readErr := os.ReadFile(targetPath)
+		if err != nil || readErr != nil || !os.SameFile(targetBefore, targetAfter) || !reflect.DeepEqual(got, foreign) {
+			t.Fatalf("exclusive publication changed foreign target: stat=%v read=%v bytes=%q", err, readErr, got)
+		}
+	})
+}
+
+func TestPublishExclusiveMovesStageAtomicallyWhenTargetIsAbsent(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "store")
+	prepareEmptyStore(t, root)
+	stagingPath := filepath.Join(root, stagingDirectoryName)
+	recordsPath := filepath.Join(root, recordsDirectoryName)
+	expectedStaging, err := os.Lstat(stagingPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedRecords, err := os.Lstat(recordsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stageName := ".stage-success"
+	targetName := "wsh1_" + strings.Repeat("b", 64)
+	stagePath := filepath.Join(stagingPath, stageName)
+	if err := os.Mkdir(stagePath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stageBefore, err := os.Lstat(stagePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := publishExclusive(root, expectedStaging, stageName, expectedRecords, targetName); err != nil {
+		t.Fatalf("publishExclusive(absent target) error = %v", err)
+	}
+	if _, err := os.Lstat(stagePath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("published stage remains: %v", err)
+	}
+	targetAfter, err := os.Lstat(filepath.Join(recordsPath, targetName))
+	if err != nil || !os.SameFile(stageBefore, targetAfter) {
+		t.Fatalf("published target identity changed: %v", err)
+	}
+}
+
+func TestPublicationErrorsNeverFallBackToReplacingRename(t *testing.T) {
+	conflict := classifyPublicationError(syscall.EEXIST)
+	if !errors.Is(conflict, ErrConflict) || errors.Is(conflict, ErrUnsafeStore) {
+		t.Fatalf("existing target classification = %v", conflict)
+	}
+	for _, unsupported := range []error{syscall.ENOSYS, syscall.EINVAL, syscall.ENOTSUP} {
+		got := classifyPublicationError(unsupported)
+		if !errors.Is(got, ErrUnsafeStore) || errors.Is(got, ErrConflict) {
+			t.Errorf("unsupported exclusive publication %v classification = %v", unsupported, got)
+		}
+	}
+}
+
+func TestStagingCleanupIsIdentityBoundAndNonrecursive(t *testing.T) {
+	t.Run("exact files", func(t *testing.T) {
+		root := filepath.Join(t.TempDir(), "store")
+		prepareEmptyStore(t, root)
+		records, err := os.OpenRoot(filepath.Join(root, stagingDirectoryName))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer records.Close()
+		stageName, stage, stageInfo, err := createStagingDirectory(records)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer stage.Close()
+		manifestInfo, err := writePrivateFile(stage, manifestFileName, []byte("manifest"), 0o600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		shimInfo, err := writePrivateFile(stage, shimFileName, []byte("shim"), 0o700)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cleanupStagingDirectory(records, stageName, stage, stageInfo, manifestInfo, shimInfo)
+		if _, err := records.Lstat(stageName); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("exact staging directory remains: %v", err)
+		}
+	})
+
+	t.Run("unknown nested replacement", func(t *testing.T) {
+		root := filepath.Join(t.TempDir(), "store")
+		prepareEmptyStore(t, root)
+		recordsPath := filepath.Join(root, stagingDirectoryName)
+		records, err := os.OpenRoot(recordsPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer records.Close()
+		stageName, stage, stageInfo, err := createStagingDirectory(records)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer stage.Close()
+		foreignPath := filepath.Join(recordsPath, stageName, "foreign")
+		if err := os.Mkdir(foreignPath, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		sentinelPath := filepath.Join(foreignPath, "sentinel")
+		writeFile(t, sentinelPath, []byte("preserve"), 0o600)
+
+		cleanupStagingDirectory(records, stageName, stage, stageInfo, nil, nil)
+		got, err := os.ReadFile(sentinelPath)
+		if err != nil || string(got) != "preserve" {
+			t.Fatalf("staging cleanup removed replacement data: %q, %v", got, err)
+		}
+	})
+}
+
+func TestCrashStagingResidueIsReadOnlyForStatusAndCleanedByNextInstall(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "store")
+	prepareEmptyStore(t, root)
+	stageName, stageBefore := writeCrashStagingResidue(t, root)
+	store := New(root)
+
+	inventory, err := store.Status(context.Background())
+	if err != nil || len(inventory.Records) != 0 || len(inventory.Collisions) != 0 {
+		t.Fatalf("Status(crash residue) = %+v, %v", inventory, err)
+	}
+	stageAfter, err := os.Lstat(filepath.Join(root, stagingDirectoryName, stageName))
+	if err != nil || !os.SameFile(stageBefore, stageAfter) {
+		t.Fatalf("read-only status changed crash residue: %v", err)
+	}
+
+	manifest, shim := testArtifact(t, "gh", "after-crash")
+	installed, already, err := store.Install(context.Background(), manifest, shim)
+	if err != nil || already || installed.State != wrappershim.StateOwnedActive {
+		t.Fatalf("Install(after crash) = %+v, %v, %v", installed, already, err)
+	}
+	if _, err := os.Lstat(filepath.Join(root, stagingDirectoryName, stageName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("exact crash residue remains after install: %v", err)
+	}
+	inventory, err = store.Status(context.Background())
+	if err != nil || len(inventory.Records) != 1 || inventory.Records[0].Reference != manifest.Reference {
+		t.Fatalf("Status(installed artifact) = %+v, %v", inventory, err)
+	}
+	secondStageName, secondStageBefore := writeCrashStagingResidue(t, root)
+	inventory, err = store.Status(context.Background())
+	if err != nil || len(inventory.Records) != 1 || inventory.Records[0].Reference != manifest.Reference {
+		t.Fatalf("Status(artifact plus crash residue) = %+v, %v", inventory, err)
+	}
+	secondStageAfter, err := os.Lstat(filepath.Join(root, stagingDirectoryName, secondStageName))
+	if err != nil || !os.SameFile(secondStageBefore, secondStageAfter) {
+		t.Fatalf("status changed residue beside valid artifact: %v", err)
+	}
+	if _, already, err := store.Install(context.Background(), manifest, shim); err != nil || !already {
+		t.Fatalf("idempotent Install(after second crash) = %v, %v", already, err)
+	}
+}
+
+func TestUnknownCrashStagingShapeIsPreservedAndFailsClosed(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "store")
+	prepareEmptyStore(t, root)
+	staging, err := os.OpenRoot(filepath.Join(root, stagingDirectoryName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stageName, stage, _, err := createStagingDirectory(staging)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stage.Close()
+	staging.Close()
+	unknown := filepath.Join(root, stagingDirectoryName, stageName, "unknown")
+	if err := os.Mkdir(unknown, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := filepath.Join(unknown, "sentinel")
+	writeFile(t, sentinel, []byte("preserve-unknown"), 0o600)
+	store := New(root)
+	if _, err := store.Status(context.Background()); !errors.Is(err, ErrTampered) {
+		t.Fatalf("Status(unknown staging) error = %v", err)
+	}
+	manifest, shim := testArtifact(t, "gh", "unknown-stage")
+	if _, _, err := store.Install(context.Background(), manifest, shim); !errors.Is(err, ErrTampered) {
+		t.Fatalf("Install(unknown staging) error = %v", err)
+	}
+	if _, err := store.Remove(context.Background(), manifest.Reference); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Remove(missing artifact with unknown staging) error = %v", err)
+	}
+	got, err := os.ReadFile(sentinel)
+	if err != nil || string(got) != "preserve-unknown" {
+		t.Fatalf("unknown staging data changed: %q, %v", got, err)
+	}
+	if _, err := os.Lstat(filepath.Join(root, recordsDirectoryName, manifest.Reference.String())); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unknown staging failure published a record: %v", err)
+	}
+}
+
+func TestCrashStagingCapacityIsBoundedWithoutCleanup(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "store")
+	prepareEmptyStore(t, root)
+	stagingPath := filepath.Join(root, stagingDirectoryName)
+	for index := 0; index <= wrappershim.MaxArtifacts; index++ {
+		name := fmt.Sprintf(".stage-%032x", index)
+		if err := os.Mkdir(filepath.Join(stagingPath, name), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store := New(root)
+	if _, err := store.Status(context.Background()); !errors.Is(err, ErrCapacity) {
+		t.Fatalf("Status(over-capacity staging) error = %v", err)
+	}
+	manifest, shim := testArtifact(t, "gh", "staging-capacity")
+	if _, _, err := store.Install(context.Background(), manifest, shim); !errors.Is(err, ErrCapacity) {
+		t.Fatalf("Install(over-capacity staging) error = %v", err)
+	}
+	entries, err := os.ReadDir(stagingPath)
+	if err != nil || len(entries) != wrappershim.MaxArtifacts+1 {
+		t.Fatalf("over-capacity staging was mutated: count=%d, %v", len(entries), err)
+	}
+}
+
+func TestRemoveCrashPhasesRemainReadOnlyReconcilable(t *testing.T) {
+	t.Run("after active link removal", func(t *testing.T) {
+		root := filepath.Join(t.TempDir(), "store")
+		store := New(root)
+		manifest, shim := testArtifact(t, "gh", "remove-deactivated")
+		if _, _, err := store.Install(context.Background(), manifest, shim); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(filepath.Join(root, binDirectoryName, "gh")); err != nil {
+			t.Fatal(err)
+		}
+		inventory, err := store.Status(context.Background())
+		if err != nil || len(inventory.Records) != 1 || inventory.Records[0].Reference != manifest.Reference || inventory.Records[0].State != wrappershim.StateOwnedInactive {
+			t.Fatalf("Status(after deactivation crash) = %+v, %v", inventory, err)
+		}
+		removed, err := store.Remove(context.Background(), manifest.Reference)
+		if err != nil || removed.State != wrappershim.StateOwnedInactive {
+			t.Fatalf("Remove(reconciled inactive) = %+v, %v", removed, err)
+		}
+	})
+
+	t.Run("after record quarantine", func(t *testing.T) {
+		root := filepath.Join(t.TempDir(), "store")
+		store := New(root)
+		manifest, shim := testArtifact(t, "gh", "remove-quarantined")
+		if _, _, err := store.Install(context.Background(), manifest, shim); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(filepath.Join(root, binDirectoryName, "gh")); err != nil {
+			t.Fatal(err)
+		}
+		opened, present, err := store.openExisting()
+		if err != nil || !present {
+			t.Fatalf("openExisting() = %v, %v", present, err)
+		}
+		lock, err := opened.acquireLock(false)
+		if err != nil {
+			opened.close()
+			t.Fatal(err)
+		}
+		record, err := opened.inspectRecord(manifest.Reference)
+		if err != nil {
+			lock.close()
+			opened.close()
+			t.Fatal(err)
+		}
+		residue, err := opened.moveRecordToStaging(record)
+		lock.close()
+		opened.close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Lstat(filepath.Join(root, recordsDirectoryName, manifest.Reference.String())); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("quarantined record remains public: %v", err)
+		}
+		stagePath := filepath.Join(root, stagingDirectoryName, residue.name)
+		stageBefore, err := os.Lstat(stagePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		inventory, err := store.Status(context.Background())
+		if err != nil || len(inventory.Records) != 0 || len(inventory.Collisions) != 0 {
+			t.Fatalf("Status(after quarantine crash) = %+v, %v", inventory, err)
+		}
+		stageAfter, err := os.Lstat(stagePath)
+		if err != nil || !os.SameFile(stageBefore, stageAfter) {
+			t.Fatalf("read-only status changed quarantined record: %v", err)
+		}
+		installed, already, err := store.Install(context.Background(), manifest, shim)
+		if err != nil || already || installed.State != wrappershim.StateOwnedActive {
+			t.Fatalf("Install(after quarantine crash) = %+v, %v, %v", installed, already, err)
+		}
+		if _, err := os.Lstat(stagePath); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("quarantine residue remains after install: %v", err)
+		}
+	})
 }
 
 func TestInstallReactivatesExactInactiveRecord(t *testing.T) {
@@ -308,6 +681,38 @@ func TestUnknownHardLinkMakesOwnershipTampered(t *testing.T) {
 	}
 }
 
+func TestManifestAndLockHardLinksFailClosed(t *testing.T) {
+	t.Run("manifest", func(t *testing.T) {
+		root := filepath.Join(t.TempDir(), "store")
+		store := New(root)
+		manifest, shim := testArtifact(t, "gh", "manifest-link")
+		if _, _, err := store.Install(context.Background(), manifest, shim); err != nil {
+			t.Fatal(err)
+		}
+		manifestPath := filepath.Join(root, recordsDirectoryName, manifest.Reference.String(), manifestFileName)
+		if err := os.Link(manifestPath, filepath.Join(t.TempDir(), "manifest-link")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.Status(context.Background()); !errors.Is(err, ErrTampered) {
+			t.Fatalf("Status(linked manifest) error = %v", err)
+		}
+		if _, err := store.Remove(context.Background(), manifest.Reference); !errors.Is(err, ErrTampered) {
+			t.Fatalf("Remove(linked manifest) error = %v", err)
+		}
+	})
+
+	t.Run("lock", func(t *testing.T) {
+		root := filepath.Join(t.TempDir(), "store")
+		prepareEmptyStore(t, root)
+		if err := os.Link(filepath.Join(root, lockFileName), filepath.Join(t.TempDir(), "lock-link")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := New(root).Status(context.Background()); !errors.Is(err, ErrUnsafeStore) {
+			t.Fatalf("Status(linked lock) error = %v", err)
+		}
+	})
+}
+
 func TestUnsafeAndMalformedStoreShapesFailClosed(t *testing.T) {
 	manifest, shim := testArtifact(t, "gh", "unsafe")
 	tests := []struct {
@@ -345,6 +750,9 @@ func TestUnsafeAndMalformedStoreShapesFailClosed(t *testing.T) {
 			if err := os.Mkdir(filepath.Join(root, recordsDirectoryName), 0o700); err != nil {
 				t.Fatal(err)
 			}
+			if err := os.Mkdir(filepath.Join(root, stagingDirectoryName), 0o700); err != nil {
+				t.Fatal(err)
+			}
 		}},
 	}
 	for _, test := range tests {
@@ -378,6 +786,34 @@ func TestUnsafeAndMalformedStoreShapesFailClosed(t *testing.T) {
 			t.Fatalf("Remove(noncanonical manifest) error = %v", err)
 		}
 	})
+}
+
+func TestSafeStoreShapesRequireEffectiveUserOwnership(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	directory, err := os.Lstat(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filePath := filepath.Join(root, "private")
+	writeFile(t, filePath, []byte("private"), 0o600)
+	file, err := os.Lstat(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !safeDirectoryInfo(directory) || !safePrivateFileInfo(file, 0o600) {
+		t.Fatal("current-user private shapes were rejected")
+	}
+	foreignUID := uint32(uint64(os.Geteuid()) + 1)
+	foreignStat := &syscall.Stat_t{Uid: foreignUID}
+	if safeDirectoryInfo(sysFileInfo{FileInfo: directory, sys: foreignStat}) {
+		t.Fatal("foreign-owned private directory was accepted")
+	}
+	if safePrivateFileInfo(sysFileInfo{FileInfo: file, sys: foreignStat}, 0o600) {
+		t.Fatal("foreign-owned private file was accepted")
+	}
 }
 
 func TestBoundsLockAndInvalidInputCauseNoArtifactMutation(t *testing.T) {
@@ -515,7 +951,7 @@ func testArtifact(t *testing.T, command, seed string) (wrappershim.Manifest, []b
 
 func prepareEmptyStore(t *testing.T, root string) {
 	t.Helper()
-	for _, path := range []string{root, filepath.Join(root, binDirectoryName), filepath.Join(root, recordsDirectoryName)} {
+	for _, path := range []string{root, filepath.Join(root, binDirectoryName), filepath.Join(root, recordsDirectoryName), filepath.Join(root, stagingDirectoryName)} {
 		if err := os.MkdirAll(path, 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -540,6 +976,35 @@ func writeRawRecord(t *testing.T, root string, manifest wrappershim.Manifest, sh
 	writeFile(t, filepath.Join(directory, shimFileName), shim, 0o700)
 }
 
+func writeCrashStagingResidue(t *testing.T, root string) (string, fs.FileInfo) {
+	t.Helper()
+	staging, err := os.OpenRoot(filepath.Join(root, stagingDirectoryName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer staging.Close()
+	name, stage, info, err := createStagingDirectory(staging)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writePrivateFile(stage, manifestFileName, []byte("partial-manifest"), 0o600); err != nil {
+		stage.Close()
+		t.Fatal(err)
+	}
+	if _, err := writePrivateFile(stage, shimFileName, []byte("partial-shim"), 0o700); err != nil {
+		stage.Close()
+		t.Fatal(err)
+	}
+	if err := syncRoot(stage); err != nil {
+		stage.Close()
+		t.Fatal(err)
+	}
+	if err := stage.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return name, info
+}
+
 func writeFile(t *testing.T, path string, data []byte, mode os.FileMode) {
 	t.Helper()
 	if err := os.WriteFile(path, data, mode); err != nil {
@@ -549,6 +1014,13 @@ func writeFile(t *testing.T, path string, data []byte, mode os.FileMode) {
 		t.Fatal(err)
 	}
 }
+
+type sysFileInfo struct {
+	fs.FileInfo
+	sys any
+}
+
+func (i sysFileInfo) Sys() any { return i.sys }
 
 func assertMode(t *testing.T, path string, want os.FileMode) {
 	t.Helper()

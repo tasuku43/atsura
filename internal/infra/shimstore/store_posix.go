@@ -1,4 +1,4 @@
-//go:build linux || darwin
+//go:build (linux || darwin) && (amd64 || arm64)
 
 package shimstore
 
@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/tasuku43/atsura/internal/domain/wrappershim"
@@ -21,6 +22,7 @@ import (
 const (
 	binDirectoryName     = "bin"
 	recordsDirectoryName = "records"
+	stagingDirectoryName = ".staging"
 	lockFileName         = ".store.lock"
 	manifestFileName     = "manifest.json"
 	shimFileName         = "shim"
@@ -34,6 +36,8 @@ type openedStore struct {
 	binInfo     fs.FileInfo
 	records     *os.Root
 	recordsInfo fs.FileInfo
+	staging     *os.Root
+	stagingInfo fs.FileInfo
 }
 
 func (o *openedStore) close() {
@@ -42,6 +46,9 @@ func (o *openedStore) close() {
 	}
 	if o.records != nil {
 		_ = o.records.Close()
+	}
+	if o.staging != nil {
+		_ = o.staging.Close()
 	}
 	if o.bin != nil {
 		_ = o.bin.Close()
@@ -68,6 +75,12 @@ type inspectedRecord struct {
 	shimInfo     fs.FileInfo
 	shim         []byte
 	state        wrappershim.State
+}
+
+type stagingResidue struct {
+	name      string
+	directory fs.FileInfo
+	files     map[string]fs.FileInfo
 }
 
 // Install publishes one immutable record and then one create-exclusive active
@@ -97,6 +110,9 @@ func (s *Store) Install(ctx context.Context, manifest wrappershim.Manifest, shim
 
 	entries, err := readBoundedDirectory(opened.records, wrappershim.MaxArtifacts)
 	if err != nil {
+		return wrappershim.Record{}, false, err
+	}
+	if err := opened.cleanupStagingResidues(); err != nil {
 		return wrappershim.Record{}, false, err
 	}
 	referenceName := manifest.Reference.String()
@@ -178,6 +194,9 @@ func (s *Store) Status(ctx context.Context) (wrappershim.Inventory, error) {
 	}
 	defer lock.close()
 	if err := opened.revalidate(); err != nil {
+		return wrappershim.Inventory{}, err
+	}
+	if _, err := opened.inspectStagingResidues(); err != nil {
 		return wrappershim.Inventory{}, err
 	}
 
@@ -277,6 +296,9 @@ func (s *Store) Remove(ctx context.Context, reference wrappershim.Reference) (wr
 	if state == wrappershim.StateTampered {
 		return wrappershim.Record{}, wrap(ErrTampered, "remove artifact", nil)
 	}
+	if err := opened.cleanupStagingResidues(); err != nil {
+		return wrappershim.Record{}, err
+	}
 	result := ownedSummary(record.manifest, state)
 	if err := opened.removeRecord(record, state == wrappershim.StateOwnedActive); err != nil {
 		return wrappershim.Record{}, err
@@ -321,7 +343,7 @@ func (s *Store) openForInstall() (*openedStore, error) {
 		return nil, err
 	}
 	created := false
-	for _, name := range []string{binDirectoryName, recordsDirectoryName} {
+	for _, name := range []string{binDirectoryName, recordsDirectoryName, stagingDirectoryName} {
 		child, statErr := root.Lstat(name)
 		if errors.Is(statErr, fs.ErrNotExist) {
 			if mkdirErr := root.Mkdir(name, 0o700); mkdirErr != nil {
@@ -388,7 +410,18 @@ func finishOpenStore(path string, root *os.Root, rootInfo fs.FileInfo) (*openedS
 		_ = bin.Close()
 		return nil, err
 	}
-	opened := &openedStore{path: path, root: root, rootInfo: rootInfo, bin: bin, binInfo: binInfo, records: records, recordsInfo: recordsInfo}
+	staging, stagingInfo, err := openChildRoot(root, stagingDirectoryName)
+	if err != nil {
+		_ = records.Close()
+		_ = bin.Close()
+		return nil, err
+	}
+	opened := &openedStore{
+		path: path, root: root, rootInfo: rootInfo,
+		bin: bin, binInfo: binInfo,
+		records: records, recordsInfo: recordsInfo,
+		staging: staging, stagingInfo: stagingInfo,
+	}
 	if err := opened.revalidate(); err != nil {
 		opened.close()
 		return nil, err
@@ -426,7 +459,11 @@ func (o *openedStore) revalidate() error {
 		name string
 		info fs.FileInfo
 		root *os.Root
-	}{{binDirectoryName, o.binInfo, o.bin}, {recordsDirectoryName, o.recordsInfo, o.records}} {
+	}{
+		{binDirectoryName, o.binInfo, o.bin},
+		{recordsDirectoryName, o.recordsInfo, o.records},
+		{stagingDirectoryName, o.stagingInfo, o.staging},
+	} {
 		current, currentErr := o.root.Lstat(child.name)
 		pinned, pinnedErr := child.root.Stat(".")
 		if currentErr != nil || pinnedErr != nil || !safeDirectoryInfo(current) || !safeDirectoryInfo(pinned) || !os.SameFile(child.info, current) || !os.SameFile(child.info, pinned) {
@@ -451,7 +488,8 @@ func (o *openedStore) acquireLock(create bool) (*storeLock, error) {
 		}
 		info, err = o.root.Lstat(lockFileName)
 	}
-	if err != nil || !safePrivateFileInfo(info, 0o600) {
+	links, linksOK := privateLinkCount(info, 0o600)
+	if err != nil || !linksOK || links != 1 {
 		return nil, wrap(ErrUnsafeStore, "inspect store lock", err)
 	}
 	file, err := o.root.OpenFile(lockFileName, os.O_RDWR, 0)
@@ -460,7 +498,9 @@ func (o *openedStore) acquireLock(create bool) (*storeLock, error) {
 	}
 	opened, statErr := file.Stat()
 	current, currentErr := o.root.Lstat(lockFileName)
-	if statErr != nil || currentErr != nil || !safePrivateFileInfo(opened, 0o600) || !safePrivateFileInfo(current, 0o600) || !os.SameFile(info, opened) || !os.SameFile(opened, current) {
+	openedLinks, openedLinksOK := privateLinkCount(opened, 0o600)
+	currentLinks, currentLinksOK := privateLinkCount(current, 0o600)
+	if statErr != nil || currentErr != nil || !openedLinksOK || !currentLinksOK || openedLinks != 1 || currentLinks != 1 || !os.SameFile(info, opened) || !os.SameFile(opened, current) {
 		_ = file.Close()
 		return nil, wrap(ErrUnsafeStore, "verify store lock", errors.Join(statErr, currentErr))
 	}
@@ -497,6 +537,10 @@ func (o *openedStore) inspectRecord(reference wrappershim.Reference) (inspectedR
 	manifestInfo, manifestBytes, err := readPrivateFile(recordRoot, manifestFileName, 0o600, wrappershim.MaxManifestBytes)
 	if err != nil {
 		return inspectedRecord{}, wrap(ErrTampered, "read artifact manifest", err)
+	}
+	manifestLinks, manifestLinksOK := privateLinkCount(manifestInfo, 0o600)
+	if !manifestLinksOK || manifestLinks != 1 {
+		return inspectedRecord{}, wrap(ErrTampered, "verify artifact manifest ownership", nil)
 	}
 	manifest, err := wrappershim.DecodeManifest(manifestBytes)
 	if err != nil || manifest.Reference != reference {
@@ -556,29 +600,31 @@ func (o *openedStore) publishRecord(manifest wrappershim.Manifest, shim []byte) 
 	if err != nil {
 		return inspectedRecord{}, false, wrap(ErrInvalidInput, "encode artifact manifest", err)
 	}
-	stageName, stageRoot, stageInfo, err := createStagingDirectory(o.records)
+	stageName, stageRoot, stageInfo, err := createStagingDirectory(o.staging)
 	if err != nil {
 		return inspectedRecord{}, false, wrap(ErrUnsafeStore, "create artifact staging", err)
 	}
 	published := false
+	var manifestInfo fs.FileInfo
+	var shimInfo fs.FileInfo
 	defer func() {
-		_ = stageRoot.Close()
 		if !published {
-			_ = o.records.RemoveAll(stageName)
+			cleanupStagingDirectory(o.staging, stageName, stageRoot, stageInfo, manifestInfo, shimInfo)
 		}
+		_ = stageRoot.Close()
 	}()
-	manifestInfo, err := writePrivateFile(stageRoot, manifestFileName, manifestBytes, 0o600)
+	manifestInfo, err = writePrivateFile(stageRoot, manifestFileName, manifestBytes, 0o600)
 	if err != nil {
 		return inspectedRecord{}, false, wrap(ErrUnsafeStore, "write artifact manifest", err)
 	}
-	shimInfo, err := writePrivateFile(stageRoot, shimFileName, shim, 0o700)
+	shimInfo, err = writePrivateFile(stageRoot, shimFileName, shim, 0o700)
 	if err != nil {
 		return inspectedRecord{}, false, wrap(ErrUnsafeStore, "write artifact shim", err)
 	}
 	if err := syncRoot(stageRoot); err != nil {
 		return inspectedRecord{}, false, wrap(ErrUnsafeStore, "sync artifact staging", err)
 	}
-	currentStage, statErr := o.records.Lstat(stageName)
+	currentStage, statErr := o.staging.Lstat(stageName)
 	if statErr != nil || !safeDirectoryInfo(currentStage) || !os.SameFile(stageInfo, currentStage) {
 		return inspectedRecord{}, false, wrap(ErrUnsafeStore, "verify artifact staging", statErr)
 	}
@@ -591,8 +637,8 @@ func (o *openedStore) publishRecord(manifest wrappershim.Manifest, shim []byte) 
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return inspectedRecord{}, false, wrap(ErrUnsafeStore, "inspect artifact target", err)
 	}
-	if err := o.records.Rename(stageName, name); err != nil {
-		return inspectedRecord{}, false, wrap(ErrConflict, "publish artifact", err)
+	if err := publishExclusive(o.path, o.stagingInfo, stageName, o.recordsInfo, name); err != nil {
+		return inspectedRecord{}, false, classifyPublicationError(err)
 	}
 	published = true
 	current, statErr := o.records.Lstat(name)
@@ -606,6 +652,268 @@ func (o *openedStore) publishRecord(manifest wrappershim.Manifest, shim []byte) 
 		return inspectedRecord{}, true, uncertain("revalidate published artifact", err)
 	}
 	return inspectedRecord{manifest: manifest.Clone(), directory: stageInfo, manifestInfo: manifestInfo, shimInfo: shimInfo, shim: append([]byte(nil), shim...), state: wrappershim.StateOwnedInactive}, true, nil
+}
+
+// publishExclusive atomically moves one staged record into the pinned records
+// directory only when the destination name is still absent. The ordinary
+// rename contract is insufficient here because it may replace an empty
+// directory created after the caller's absence check.
+func publishExclusive(storePath string, expectedStaging fs.FileInfo, oldName string, expectedRecords fs.FileInfo, newName string) error {
+	return renameExclusive(storePath, stagingDirectoryName, expectedStaging, oldName, recordsDirectoryName, expectedRecords, newName)
+}
+
+func renameExclusive(storePath, oldDirectoryName string, expectedOldDirectory fs.FileInfo, oldName, newDirectoryName string, expectedNewDirectory fs.FileInfo, newName string) error {
+	oldDirectory, err := openPinnedDirectoryPath(filepath.Join(storePath, oldDirectoryName), expectedOldDirectory)
+	if err != nil {
+		return err
+	}
+	defer oldDirectory.Close()
+	newDirectory, err := openPinnedDirectoryPath(filepath.Join(storePath, newDirectoryName), expectedNewDirectory)
+	if err != nil {
+		return err
+	}
+	defer newDirectory.Close()
+	return renameNoReplace(int(oldDirectory.Fd()), oldName, int(newDirectory.Fd()), newName)
+}
+
+func openPinnedDirectoryPath(path string, expected fs.FileInfo) (*os.File, error) {
+	current, err := os.Lstat(path)
+	if err != nil || !safeDirectoryInfo(current) || !os.SameFile(expected, current) {
+		return nil, errors.Join(err, ErrUnsafeStore)
+	}
+	// #nosec G304 -- path is one fixed child of the injected absolute store root
+	// and its owner, mode, and inode are verified before and after open.
+	directory, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	opened, err := directory.Stat()
+	if err != nil || !safeDirectoryInfo(opened) || !os.SameFile(expected, opened) {
+		_ = directory.Close()
+		return nil, errors.Join(err, ErrUnsafeStore)
+	}
+	return directory, nil
+}
+
+func classifyPublicationError(err error) error {
+	if errors.Is(err, fs.ErrExist) || errors.Is(err, syscall.ENOTEMPTY) {
+		return wrap(ErrConflict, "publish artifact", err)
+	}
+	// ENOSYS, EINVAL, and ENOTSUP deliberately stay fail-closed here. There is
+	// no fallback to the replacing portable rename contract.
+	return wrap(ErrUnsafeStore, "publish artifact exclusively", err)
+}
+
+// cleanupStagingDirectory removes only the exact nonrecursive files created by
+// this publication attempt. Unknown entries or identity drift leave bounded
+// residue for reconciliation instead of recursively deleting replacement data.
+func cleanupStagingDirectory(records *os.Root, stageName string, stage *os.Root, stageInfo, manifestInfo, shimInfo fs.FileInfo) {
+	currentStage, currentErr := records.Lstat(stageName)
+	openedStage, openedErr := stage.Stat(".")
+	if currentErr != nil || openedErr != nil || !safeDirectoryInfo(currentStage) || !safeDirectoryInfo(openedStage) ||
+		!os.SameFile(stageInfo, currentStage) || !os.SameFile(stageInfo, openedStage) {
+		return
+	}
+	entries, err := readBoundedDirectory(stage, 2)
+	if err != nil {
+		return
+	}
+	expected := map[string]fs.FileInfo{manifestFileName: manifestInfo, shimFileName: shimInfo}
+	for _, entry := range entries {
+		info := expected[entry.Name()]
+		current, statErr := stage.Lstat(entry.Name())
+		if info == nil || statErr != nil || !os.SameFile(info, current) {
+			return
+		}
+	}
+	for _, entry := range entries {
+		current, statErr := stage.Lstat(entry.Name())
+		if statErr != nil || !os.SameFile(expected[entry.Name()], current) {
+			return
+		}
+		if err := stage.Remove(entry.Name()); err != nil {
+			return
+		}
+	}
+	if err := syncRoot(stage); err != nil {
+		return
+	}
+	currentStage, currentErr = records.Lstat(stageName)
+	if currentErr != nil || !safeDirectoryInfo(currentStage) || !os.SameFile(stageInfo, currentStage) {
+		return
+	}
+	if err := records.Remove(stageName); err != nil {
+		return
+	}
+	_ = syncRoot(records)
+}
+
+func (o *openedStore) inspectStagingResidues() ([]stagingResidue, error) {
+	entries, err := readBoundedDirectory(o.staging, wrappershim.MaxArtifacts)
+	if err != nil {
+		return nil, err
+	}
+	residues := make([]stagingResidue, 0, len(entries))
+	for _, entry := range entries {
+		residue, err := o.inspectStagingResidue(entry.Name())
+		if err != nil {
+			return nil, err
+		}
+		residues = append(residues, residue)
+	}
+	return residues, nil
+}
+
+func (o *openedStore) inspectStagingResidue(name string) (stagingResidue, error) {
+	if !validStagingName(name) {
+		return stagingResidue{}, wrap(ErrTampered, "inspect staging name", nil)
+	}
+	directory, err := o.staging.Lstat(name)
+	if err != nil || !safeDirectoryInfo(directory) {
+		return stagingResidue{}, wrap(ErrTampered, "inspect staging directory", err)
+	}
+	root, err := o.staging.OpenRoot(name)
+	if err != nil {
+		return stagingResidue{}, wrap(ErrTampered, "open staging directory", err)
+	}
+	defer root.Close()
+	opened, statErr := root.Stat(".")
+	if statErr != nil || !safeDirectoryInfo(opened) || !os.SameFile(directory, opened) {
+		return stagingResidue{}, wrap(ErrTampered, "verify staging directory", statErr)
+	}
+	entries, err := readBoundedDirectory(root, 2)
+	if err != nil {
+		return stagingResidue{}, wrap(ErrTampered, "inspect staging entries", err)
+	}
+	files := make(map[string]fs.FileInfo, len(entries))
+	for _, entry := range entries {
+		mode, ok := stagingFileMode(entry.Name())
+		if !ok {
+			return stagingResidue{}, wrap(ErrTampered, "inspect staging entry name", nil)
+		}
+		info, err := root.Lstat(entry.Name())
+		links, linksOK := privateLinkCount(info, mode)
+		if err != nil || !linksOK || links != 1 {
+			return stagingResidue{}, wrap(ErrTampered, "inspect staging entry", err)
+		}
+		files[entry.Name()] = info
+	}
+	current, currentErr := o.staging.Lstat(name)
+	if currentErr != nil || !safeDirectoryInfo(current) || !os.SameFile(directory, current) {
+		return stagingResidue{}, wrap(ErrTampered, "revalidate staging directory", currentErr)
+	}
+	return stagingResidue{name: name, directory: directory, files: files}, nil
+}
+
+func (o *openedStore) cleanupStagingResidues() error {
+	residues, err := o.inspectStagingResidues()
+	if err != nil {
+		return err
+	}
+	changedAny := false
+	for _, residue := range residues {
+		changed, err := o.removeStagingResidue(residue)
+		if err != nil {
+			if changed || changedAny {
+				return uncertain("clean staging residue", err)
+			}
+			return wrap(ErrTampered, "clean staging residue", err)
+		}
+		changedAny = changedAny || changed
+	}
+	return nil
+}
+
+func (o *openedStore) removeStagingResidue(residue stagingResidue) (bool, error) {
+	current, err := o.staging.Lstat(residue.name)
+	if err != nil || !safeDirectoryInfo(current) || !os.SameFile(residue.directory, current) {
+		return false, errors.Join(err, ErrTampered)
+	}
+	root, err := o.staging.OpenRoot(residue.name)
+	if err != nil {
+		return false, err
+	}
+	closed := false
+	defer func() {
+		if !closed {
+			_ = root.Close()
+		}
+	}()
+	opened, err := root.Stat(".")
+	if err != nil || !safeDirectoryInfo(opened) || !os.SameFile(residue.directory, opened) {
+		return false, errors.Join(err, ErrTampered)
+	}
+	entries, err := readBoundedDirectory(root, 2)
+	if err != nil || len(entries) != len(residue.files) {
+		return false, errors.Join(err, ErrTampered)
+	}
+	for _, entry := range entries {
+		expected := residue.files[entry.Name()]
+		current, statErr := root.Lstat(entry.Name())
+		mode, modeOK := stagingFileMode(entry.Name())
+		links, linksOK := privateLinkCount(current, mode)
+		if expected == nil || statErr != nil || !modeOK || !linksOK || links != 1 || !os.SameFile(expected, current) {
+			return false, errors.Join(statErr, ErrTampered)
+		}
+	}
+	changed := false
+	for _, name := range []string{shimFileName, manifestFileName} {
+		expected, exists := residue.files[name]
+		if !exists {
+			continue
+		}
+		current, statErr := root.Lstat(name)
+		if statErr != nil || !os.SameFile(expected, current) {
+			return changed, errors.Join(statErr, ErrTampered)
+		}
+		if err := root.Remove(name); err != nil {
+			return changed, err
+		}
+		changed = true
+	}
+	if err := syncRoot(root); err != nil {
+		return changed, err
+	}
+	if err := root.Close(); err != nil {
+		return changed, err
+	}
+	closed = true
+	current, err = o.staging.Lstat(residue.name)
+	if err != nil || !safeDirectoryInfo(current) || !os.SameFile(residue.directory, current) {
+		return changed, errors.Join(err, ErrTampered)
+	}
+	if err := o.staging.Remove(residue.name); err != nil {
+		return changed, err
+	}
+	changed = true
+	if err := syncRoot(o.staging); err != nil {
+		return changed, err
+	}
+	return changed, nil
+}
+
+func validStagingName(name string) bool {
+	const prefix = ".stage-"
+	if len(name) != len(prefix)+32 || !strings.HasPrefix(name, prefix) {
+		return false
+	}
+	for _, character := range strings.TrimPrefix(name, prefix) {
+		if (character < '0' || character > '9') && (character < 'a' || character > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+func stagingFileMode(name string) (fs.FileMode, bool) {
+	switch name {
+	case manifestFileName:
+		return 0o600, true
+	case shimFileName:
+		return 0o700, true
+	default:
+		return 0, false
+	}
 }
 
 func (o *openedStore) activate(record inspectedRecord) error {
@@ -659,7 +967,9 @@ func (o *openedStore) removeRecord(record inspectedRecord, active bool) error {
 	if err != nil {
 		return err
 	}
-	defer recordRoot.Close()
+	if err := recordRoot.Close(); err != nil {
+		return wrap(ErrUnsafeStore, "close verified artifact before removal", err)
+	}
 	wantLinks := uint64(1)
 	if active {
 		wantLinks = 2
@@ -683,44 +993,79 @@ func (o *openedStore) removeRecord(record inspectedRecord, active bool) error {
 			return uncertain("sync active command removal", err)
 		}
 	}
-
-	changed := active
-	remove := func(name string, expected fs.FileInfo) error {
-		current, statErr := recordRoot.Lstat(name)
-		if statErr != nil || !os.SameFile(expected, current) {
-			return wrap(ErrTampered, "revalidate artifact file before removal", statErr)
+	refreshedRoot, err := o.openVerifiedRecord(record)
+	if err != nil {
+		if active {
+			return uncertain("reopen deactivated artifact", err)
 		}
-		if err := recordRoot.Remove(name); err != nil {
-			return err
+		return err
+	}
+	refreshedShim, statErr := refreshedRoot.Lstat(shimFileName)
+	closeErr := refreshedRoot.Close()
+	links, linksOK = regularLinkCount(refreshedShim)
+	if statErr != nil || closeErr != nil || !linksOK || links != 1 || !os.SameFile(record.shimInfo, refreshedShim) {
+		if active {
+			return uncertain("revalidate deactivated artifact", errors.Join(statErr, closeErr))
 		}
-		changed = true
-		return nil
+		return wrap(ErrTampered, "revalidate inactive artifact before quarantine", errors.Join(statErr, closeErr))
 	}
-	if err := remove(shimFileName, record.shimInfo); err != nil {
-		if changed {
-			return uncertain("remove artifact shim", err)
+	residue, err := o.moveRecordToStaging(record)
+	if err != nil {
+		if active {
+			return uncertain("quarantine deactivated artifact", err)
 		}
-		return wrap(ErrUnsafeStore, "remove artifact shim", err)
+		return err
 	}
-	if err := remove(manifestFileName, record.manifestInfo); err != nil {
-		return uncertain("remove artifact manifest", err)
-	}
-	if err := syncRoot(recordRoot); err != nil {
-		return uncertain("sync artifact removal", err)
-	}
-	if err := recordRoot.Close(); err != nil {
-		return uncertain("close artifact removal", err)
-	}
-	if err := o.records.Remove(referenceName); err != nil {
-		return uncertain("remove artifact directory", err)
-	}
-	if err := syncRoot(o.records); err != nil {
-		return uncertain("sync artifact directory removal", err)
+	if _, err := o.removeStagingResidue(residue); err != nil {
+		return uncertain("clean quarantined artifact", err)
 	}
 	if err := o.revalidate(); err != nil {
 		return uncertain("revalidate artifact removal", err)
 	}
 	return nil
+}
+
+func (o *openedStore) moveRecordToStaging(record inspectedRecord) (stagingResidue, error) {
+	referenceName := record.manifest.Reference.String()
+	for attempt := 0; attempt < 100; attempt++ {
+		stageName, err := allocateStagingName(o.staging)
+		if err != nil {
+			return stagingResidue{}, wrap(ErrUnsafeStore, "allocate artifact quarantine", err)
+		}
+		err = renameExclusive(
+			o.path,
+			recordsDirectoryName, o.recordsInfo, referenceName,
+			stagingDirectoryName, o.stagingInfo, stageName,
+		)
+		if errors.Is(err, fs.ErrExist) || errors.Is(err, syscall.ENOTEMPTY) {
+			continue
+		}
+		if err != nil {
+			return stagingResidue{}, wrap(ErrUnsafeStore, "quarantine artifact", err)
+		}
+		moved, statErr := o.staging.Lstat(stageName)
+		if statErr != nil || !safeDirectoryInfo(moved) || !os.SameFile(record.directory, moved) {
+			return stagingResidue{}, uncertain("verify quarantined artifact", statErr)
+		}
+		if _, statErr := o.records.Lstat(referenceName); !errors.Is(statErr, fs.ErrNotExist) {
+			return stagingResidue{}, uncertain("verify artifact left active records", statErr)
+		}
+		if err := syncRoot(o.records); err != nil {
+			return stagingResidue{}, uncertain("sync artifact record quarantine", err)
+		}
+		if err := syncRoot(o.staging); err != nil {
+			return stagingResidue{}, uncertain("sync artifact staging quarantine", err)
+		}
+		residue, err := o.inspectStagingResidue(stageName)
+		manifestInfo := residue.files[manifestFileName]
+		shimInfo := residue.files[shimFileName]
+		if err != nil || manifestInfo == nil || shimInfo == nil || !os.SameFile(record.directory, residue.directory) ||
+			!os.SameFile(record.manifestInfo, manifestInfo) || !os.SameFile(record.shimInfo, shimInfo) {
+			return stagingResidue{}, uncertain("verify quarantined artifact material", err)
+		}
+		return residue, nil
+	}
+	return stagingResidue{}, wrap(ErrConflict, "allocate artifact quarantine", nil)
 }
 
 func (o *openedStore) openVerifiedRecord(record inspectedRecord) (*os.Root, error) {
@@ -738,7 +1083,7 @@ func (o *openedStore) openVerifiedRecord(record inspectedRecord) (*os.Root, erro
 	shimInfo, shimErr := recordRoot.Lstat(shimFileName)
 	if statErr != nil || manifestErr != nil || shimErr != nil ||
 		!safeDirectoryInfo(openedDirectory) || !os.SameFile(record.directory, openedDirectory) ||
-		!safePrivateFileInfo(manifestInfo, 0o600) || !os.SameFile(record.manifestInfo, manifestInfo) ||
+		!singlePrivateLink(manifestInfo, 0o600) || !os.SameFile(record.manifestInfo, manifestInfo) ||
 		!safeShimInfo(shimInfo) || !os.SameFile(record.shimInfo, shimInfo) {
 		_ = recordRoot.Close()
 		return nil, wrap(ErrTampered, "verify artifact files", errors.Join(statErr, manifestErr, shimErr))
@@ -748,11 +1093,10 @@ func (o *openedStore) openVerifiedRecord(record inspectedRecord) (*os.Root, erro
 
 func createStagingDirectory(root *os.Root) (string, *os.Root, fs.FileInfo, error) {
 	for attempt := 0; attempt < 100; attempt++ {
-		var random [16]byte
-		if _, err := rand.Read(random[:]); err != nil {
+		name, err := randomStagingName()
+		if err != nil {
 			return "", nil, nil, err
 		}
-		name := fmt.Sprintf(".stage-%x", random[:])
 		if err := root.Mkdir(name, 0o700); errors.Is(err, fs.ErrExist) {
 			continue
 		} else if err != nil {
@@ -777,6 +1121,29 @@ func createStagingDirectory(root *os.Root) (string, *os.Root, fs.FileInfo, error
 		return name, child, info, nil
 	}
 	return "", nil, nil, fmt.Errorf("could not allocate a unique wrapper shim staging directory")
+}
+
+func allocateStagingName(root *os.Root) (string, error) {
+	for attempt := 0; attempt < 100; attempt++ {
+		name, err := randomStagingName()
+		if err != nil {
+			return "", err
+		}
+		if _, err := root.Lstat(name); errors.Is(err, fs.ErrNotExist) {
+			return name, nil
+		} else if err != nil {
+			return "", err
+		}
+	}
+	return "", fmt.Errorf("could not allocate a unique wrapper shim staging name")
+}
+
+func randomStagingName() (string, error) {
+	var random [16]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(".stage-%x", random[:]), nil
 }
 
 func writePrivateFile(root *os.Root, name string, data []byte, mode fs.FileMode) (fs.FileInfo, error) {
@@ -805,7 +1172,9 @@ func writePrivateFile(root *os.Root, name string, data []byte, mode fs.FileMode)
 	}
 	info, statErr := file.Stat()
 	current, currentErr := root.Lstat(name)
-	if statErr != nil || currentErr != nil || !safePrivateFileInfo(info, mode) || !safePrivateFileInfo(current, mode) || !os.SameFile(info, current) || info.Size() != int64(len(data)) {
+	infoLinks, infoLinksOK := privateLinkCount(info, mode)
+	currentLinks, currentLinksOK := privateLinkCount(current, mode)
+	if statErr != nil || currentErr != nil || !infoLinksOK || !currentLinksOK || infoLinks != 1 || currentLinks != 1 || !os.SameFile(info, current) || info.Size() != int64(len(data)) {
 		return nil, errors.Join(statErr, currentErr, ErrUnsafeStore)
 	}
 	if err := file.Close(); err != nil {
@@ -870,17 +1239,26 @@ func hasExactRecordEntries(entries []fs.DirEntry) bool {
 }
 
 func safeDirectoryInfo(info fs.FileInfo) bool {
-	return info != nil && info.Mode()&os.ModeSymlink == 0 && info.IsDir() && info.Mode().Perm() == 0o700
+	return info != nil && info.Mode()&os.ModeSymlink == 0 && info.IsDir() && info.Mode().Perm() == 0o700 && ownedByEffectiveUser(info)
 }
 
 func safePrivateFileInfo(info fs.FileInfo, mode fs.FileMode) bool {
-	return info != nil && info.Mode()&os.ModeSymlink == 0 && info.Mode().IsRegular() && info.Mode().Perm() == mode.Perm()
+	return info != nil && info.Mode()&os.ModeSymlink == 0 && info.Mode().IsRegular() && info.Mode().Perm() == mode.Perm() && ownedByEffectiveUser(info)
+}
+
+func ownedByEffectiveUser(info fs.FileInfo) bool {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	return ok && stat != nil && int64(stat.Uid) == int64(os.Geteuid())
 }
 
 func safeShimInfo(info fs.FileInfo) bool { return safePrivateFileInfo(info, 0o700) }
 
 func regularLinkCount(info fs.FileInfo) (uint64, bool) {
-	if !safeShimInfo(info) {
+	return privateLinkCount(info, 0o700)
+}
+
+func privateLinkCount(info fs.FileInfo, mode fs.FileMode) (uint64, bool) {
+	if !safePrivateFileInfo(info, mode) {
 		return 0, false
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
@@ -888,6 +1266,11 @@ func regularLinkCount(info fs.FileInfo) (uint64, bool) {
 		return 0, false
 	}
 	return uint64(stat.Nlink), true
+}
+
+func singlePrivateLink(info fs.FileInfo, mode fs.FileMode) bool {
+	links, ok := privateLinkCount(info, mode)
+	return ok && links == 1
 }
 
 func syncRoot(root *os.Root) error {
