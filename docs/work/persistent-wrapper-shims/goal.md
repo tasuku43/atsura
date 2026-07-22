@@ -15,8 +15,8 @@
 A maintainer can install one exact adopted POSIX wrapper as an Atsura-owned
 executable shim, add the reported directory to command resolution through
 caller-owned configuration, invoke the ordinary `gh` or `go` spelling through
-the existing fresh-plan runtime, inspect installed artifacts, and remove only
-the exact artifact reference returned by Atsura.
+the existing fresh-plan runtime, inspect installed artifacts to obtain an
+opaque reference, and remove only that exact reference.
 
 ## Why now
 
@@ -32,8 +32,8 @@ managed shim closes that daily-use gap without adding a coding-agent host.
 
 ## Acceptance criteria
 
-- [ ] `wrapper install --bundle <path>` creates only a fixed-template shim in the user-local Atsura store and emits one opaque artifact reference.
-- [ ] `wrapper status` reports bounded owned records and foreign collisions without starting a source or processor.
+- [ ] `wrapper install --bundle <path>` creates only a fixed-template shim in the user-local Atsura store and produces no reference from its fixed-target mutation.
+- [ ] `wrapper status` reports bounded owned records, their opaque artifact references, and foreign collisions without starting a source or processor.
 - [ ] The reported `bin` directory can be placed on `PATH` by the caller; ordinary help and execution match contract-3 `wrapper run` behavior.
 - [ ] `wrapper remove --artifact <ref>` removes only the exact validated owned artifact; tamper, symlink, special-file, collision, and uncertain outcomes fail closed.
 - [ ] Linux and Darwin installed artifacts pass; Windows returns structured unsupported behavior with zero store/source/processor attempts.

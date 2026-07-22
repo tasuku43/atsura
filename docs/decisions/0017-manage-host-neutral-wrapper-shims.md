@@ -32,9 +32,10 @@ the existing `wrapper run` contract, and publishes at most one active artifact
 per ordinary command. An existing different artifact or foreign file is a
 conflict; this version performs no replacement.
 
-Each successful install emits an opaque artifact reference bound to immutable
-manifest and shim bytes. `wrapper status` performs bounded read-only discovery
-of owned records and collisions. `wrapper remove --artifact <ref>` consumes
+As a fixed-target act, install produces and consumes no opaque reference.
+`wrapper status` performs bounded read-only discovery of owned records and
+collisions and is the sole producer of an opaque artifact reference bound to
+immutable manifest and shim bytes. `wrapper remove --artifact <ref>` consumes
 that reference unchanged and removes only a structurally valid record whose
 active shim still matches the recorded artifact. Unknown, tampered, symlinked,
 special, multiply matched, or uncertain state is never deleted.
