@@ -3,13 +3,17 @@
 package planapply
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/tasuku43/atsura/internal/app/portcheck"
 	"github.com/tasuku43/atsura/internal/domain/bundletrust"
 	"github.com/tasuku43/atsura/internal/domain/fault"
+	"github.com/tasuku43/atsura/internal/domain/processorprocess"
 	"github.com/tasuku43/atsura/internal/domain/runtimeadmission"
 	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
 	"github.com/tasuku43/atsura/internal/domain/tailoring"
@@ -57,6 +61,38 @@ type ParserPort interface {
 	Parse(context.Context, []byte) (tailoring.JSONValue, error)
 }
 
+// ProcessorIdentityPort fingerprints the exact bundle-bound processor without
+// starting it or consulting PATH.
+type ProcessorIdentityPort interface {
+	Identify(context.Context, string) (processorprocess.Identity, error)
+}
+
+// ProcessorProcessPort starts at most one exact isolated processor attempt.
+type ProcessorProcessPort interface {
+	Run(context.Context, processorprocess.Request) (processorprocess.Result, error)
+}
+
+// ProcessorCompatibilityPort proves the complete source/processor plan tuple
+// without performing I/O.
+type ProcessorCompatibilityPort interface {
+	VerifyPlan(tailoringplan.Plan) error
+}
+
+// OptimizerAdmissionPort independently derives the only output that a finite
+// optimizer may return instead of its byte-identical input.
+type OptimizerAdmissionPort interface {
+	ExpectedSummary([]byte) (string, bool)
+}
+
+// ProcessorSupport is optional for projection and source-stream plans. The
+// original-preserving optimizer requires exactly one complete support value.
+type ProcessorSupport struct {
+	Identity      ProcessorIdentityPort
+	Processes     ProcessorProcessPort
+	Compatibility ProcessorCompatibilityPort
+	Admission     OptimizerAdmissionPort
+}
+
 // CommandContext supplies the public recovery vocabulary of the façade that
 // asked for plan application. The shared runtime owns no public command path
 // and does not maintain a second command or recovery registry.
@@ -94,12 +130,14 @@ func (c CommandContext) Validate() error {
 // non-empty value closes a generated binding over one exact loaded bundle.
 // DeriveExecutableFromLoadedBundle is exclusive with Attempt.Executable and
 // lets a generated wrapper forward argv without accepting a second copy of the
-// ordinary command spelling.
+// ordinary command spelling. Each Allow field is façade-owned: a plan with a
+// disallowed result mode fails before either source or processor execution.
 type Request struct {
 	BundlePath                       string
 	ExpectedBundleDigest             string
 	DeriveExecutableFromLoadedBundle bool
 	AllowSourceStreamPassthrough     bool
+	AllowOriginalPreservingOptimizer bool
 	Attempt                          tailoringplan.Attempt
 	Command                          CommandContext
 }
@@ -120,18 +158,40 @@ type SourceStreamResult struct {
 	ExitCode int
 }
 
+// OptimizerDisposition states which reviewed output became caller-visible.
+// It never describes an inferred internal processor branch.
+type OptimizerDisposition string
+
+const (
+	OptimizerPreservedBeforeProcessor OptimizerDisposition = "preserved_before_processor"
+	OptimizerPreservedAfterProcessor  OptimizerDisposition = "preserved_after_processor"
+	OptimizerOptimized                OptimizerDisposition = "optimized"
+)
+
+// OptimizerResult is the sole payload for original_preserving_optimizer. Its
+// bytes are either the exact conventional source result selected before a
+// processor attempt or one of the two admitted processor postconditions.
+type OptimizerResult struct {
+	Stdout      []byte
+	Stderr      []byte
+	ExitCode    int
+	Disposition OptimizerDisposition
+}
+
 // Result is a plan-declared union. Exactly one payload is present and agrees
 // with ResultMode; shared metadata never duplicates result bytes or rendering
 // facts.
 type Result struct {
-	BundleDigest          string
-	PlanDigest            string
-	MatchedCommand        []string
-	WrapperKind           tailoringbundle.WrapperKind
-	ResultMode            tailoringplan.ResultMode
-	TransformedJSON       *TransformedJSONResult
-	SourceStream          *SourceStreamResult
-	SourceProcessAttempts int
+	BundleDigest             string
+	PlanDigest               string
+	MatchedCommand           []string
+	WrapperKind              tailoringbundle.WrapperKind
+	ResultMode               tailoringplan.ResultMode
+	TransformedJSON          *TransformedJSONResult
+	SourceStream             *SourceStreamResult
+	Optimizer                *OptimizerResult
+	SourceProcessAttempts    int
+	ProcessorProcessAttempts int
 }
 
 // Validate proves the result union before a presentation boundary interprets
@@ -142,7 +202,7 @@ func (r Result) Validate() error {
 	}
 	switch r.ResultMode {
 	case tailoringplan.ResultModeTransformedJSON:
-		if r.TransformedJSON == nil || r.SourceStream != nil || r.WrapperKind != tailoringbundle.WrapperTransform {
+		if r.TransformedJSON == nil || r.SourceStream != nil || r.Optimizer != nil || r.ProcessorProcessAttempts != 0 || r.WrapperKind != tailoringbundle.WrapperTransform {
 			return fmt.Errorf("transformed JSON result payload is incomplete or contradictory")
 		}
 		if r.TransformedJSON.ExitCode != 0 || r.TransformedJSON.Render != tailoring.RenderCompactJSON {
@@ -152,11 +212,33 @@ func (r Result) Validate() error {
 			return fmt.Errorf("transformed JSON result: %w", err)
 		}
 	case tailoringplan.ResultModeSourceStreamPassthrough:
-		if r.TransformedJSON != nil || r.SourceStream == nil || (r.WrapperKind != tailoringbundle.WrapperIdentity && r.WrapperKind != tailoringbundle.WrapperTransform) {
+		if r.TransformedJSON != nil || r.SourceStream == nil || r.Optimizer != nil || r.ProcessorProcessAttempts != 0 || (r.WrapperKind != tailoringbundle.WrapperIdentity && r.WrapperKind != tailoringbundle.WrapperTransform) {
 			return fmt.Errorf("source-stream result payload is incomplete or contradictory")
 		}
 		if r.SourceStream.ExitCode < 0 || len(r.SourceStream.Stdout) > sourceprocess.MaxStdoutBytes || len(r.SourceStream.Stderr) > sourceprocess.MaxStderrBytes {
 			return fmt.Errorf("source-stream result exceeds its conventional status or capture bounds")
+		}
+	case tailoringplan.ResultModeOriginalPreservingOptimizer:
+		if r.TransformedJSON != nil || r.SourceStream != nil || r.Optimizer == nil || r.WrapperKind != tailoringbundle.WrapperTransform {
+			return fmt.Errorf("optimizer result payload is incomplete or contradictory")
+		}
+		if r.Optimizer.ExitCode < 0 || len(r.Optimizer.Stdout) > sourceprocess.MaxStdoutBytes || len(r.Optimizer.Stderr) > sourceprocess.MaxStderrBytes {
+			return fmt.Errorf("optimizer result exceeds its conventional status or capture bounds")
+		}
+		switch r.Optimizer.Disposition {
+		case OptimizerPreservedBeforeProcessor:
+			if r.ProcessorProcessAttempts != 0 {
+				return fmt.Errorf("pre-processor preservation cannot contain a processor attempt")
+			}
+		case OptimizerPreservedAfterProcessor, OptimizerOptimized:
+			if r.ProcessorProcessAttempts != 1 || r.Optimizer.ExitCode != 0 || len(r.Optimizer.Stderr) != 0 || len(r.Optimizer.Stdout) == 0 {
+				return fmt.Errorf("post-processor optimizer result framing is invalid")
+			}
+			if r.Optimizer.Disposition == OptimizerOptimized && (!utf8.Valid(r.Optimizer.Stdout) || bytes.IndexAny(r.Optimizer.Stdout, "\r\n") >= 0) {
+				return fmt.Errorf("optimized summary must be newline-free UTF-8")
+			}
+		default:
+			return fmt.Errorf("optimizer disposition is missing or invalid")
 		}
 	default:
 		return fmt.Errorf("plan application result mode is missing or invalid")
@@ -168,16 +250,25 @@ func (r Result) Validate() error {
 // public façades. It is safe to construct once in the composition root and
 // inject into each façade that supplies its own CommandContext.
 type Service struct {
-	bundles       BundlePort
-	adoption      AdoptionPort
-	identity      IdentityPort
-	compatibility CompatibilityPort
-	processes     ProcessPort
-	parser        ParserPort
+	bundles           BundlePort
+	adoption          AdoptionPort
+	identity          IdentityPort
+	compatibility     CompatibilityPort
+	processes         ProcessPort
+	parser            ParserPort
+	processor         ProcessorSupport
+	processorSupports int
 }
 
-func New(bundles BundlePort, adoption AdoptionPort, identity IdentityPort, compatibility CompatibilityPort, processes ProcessPort, parser ParserPort) *Service {
-	return &Service{bundles: bundles, adoption: adoption, identity: identity, compatibility: compatibility, processes: processes, parser: parser}
+func New(bundles BundlePort, adoption AdoptionPort, identity IdentityPort, compatibility CompatibilityPort, processes ProcessPort, parser ParserPort, processor ...ProcessorSupport) *Service {
+	service := &Service{
+		bundles: bundles, adoption: adoption, identity: identity, compatibility: compatibility, processes: processes, parser: parser,
+		processorSupports: len(processor),
+	}
+	if len(processor) == 1 {
+		service.processor = processor[0]
+	}
+	return service
 }
 
 // Configured reports whether every controlled port needed by Apply is bound.
@@ -190,6 +281,14 @@ func (s *Service) Configured() bool {
 		!portcheck.IsNil(s.compatibility) &&
 		!portcheck.IsNil(s.processes) &&
 		!portcheck.IsNil(s.parser)
+}
+
+func (s *Service) processorConfigured() bool {
+	return s != nil && s.processorSupports == 1 &&
+		!portcheck.IsNil(s.processor.Identity) &&
+		!portcheck.IsNil(s.processor.Processes) &&
+		!portcheck.IsNil(s.processor.Compatibility) &&
+		!portcheck.IsNil(s.processor.Admission)
 }
 
 // Apply strictly loads and optionally closes over one exact bundle digest,
@@ -277,11 +376,34 @@ func (s *Service) Apply(ctx context.Context, request Request) (Result, error) {
 		if !request.AllowSourceStreamPassthrough || present {
 			return Result{}, fault.New(fault.KindUnsupported, "wrapper_runtime_not_supported", "This command does not admit the plan-declared source-stream result mode.", false, request.Command.RuntimeHelpAction)
 		}
+	case tailoringplan.ResultModeOriginalPreservingOptimizer:
+		if present {
+			return Result{}, fault.New(fault.KindContract, "invalid_wrapper_plan", "The optimizer plan contains a contradictory projection stage.", false, request.Command.PlanPreviewAction)
+		}
+		if !request.AllowOriginalPreservingOptimizer {
+			return optimizerResultBase(bundleDigest, planDigest, plan, 0, 0), fault.New(fault.KindUnsupported, "wrapper_runtime_not_supported", "This command does not admit the plan-declared original-preserving optimizer result mode.", false, request.Command.RuntimeHelpAction)
+		}
+		if !s.processorConfigured() {
+			return optimizerResultBase(bundleDigest, planDigest, plan, 0, 0), fault.New(fault.KindUnsupported, "wrapper_runtime_not_supported", "The original-preserving optimizer runtime is not configured.", false, request.Command.RuntimeHelpAction)
+		}
 	default:
 		return Result{}, fault.New(fault.KindContract, "invalid_wrapper_plan", "The wrapper plan result mode is invalid.", false, request.Command.PlanPreviewAction)
 	}
 	if err := s.compatibility.VerifyRuntime(plan); err != nil {
 		return Result{}, fault.New(fault.KindUnsupported, "wrapper_runtime_not_supported", runtimeAdmissionMessage(err), false, request.Command.RuntimeHelpAction)
+	}
+	if plan.ResultMode == tailoringplan.ResultModeOriginalPreservingOptimizer {
+		if err := s.processor.Compatibility.VerifyPlan(plan); err != nil {
+			return optimizerResultBase(bundleDigest, planDigest, plan, 0, 0), fault.New(fault.KindUnsupported, "wrapper_runtime_not_supported", "The source and processor plan tuple is not admitted by this runtime.", false, request.Command.RuntimeHelpAction)
+		}
+		wantedProcessor := plan.Processor.Observation.Identity
+		currentProcessor, err := s.processor.Identity.Identify(ctx, wantedProcessor.ResolvedPath)
+		if err != nil {
+			return optimizerResultBase(bundleDigest, planDigest, plan, 0, 0), classifyProcessorIdentity(err, request.Command, false)
+		}
+		if currentProcessor != wantedProcessor {
+			return optimizerResultBase(bundleDigest, planDigest, plan, 0, 0), processorIdentityChanged(request.Command)
+		}
 	}
 	processRequest, err := plan.SourceRequest()
 	if err != nil {
@@ -294,6 +416,9 @@ func (s *Service) Apply(ctx context.Context, request Request) (Result, error) {
 	processResult, processErr := s.processes.RunBound(ctx, processRequest)
 	if plan.ResultMode == tailoringplan.ResultModeSourceStreamPassthrough {
 		return sourceStreamResult(ctx, request.Command, plan, bundleDigest, planDigest, processRequest, processResult, processErr)
+	}
+	if plan.ResultMode == tailoringplan.ResultModeOriginalPreservingOptimizer {
+		return s.optimizerResult(ctx, request.Command, plan, bundleDigest, planDigest, processRequest, processResult, processErr)
 	}
 	if processErr != nil {
 		return Result{}, classifyProcess(processRequest, processResult, processErr, request.Command)
@@ -331,6 +456,191 @@ func (s *Service) Apply(ctx context.Context, request Request) (Result, error) {
 		return Result{}, fault.Wrap(fault.KindContract, "unclassified_source_execution_outcome", "The source execution result could not be classified as safe to retry.", false, err, request.Command.StatusAction)
 	}
 	return result, nil
+}
+
+func (s *Service) optimizerResult(ctx context.Context, command CommandContext, plan tailoringplan.Plan, bundleDigest, planDigest string, sourceRequest sourceprocess.BoundRequest, sourceResult sourceprocess.Result, sourceErr error) (Result, error) {
+	sourceAttempts := boundedAttemptCount(sourceResult.Attempts)
+	if err := sourceResult.ValidateBoundCompletion(sourceRequest); err != nil {
+		if sourceErr != nil {
+			return optimizerResultBase(bundleDigest, planDigest, plan, sourceAttempts, 0), classifyProcess(sourceRequest, sourceResult, sourceErr, command)
+		}
+		return optimizerResultBase(bundleDigest, planDigest, plan, sourceAttempts, 0), unclassifiedProcess(err, command)
+	}
+	if sourceErr == nil {
+		if sourceResult.ExitCode != 0 {
+			return optimizerResultBase(bundleDigest, planDigest, plan, 1, 0), unclassifiedProcess(fmt.Errorf("nil process error accompanied nonzero exit code %d", sourceResult.ExitCode), command)
+		}
+	} else {
+		public, ok := fault.PublicCopy(sourceErr)
+		if !ok || public.Kind != fault.KindRejected || public.Code != "source_command_failed" || public.Retryable || sourceResult.ExitCode <= 0 {
+			return optimizerResultBase(bundleDigest, planDigest, plan, 1, 0), classifyProcess(sourceRequest, sourceResult, sourceErr, command)
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return optimizerResultBase(bundleDigest, planDigest, plan, 1, 0), fault.Wrap(fault.KindCanceled, "source_output_processing_canceled", "Output processing was canceled after the source process started; replay is not known to be safe.", false, err, command.RuntimeHelpAction)
+	}
+
+	// A conventional result outside the frozen pass-only grammar remains the
+	// exact plan-authorized source result. This decision is complete before a
+	// processor starts and is not a fallback from processor failure.
+	if sourceResult.ExitCode != 0 || len(sourceResult.Stderr) != 0 {
+		return completedOptimizerResult(command, bundleDigest, planDigest, plan, sourceResult.Stdout, sourceResult.Stderr, sourceResult.ExitCode, OptimizerPreservedBeforeProcessor, 0)
+	}
+	expectedSummary, eligible := s.processor.Admission.ExpectedSummary(append([]byte(nil), sourceResult.Stdout...))
+	if !eligible || !validExpectedSummary(expectedSummary, sourceResult.Stdout) {
+		return completedOptimizerResult(command, bundleDigest, planDigest, plan, sourceResult.Stdout, sourceResult.Stderr, sourceResult.ExitCode, OptimizerPreservedBeforeProcessor, 0)
+	}
+
+	wantedProcessor := plan.Processor.Observation.Identity
+	currentProcessor, err := s.processor.Identity.Identify(ctx, wantedProcessor.ResolvedPath)
+	if err != nil {
+		return optimizerResultBase(bundleDigest, planDigest, plan, 1, 0), classifyProcessorIdentity(err, command, true)
+	}
+	if currentProcessor != wantedProcessor {
+		return optimizerResultBase(bundleDigest, planDigest, plan, 1, 0), processorIdentityChanged(command)
+	}
+	processorRequest, err := plan.ProcessorRequest(sourceResult.Stdout)
+	if err != nil {
+		return optimizerResultBase(bundleDigest, planDigest, plan, 1, 0), fault.Wrap(fault.KindContract, "invalid_processor_process_request", "The optimizer plan did not produce a valid bound processor request.", false, err, command.PlanPreviewAction)
+	}
+	if err := ctx.Err(); err != nil {
+		return optimizerResultBase(bundleDigest, planDigest, plan, 1, 0), fault.Wrap(fault.KindCanceled, "processor_execution_canceled", "Execution was canceled after the source completed and before an optimizer result was available; replay is not known to be safe.", false, err, command.RuntimeHelpAction)
+	}
+
+	processorResult, processorErr := s.processor.Processes.Run(ctx, processorRequest)
+	processorAttempts := boundedAttemptCount(processorResult.Attempts)
+	if processorErr != nil {
+		if err := processorResult.Validate(processorRequest, false); err != nil {
+			return optimizerResultBase(bundleDigest, planDigest, plan, 1, processorAttempts), unclassifiedProcessor(err, command)
+		}
+		return optimizerResultBase(bundleDigest, planDigest, plan, 1, processorAttempts), classifyProcessorProcess(processorErr, processorAttempts, command)
+	}
+	if err := processorResult.Validate(processorRequest, true); err != nil || processorResult.Attempts != 1 {
+		return optimizerResultBase(bundleDigest, planDigest, plan, 1, processorAttempts), unclassifiedProcessor(err, command)
+	}
+	if err := ctx.Err(); err != nil {
+		return optimizerResultBase(bundleDigest, planDigest, plan, 1, 1), fault.Wrap(fault.KindCanceled, "processor_execution_canceled", "The caller canceled after the processor started; replay is not known to be safe.", false, err, command.RuntimeHelpAction)
+	}
+	if len(processorResult.Stderr) != 0 {
+		return optimizerResultBase(bundleDigest, planDigest, plan, 1, 1), processorOutputNotAdmitted(command)
+	}
+	if bytes.Equal(processorResult.Stdout, sourceResult.Stdout) {
+		return completedOptimizerResult(command, bundleDigest, planDigest, plan, processorResult.Stdout, nil, sourceResult.ExitCode, OptimizerPreservedAfterProcessor, 1)
+	}
+	if bytes.Equal(processorResult.Stdout, []byte(expectedSummary)) && len(processorResult.Stdout) < len(sourceResult.Stdout) {
+		return completedOptimizerResult(command, bundleDigest, planDigest, plan, processorResult.Stdout, nil, sourceResult.ExitCode, OptimizerOptimized, 1)
+	}
+	return optimizerResultBase(bundleDigest, planDigest, plan, 1, 1), processorOutputNotAdmitted(command)
+}
+
+func validExpectedSummary(summary string, input []byte) bool {
+	return summary != "" && utf8.ValidString(summary) && !strings.ContainsAny(summary, "\r\n") && len(summary) < len(input) && len(summary) <= processorprocess.MaxStdoutBytes
+}
+
+func optimizerResultBase(bundleDigest, planDigest string, plan tailoringplan.Plan, sourceAttempts, processorAttempts int) Result {
+	return Result{
+		BundleDigest: bundleDigest, PlanDigest: planDigest, MatchedCommand: append([]string{}, plan.MatchedCommand...),
+		WrapperKind: plan.WrapperKind, ResultMode: plan.ResultMode,
+		SourceProcessAttempts: sourceAttempts, ProcessorProcessAttempts: processorAttempts,
+	}
+}
+
+func completedOptimizerResult(command CommandContext, bundleDigest, planDigest string, plan tailoringplan.Plan, stdout, stderr []byte, exitCode int, disposition OptimizerDisposition, processorAttempts int) (Result, error) {
+	result := optimizerResultBase(bundleDigest, planDigest, plan, 1, processorAttempts)
+	result.Optimizer = &OptimizerResult{
+		Stdout: append([]byte(nil), stdout...), Stderr: append([]byte(nil), stderr...), ExitCode: exitCode, Disposition: disposition,
+	}
+	if err := result.Validate(); err != nil {
+		if disposition == OptimizerPreservedBeforeProcessor {
+			return optimizerResultBase(bundleDigest, planDigest, plan, 1, processorAttempts), unclassifiedProcess(err, command)
+		}
+		return optimizerResultBase(bundleDigest, planDigest, plan, 1, processorAttempts), unclassifiedProcessor(err, command)
+	}
+	return result, nil
+}
+
+func boundedAttemptCount(value int) int {
+	if value == 1 {
+		return 1
+	}
+	return 0
+}
+
+func classifyProcessorIdentity(err error, command CommandContext, afterSource bool) error {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		if !afterSource {
+			return err
+		}
+		return fault.Wrap(fault.KindCanceled, "processor_execution_canceled", "Processor identity revalidation was canceled after the source completed; replay is not known to be safe.", false, err, command.StatusAction)
+	}
+	if public, ok := fault.PublicCopy(err); ok && public.Code == "processor_identity_changed" {
+		return processorIdentityChanged(command)
+	}
+	return fault.Wrap(fault.KindUnavailable, "processor_identity_unavailable", "The bundle-bound processor identity could not be assessed.", false, err, command.StatusAction)
+}
+
+func processorIdentityChanged(command CommandContext) error {
+	return fault.New(fault.KindRejected, "processor_identity_changed", "The bundle-bound processor identity is no longer current.", false, command.StatusAction)
+}
+
+func classifyProcessorProcess(err error, attempts int, command CommandContext) error {
+	public, ok := fault.PublicCopy(err)
+	if !ok {
+		return unclassifiedProcessor(err, command)
+	}
+	kind, message, safe := safeProcessorFault(attempts, public.Code)
+	if !safe {
+		return unclassifiedProcessor(err, command)
+	}
+	return fault.New(kind, public.Code, message, false, command.StatusAction)
+}
+
+func safeProcessorFault(attempts int, code string) (fault.Kind, string, bool) {
+	if attempts == 0 {
+		switch code {
+		case "processor_identity_changed":
+			return fault.KindRejected, "The processor identity changed before it could be started after the source completed.", true
+		case "processor_identity_unavailable":
+			return fault.KindUnavailable, "The processor identity became unavailable after the source completed.", true
+		case "invalid_processor_executable", "unsafe_processor_executable":
+			return fault.KindInvalidInput, "The bundle-bound processor executable no longer satisfies its executable contract.", true
+		case "invalid_processor_identity":
+			return fault.KindContract, "The bundle-bound processor identity no longer satisfies its identity contract.", true
+		case "processor_environment_setup_failed":
+			return fault.KindUnavailable, "The isolated processor environment could not be prepared after the source completed.", true
+		case "processor_process_start_failed":
+			return fault.KindUnavailable, "The processor could not be started after the source completed.", true
+		case "processor_cleanup_failed":
+			return fault.KindUnavailable, "The isolated processor environment could not be cleaned up after the source completed.", true
+		}
+		return "", "", false
+	}
+	switch code {
+	case "processor_identity_changed":
+		return fault.KindRejected, "The processor identity changed during execution.", true
+	case "processor_stdout_too_large", "processor_stderr_too_large":
+		return fault.KindContract, "The processor exceeded its declared output bounds.", true
+	case "processor_execution_canceled":
+		return fault.KindCanceled, "The processor was canceled after it started; replay is not known to be safe.", true
+	case "processor_timeout":
+		return fault.KindUnavailable, "The processor exceeded its declared timeout after the source completed.", true
+	case "processor_command_failed":
+		return fault.KindRejected, "The processor exited without an admitted result after the source completed.", true
+	case "processor_process_wait_failed":
+		return fault.KindUnavailable, "The processor result could not be collected after it started.", true
+	case "processor_cleanup_failed":
+		return fault.KindUnavailable, "The isolated processor environment could not be cleaned up after execution.", true
+	default:
+		return "", "", false
+	}
+}
+
+func processorOutputNotAdmitted(command CommandContext) error {
+	return fault.New(fault.KindContract, "processor_output_not_admitted", "The processor output did not satisfy either admitted original-preserving postcondition.", false, command.StatusAction)
+}
+
+func unclassifiedProcessor(cause error, command CommandContext) error {
+	return fault.Wrap(fault.KindContract, "unclassified_processor_execution_outcome", "The processor result could not be classified; replay is not known to be safe.", false, cause, command.StatusAction)
 }
 
 func sourceStreamResult(ctx context.Context, command CommandContext, plan tailoringplan.Plan, bundleDigest, planDigest string, processRequest sourceprocess.BoundRequest, processResult sourceprocess.Result, processErr error) (Result, error) {
