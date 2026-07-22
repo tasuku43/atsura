@@ -308,6 +308,16 @@ func TestWrapperArtifactCatalogSeparatesFixedCreateDiscoveryAndExactRemove(t *te
 	if install.Args != "--bundle <absolute-path>" || status.Args != "" || remove.Args != "--artifact <reference>" {
 		t.Fatalf("artifact grammar=%q/%q/%q", install.Args, status.Args, remove.Args)
 	}
+	pathDescription := ""
+	for _, field := range remove.Agent.Output.Fields {
+		if field.Name == "path" {
+			pathDescription = field.Description
+		}
+	}
+	if pathDescription != "Managed command path associated with the artifact; removed when it was active and already absent when it was inactive." ||
+		len(remove.Agent.Prerequisites) != 2 || !strings.Contains(remove.Agent.Prerequisites[1], "active or inactive owned artifact") {
+		t.Fatalf("remove active/inactive disclosure=%q prerequisites=%+v", pathDescription, remove.Agent.Prerequisites)
+	}
 	if err := catalog.Validate(); err != nil {
 		t.Fatal(err)
 	}

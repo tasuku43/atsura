@@ -1790,7 +1790,7 @@ func DefaultCatalog() Catalog {
 					Formats:   []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
 					Fields: []OutputField{
 						{Name: "command", Type: OutputFieldTypeString, Description: "Ordinary command name formerly owned by the removed artifact."},
-						{Name: "path", Type: OutputFieldTypeString, Description: "Exact managed command path removed after ownership validation."},
+						{Name: "path", Type: OutputFieldTypeString, Description: "Managed command path associated with the artifact; removed when it was active and already absent when it was inactive."},
 						{Name: "removed", Type: OutputFieldTypeBoolean, Description: "Always true on success; an unknown reference is a not-found failure."},
 						{Name: "source_process_attempts", Type: OutputFieldTypeInteger, Description: "Always zero; removal starts no source process."},
 						{Name: "processor_process_attempts", Type: OutputFieldTypeInteger, Description: "Always zero; removal starts no processor process."},
@@ -1800,7 +1800,7 @@ func DefaultCatalog() Catalog {
 				},
 				Prerequisites: []string{
 					"One exact opaque reference returned by the current wrapper status inventory on Linux or macOS.",
-					"Removal revalidates the immutable manifest and active artifact; foreign, symlinked, special, tampered, multiply matched, unknown, or uncertain state is never deleted.",
+					"Removal revalidates the immutable manifest and the active or inactive owned artifact; foreign, symlinked, special, tampered, multiply matched, unknown, or uncertain state is never deleted.",
 				},
 				Mutation: &MutationContract{
 					TargetKind: wrappershimcmd.ArtifactRefKind, TargetInputs: []string{"--artifact"}, TargetIDInput: "--artifact", Impact: wrappershimcmd.RemoveImpact,
