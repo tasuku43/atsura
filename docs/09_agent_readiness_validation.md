@@ -196,9 +196,10 @@ measurements were 1,517 bytes for root agent help, 5,359 bytes for exact
 `sample read` help, and 8,359 bytes for the `sample` namespace. The 512-byte
 limit continues to bound each root selection entry.
 
-With schema 12, measured on 2026-07-22 for the processor-aware catalog, the
-current root is 6,854 bytes, exact `sample read` help is 6,010 bytes, and the
-`sample` namespace is 8,921 bytes. Exact artifact contracts remain scoped:
+With schema 12, measured on 2026-07-22 for the processor-aware catalog before
+the persistent-shim commands, the root was 6,854 bytes, exact `sample read`
+help was 6,010 bytes, and the
+`sample` namespace was 8,921 bytes. Exact artifact contracts remain scoped:
 `source inspect` is 11,379 bytes, `processor inspect` is 12,119 bytes, `spec
 init` is 14,012 bytes, `spec validate` is 12,532 bytes, `bundle build` is
 11,342 bytes, `bundle status` is 8,643 bytes, `bundle trust` is 10,074 bytes,
@@ -207,6 +208,13 @@ render` is 12,908 bytes, and `wrapper run` is 22,105 bytes. Preview's larger sco
 includes the versioned `wrapper-plan` JSON-pointer field/type inventory. The
 root contains selection entries rather than those complete invocation and
 failure contracts.
+
+At the ADR 0017 implementation handoff, the schema-12 root measured 8,009 UTF-8
+bytes. The three new complete contracts remain independently scoped: exact
+`wrapper install` help is 15,222 bytes, `wrapper status` is 7,895 bytes, and
+`wrapper remove` is 9,424 bytes. These measurements are regression evidence for
+that exact catalog, not a substitute for the per-entry 512-byte root bound or
+the whole-response budget.
 
 Schema 12 retains the fixed derived-scale regression with six selected
 commands, 18 producer endpoints, 18 consumer endpoints, and 324 implicit same-
@@ -891,7 +899,7 @@ four-case GitHub fixture has four, each Go case has one source attempt, and
 the eligible optimizer case has one processor attempt. Every pre-start
 rejection has zero. Vendor-specific activation remains downstream.
 
-## Scenario H: Exact installed-artifact transform and wrapper journey
+## Scenario H: Exact installed-artifact transform, wrapper, and shim journey
 
 ### Outcome
 
@@ -915,9 +923,20 @@ artifact and proves the exact unsupported-render result with zero Go wrapper
 source attempts and no processor evidence while retaining the GitHub transform
 journey.
 
-This section defines the optimizer-, multi-command-, tailored-help-, and
-option-default-aware acceptance target. Evidence schema 8, unchanged aggregate
-schema 2, and the native workflow implement the current mechanism. CI run
+On Linux and macOS, the extracted `atr` must also install the exact GitHub and
+Go bundles as persistent fixed-template shims, discover their opaque references
+through status, and report one private `bin` directory. The non-shipped fixture
+places that directory first in its own `PATH`; neither production Atsura nor
+the fixture edits a shell startup file. Ordinary `gh`/`go` help and normal
+commands must retain the existing wrapper-run bundle/runtime binding, fresh
+plan, argv, result, and process-attempt facts. Exact-reference removal must
+remove only each selected owned artifact, and final status must be explicitly
+empty.
+
+This section defines the optimizer-, multi-command-, tailored-help-, option-
+default-, and persistent-shim-aware acceptance target. Evidence schema 9,
+unchanged aggregate schema 2, and the native workflow implement the current
+mechanism. No exact five-row schema-9 CI observation exists yet. CI run
 29910455312 passed the
 historical schema-6 five-target matrix and aggregate on 2026-07-22 for revision
 `01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. That historical run established
@@ -927,7 +946,7 @@ to a later revision.
 CI run 29914651542 then passed the historical five-target schema-7 matrix and
 aggregate schema 2 on 2026-07-22 for revision
 `8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`. Those historical requirements have
-one exact release-quality implementation observation. Current schema 8 was
+one exact release-quality implementation observation. Historical schema 8 was
 subsequently observed in CI run 29920148480 for exact revision
 `99fbd0e97489b1f3b7a68e2617fa4056b2c12a1d`, as recorded in the current
 bounded observation below. The historical result does not
@@ -943,6 +962,25 @@ scripts/test-release-artifact.sh \
   <tag> <revision> <goos> <goarch> <exact-archive>
 ```
 
+The managed-artifact command graph under test is exact:
+
+- `wrapper install` is a fixed-target `RoleAct` with `EffectCreate`. It takes
+  one absolute adopted bundle, has explicit empty `target_inputs`, produces and
+  consumes no opaque reference, and mutates only the tool-local
+  `wrapper-shim-store` through the central mutation invoker;
+- `wrapper status` is `RoleDiscover` with `EffectRead`, starts no mutation, and
+  is the sole producer of `wrapper-shim-artifact` references; and
+- `wrapper remove` is reference-bound `RoleAct` with `EffectWrite`. Its required
+  `--artifact` input has kind `wrapper-shim-artifact`, is the mutation target,
+  and must equal one current status reference without decoding,
+  reconstruction, or rediscovery.
+
+An agent reaches each operation through root plus the exact `wrapper install`,
+`wrapper status`, or `wrapper remove` scoped schema-12 contract. Install cannot
+be chained from a fabricated reference; remove has exactly one invocable
+producer and status remains useful both for selection and read-only recovery
+after uncertain mutation output.
+
 The standard-library orchestrator safely extracts the archive, checks the host
 tuple and embedded `atr <version> (<revision>)`, and uses that extracted path
 for every public command. A native synthetic source supports only the exact
@@ -953,7 +991,8 @@ The replay starts from an isolated user-config root. Before starting the source
 fixture, packaged `atr` must return schema-12 root help plus exact `source
 inspect`, `processor inspect`, `spec init`, `spec validate`, `bundle build`,
 `bundle status`, `bundle trust`, `bundle preview`, `bundle execute`, `wrapper
-render`, and `wrapper run` scopes. It checks the complete
+render`, `wrapper run`, `wrapper install`, `wrapper status`, and `wrapper
+remove` scopes. It checks the complete
 catalog/specification output-schema field
 inventory and the exact ordered 27-fault preview and 41-fault execute recovery
 signatures rather than recognizing prose markers alone. It then obtains the
@@ -1008,8 +1047,10 @@ log must add exactly one source attempt per ordinary execution case. The
 transformed result must equal its compact JSON value; the append-only and
 identity cases must match their
 exact bounded stdout/stderr digests and conventional status without storing
-either stream. POSIX requires four wrapper source attempts and 14 GitHub
-fixture attempts. Windows must instead receive
+either stream. This retained transient portion requires four wrapper source
+attempts and contributes 14 GitHub fixture attempts. The persistent lifecycle
+below adds one more GitHub source attempt, so a POSIX schema-9 row records 15
+GitHub fixture attempts in total. Windows must instead receive
 `wrapper_platform_not_supported`, empty wrapper cases and tailored-help views
 and faults, zero wrapper source attempts, 10 GitHub fixture attempts, and no
 tailored-help bundle or rendered-wrapper binding digests or wrapper contract;
@@ -1028,7 +1069,46 @@ but requires `wrapper_platform_not_supported`, no Go wrapper case, one zero-
 attempt rejection, and zero Go wrapper source attempts. Isolation is fixture
 discipline, not an Atsura sandbox claim.
 
-The schema-8 journey supplies the exact official RTK v0.43.0 archive
+After the GitHub and Go bundles are built and adopted, each POSIX row performs
+the persistent lifecycle with the same extracted `atr`:
+
+1. Install each exact bundle and require zero source and processor attempts.
+   Both results must report the same private user-local `bin` directory.
+2. Run status and retain each returned opaque reference byte-for-byte. Each
+   reference must bind its command, immutable material digest, and owned-active
+   state; install is not treated as a reference producer.
+3. Put the reported directory first in the fixture-owned `PATH`, invoke
+   ordinary `gh --help` and `go --help` with zero source and processor attempts,
+   then invoke the existing default-applied `gh pr list` and identity `go test`
+   normal cases. The recorded bundle, plan, caller/source argv, result mode,
+   conventional status, and one-source/zero-processor attempt facts must match
+   their existing transient `wrapper run` evidence. The deterministic GitHub
+   stream digest must also match. Each Go run is independently validated
+   against the same bounded result pattern and retains its own digest because
+   elapsed-time text can differ without changing the result.
+4. Pass each status reference unchanged to remove. Removing one reference must
+   leave the other exact owned artifact discoverable, removing the second must
+   affect only that artifact, and final status must return an explicitly empty
+   collection.
+
+The same row proves fail-closed management before crediting the lifecycle:
+a tampered immutable record through status and remove, foreign regular-file collision,
+symlink collision, special-file collision, and an unknown valid-shaped
+reference each return the exact structured fault. A bounded before/after
+snapshot must prove the fixture-owned store is unchanged by every rejected
+operation; source and processor attempt logs must also remain unchanged. The
+fixture may restore or remove only its own injected test object between probes,
+and that cleanup is not product evidence. No arbitrary shell command, `eval`,
+`sh -c`, or ambient source lookup participates in ordinary shim selection.
+
+Windows calls install, status, and remove against the extracted artifact and
+requires `wrapper_artifact_platform_not_supported` for each. Its lifecycle
+record contains no bin/material/bundle/plan/reference claim, explicitly empty
+path-command, status-snapshot, and artifact collections, three unsupported
+faults, and zero store, source, and processor attempts; no user-config store may
+be created.
+
+The schema-9 journey supplies the exact official RTK v0.43.0 archive
 only to the four POSIX rows. Before extraction it verifies target, archive name,
 size, and SHA-256 from the pinned processor manifest; after extraction it
 requires exactly one regular executable with the pinned binary identity. The
@@ -1072,7 +1152,8 @@ Windows records
 zero Go wrapper source attempts. Together with the four GitHub inspection and
 two direct success attempts plus induced failures, the fixed GitHub fixture-
 attempt total remains 13 on Linux/macOS and 10 on Windows. These are historical
-schema-4 baseline facts, not the current schema-8 acceptance requirements.
+schema-4 baseline facts, not the later schema-8 or current schema-9 acceptance
+requirements.
 
 Evidence schema 4 does not support the current Go contract or the optimizer.
 Schema 5 retains the base journey facts and additionally binds Go CLI contract
@@ -1099,7 +1180,7 @@ attempts, and 10 GitHub fixture attempts. POSIX Go identity evidence adds exact
 caller argv `["test"]`; Windows keeps the Go case empty. Aggregate schema 2
 remains unchanged and excludes the per-case caller argv.
 
-Current schema 8 retains those historical records and binds specification
+Historical schema 8 retains those historical records and binds specification
 schema 5, bundle schema 4, plan schema 6, generated-wrapper contract 3, exact
 source argv, the complete declared option-default list, and the exact applied
 subset. POSIX orders `default_applied`, `default_overridden`, `append_only`,
@@ -1108,9 +1189,25 @@ keeping distinct plans. Four ordinary cases produce four wrapper source
 attempts and 14 GitHub fixture attempts. Windows retains zero wrapper attempts
 and 10 GitHub fixture attempts. Go and RTK contracts remain unchanged.
 
+Current schema 9 retains the complete schema-8 record and adds one required
+`wrapper_lifecycle` object. POSIX binds shim contract version 1, the reported-
+bin digest and caller-owned PATH-first condition, two status-produced opaque
+references and their immutable material digests, the existing GitHub/Go
+bundle-plan-argv-result identities, ordinary help and execution, exact removal,
+explicit final empty status, management/store/source/processor counters, the
+six hostile fault observations, and unchanged-filesystem evidence. Windows
+requires empty path-command, status-snapshot, and artifact collections, three
+structured unsupported install/status/remove faults, zero store/source/
+processor attempts, and no bin/material/bundle/plan/reference claim. The
+schema stores no raw filesystem path, source or processor stream, environment
+snapshot, credential, or secret, and adds no host, vendor,
+hook, settings, or activation field.
+
 No evidence document stores source or processor streams. Without an accepted
-external observer it does not claim processor-launch counts; controlled
-application and infrastructure tests own that truth. Schema 8 becomes release
+external observer the optimizer record does not claim RTK processor-launch
+counts; controlled application and infrastructure tests own that truth. The
+managed lifecycle separately records zero processor attempts for operations
+that have no processor port. Schema 9 becomes release
 evidence only for an exact revision whose strict decoder, five native rows,
 aggregate, and publication dependency all pass; this document does not attest
 a moving worktree. The inherited schema-5 optimizer shape keeps the identity
@@ -1127,10 +1224,13 @@ CI runs this probe natively on Linux amd64, Linux arm64, macOS amd64, macOS
 arm64, and Windows amd64. The release workflow downloads the exact archive
 uploaded by its build job and blocks publication until all five native replays
 succeed. The four POSIX rows must close all four GitHub ordinary-command cases,
-the exact Go identity case, and the required reachable optimizer cases;
-the Windows row must close the exact structured unsupported-render contracts
-before any source attempt, record no processor evidence, and not count as POSIX
-activation or optimizer support.
+the exact Go identity case, the required reachable optimizer cases, and the
+complete managed install/status/PATH-first/help/execution/remove lifecycle with
+unchanged-store hostile failures; the Windows row must close the exact
+structured unsupported-render contracts and unsupported install/status/remove
+before any store/source/processor attempt, record no artifact reference or
+processor evidence, and not count as POSIX activation, managed-shim, or
+optimizer support.
 Each job uploads a bounded
 document bound to its target, archive digest, exact revision, and, where
 applicable, processor artifact identity. A dependent
@@ -1148,7 +1248,7 @@ On 2026-07-22, the exact packaged Darwin/arm64 journey passed for revision
 `b4ade8c`, including ordinary-command activation. That bounded observation does
 not cover this later documentation tree, schema-5 source-stream or optimizer
 plans, current Go contract 2, RTK inspection or execution, wrapper contract 2
-static help, the current schema-8/aggregate-schema-2 mechanism, the other
+static help, the current schema-9/aggregate-schema-2 mechanism, the other
 native rows, publication, or the complete release matrix; the tagged revision
 must replay every required row.
 
@@ -1167,6 +1267,11 @@ the option-default-aware acceptance mechanism for this revision only; it does
 not authorize publication, independently attest the executables, or carry
 forward to another revision.
 
+No exact five-row schema-9 run has yet been observed. Schema 9 and aggregate
+schema 2 are the current acceptance mechanism; a future candidate must run all
+five native rows and the dependent aggregate on the same exact revision before
+the managed-shim lifecycle becomes release-quality evidence.
+
 Exact scoped help is the public authoring contract: the source catalog exposes
 command paths, provenance, option grammar, structured output selector, and
 fields; schema-5 help exposes surface, option, wrapper, option-default,
@@ -1175,7 +1280,9 @@ select, rename, and render constraints; processor help exposes explicit RTK
 inspection and observation identity; execute help exposes the finite runtime-
 admission matrix; wrapper help exposes the renderer-produced closure, explicit
 `--` argv boundary, platform matrix, schema-2 review envelope, and the exact
-fresh-plan result-mode union.
+fresh-plan result-mode union. The three managed-shim scopes separately expose
+the fixed-target install create, bounded status discovery/reference output, and
+exact-reference remove write contracts.
 The harness's deterministic YAML edit verifies those artifact contracts but
 does not erase the user's deliberate configuration-authoring step.
 
@@ -1183,8 +1290,9 @@ Historical evidence schema 4 did not run RTK or validate an optimizer default.
 Schema 5 is the optimizer-aware proof but predates static tailored help, and
 schema 6 adds the first one-command contract-2 tailored-help proof. Historical
 schema 7 retains the accepted `atsura.output.rtk_go_test_pass.v1` evidence and
-adds the exact shared-bundle/shared-wrapper multi-command proof. Current schema
-8 adds the option-default and contract-3 proof; the release
+adds the exact shared-bundle/shared-wrapper multi-command proof. Historical
+schema 8 adds the option-default and contract-3 proof. Current schema 9 adds the
+persistent-shim lifecycle; the release
 claim is not complete merely because local controlled tests or one platform
 pass.
 The processor portion records only explicitly observed identity, invocation,

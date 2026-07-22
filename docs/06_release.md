@@ -15,6 +15,9 @@ ADR 0016 adds one finite catalog-typed value-option default and advances the
 current artifacts to specification schema 5, bundle schema 4, plan schema 6,
 and generated-wrapper contract 3 without changing the Go, RTK, host, vendor,
 or process boundaries.
+ADR 0017 adds one private user-local persistent POSIX executable-shim lifecycle
+whose caller selects the reported command-resolution directory; Atsura does not
+edit `PATH`, startup files, hooks, or vendor settings.
 The current implemented runtime is intentionally narrower than the artifact
 matrix: one GitHub compatibility-admitted typed JSON transform boundary; one
 complete two-command GitHub wrapper combining default-applied and caller-
@@ -22,19 +25,21 @@ overridden transformed `pr list` with append-argv-only `issue list`; one
 separate identity case; exact no-argument Go `test`
 identity; and the processor-bound strict pass-only `go test -json` optimizer
 through an explicitly inspected official RTK v0.43.0 artifact. Linux and macOS
-have the host-neutral POSIX renderer.
+have the host-neutral POSIX renderer and managed shim install/status/remove.
 Windows retains existing-command runtime evidence and exact structured
-unsupported wrapper rendering, with no POSIX activation or optimizer claim.
+unsupported wrapper rendering and managed-shim operations, with no store,
+artifact-reference, POSIX activation, or optimizer claim.
 
 Implementation acceptance and release-quality evidence are separate.
-Installed-artifact schema 8 and aggregate schema 2 are implemented. Schema 8
-retains the historical optimizer, static-help, and per-case caller-argv
-records, then binds exact source argv, declared/applied option defaults, and
-generated-wrapper contract 3 for the current two-command GitHub surface. They
-do not by themselves establish a release-quality optimizer, tailored-help,
+Installed-artifact schema 9 and aggregate schema 2 are the current acceptance
+mechanism. Schema 9 retains the historical schema-8 optimizer, static-help,
+per-case caller-argv, exact source-argv, option-default, and generated-wrapper
+contract-3 record and adds the persistent-shim lifecycle. They do not by
+themselves establish a release-quality optimizer, managed-shim, tailored-help,
 multi-command, or platform claim: that claim belongs only to the workflow
 result for one exact revision after all five required native rows and their
-aggregate pass. CI run 29910455312 supplied the historical schema-6 evidence on
+aggregate pass. No exact five-row schema-9 CI observation exists yet for this
+tree. CI run 29910455312 supplied the historical schema-6 evidence on
 2026-07-22 for revision
 `01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. No release was created, and
 that historical run did not establish schema-7 behavior. CI run 29914651542
@@ -44,10 +49,11 @@ for revision
 implementation evidence for this exact revision's schema-7 contract; no release
 was created. CI run
 [29920148480](https://github.com/tasuku43/atsura/actions/runs/29920148480)
-then passed all five native schema-8 rows, the canonical full/security/public
+then passed all five historical schema-8 rows, the canonical
+full/security/public
 gates, and aggregate schema 2 on 2026-07-22 for revision
 `99fbd0e97489b1f3b7a68e2617fa4056b2c12a1d`. That is release-quality
-implementation evidence for the current option-default contract on this exact
+implementation evidence for the option-default contract on that exact
 revision; no release was created, and every later candidate must repeat the
 matrix.
 
@@ -74,11 +80,11 @@ The current first-release packaging decisions are:
   review.
 
 These decisions fit the current pure-Go artifact and transform-runtime binary
-with its generated POSIX function and no bundled provider SDK or credential
-store. The selected source CLI is an external user dependency. A later
-persisted wrapper lifecycle, executable shim, signing system, extra package
-manager, or non-Go runtime dependency must revise the matrix and release
-contract.
+with its generated POSIX function, fixed executable shim, private user-local
+store, and no bundled provider SDK or credential store. The selected source CLI
+is an external user dependency. Replacement, automatic update, multi-profile
+selection, a signing system, an extra package manager, or a non-Go runtime
+dependency must revise the matrix and release contract.
 
 The base template defines byte-for-byte reproducible archives within a pinned pure-Go build contract and a public, reproducible-enough overall release path without private package infrastructure. A derived project must review supported platforms, artifact signing, provenance, package managers, and compatibility promises before its first release.
 
@@ -198,6 +204,17 @@ The release workflow follows this order:
    Windows receives no RTK artifact and verifies exact structured unsupported
    rendering plus an explicit empty unsupported tailored-help proof without
    claiming POSIX activation or an optimizer.
+   Each POSIX row also installs the exact GitHub and Go bundles, obtains their
+   opaque artifact references only from status, places the reported `bin`
+   directory first in fixture-owned `PATH`, and invokes ordinary `gh`/`go`
+   help and normal commands. Their bundle/runtime binding, fresh plan, argv,
+   result, and attempt evidence must equal the existing `wrapper run` cases.
+   Exact-reference removal must delete only the selected owned artifacts and a
+   final status must be explicitly empty. Tamper, foreign regular-file,
+   symlink, special-file, and unknown-reference probes must fail closed with
+   unchanged fixture-owned filesystem state and zero source/processor attempts.
+   Windows records structured unsupported install/status/remove with zero
+   store/source/processor attempts and no artifact references.
 5. Aggregate exactly five bounded native evidence documents with their matching
    candidate Atsura archives. Recompute every candidate digest and verify each
    applicable row's recorded processor provenance against the code-pinned
@@ -211,7 +228,7 @@ The release workflow follows this order:
    aggregate succeed.
 9. For a stable tag, render the checksum-pinned Homebrew Formula and open a Formula update pull request.
 
-Steps 4 and 5 are implemented by evidence schema 8, aggregate schema 2, and the
+Steps 4 and 5 are implemented by evidence schema 9, aggregate schema 2, and the
 native workflow. Their presence is not an attestation for a moving worktree.
 Publication remains blocked until every required native row and its aggregate
 succeed for the exact candidate revision.
@@ -425,9 +442,28 @@ The host-neutral wrapper claim is additionally limited to all of the following:
   interleaving claim; or one of the optimizer dispositions
   `preserved_before_processor`, `preserved_after_processor`, or `optimized`;
   none has a maintainer evidence envelope; and
-- caller-owned activation, no persisted install/shim lifecycle, no raw fallback,
-  no coding-agent-host protocol, and no claim that the runtime binding attests
-  against malicious replacement of the bound executable.
+- caller-owned activation for rendered functions, no raw fallback, no coding-
+  agent-host protocol, and no claim that the runtime binding attests against
+  malicious replacement of the bound executable.
+
+The persistent host-neutral shim claim is narrower still:
+
+- `wrapper install --bundle <absolute-path>` creates at most one exact
+  fixed-template executable per ordinary command in the private platform-
+  configuration-root store. It reports the store's `bin` directory, produces
+  no opaque reference, starts no source or processor, and never replaces a
+  different artifact or foreign path;
+- `wrapper status` performs bounded read-only ownership validation and is the
+  sole producer of an opaque artifact reference bound to immutable manifest
+  and shim material;
+- `wrapper remove --artifact <reference>` consumes that status reference
+  unchanged and deletes only the exact revalidated owned artifact. Unknown,
+  tampered, foreign, symlinked, special, multiply matched, or uncertain state
+  is never deleted; and
+- activation remains caller-owned. Atsura neither edits nor claims containment
+  of `PATH`, shell startup files, hooks, host settings, source behavior, or
+  downstream authorization. Windows creates no store and returns structured
+  unsupported for all three lifecycle commands.
 
 For `source_stream_passthrough`, a conventional nonzero status remains a source
 result rather than an Atsura fault. Signal termination, timeout, cancellation,
@@ -555,7 +591,7 @@ shape keeps the identity case in the outer `go_source` wrapper fields and
 records the optimizer's separate bundle, plan, rendered-wrapper digest, cases,
 and faults in the nested `optimizer` object.
 
-Current evidence schema 8 advances the production artifacts to specification
+Historical evidence schema 8 advances the production artifacts to specification
 schema 5, bundle schema 4, plan schema 6, and generated-wrapper contract 3. It
 records exact source argv plus complete declared and applied option-default
 lists. POSIX rows order four cases as `default_applied`,
@@ -568,6 +604,28 @@ attempts and 10 fixture attempts. The Go/RTK record and aggregate schema 2 are
 unchanged. CI run 29920148480 passed the exact five-target schema-8 result on
 2026-07-22 for revision
 `99fbd0e97489b1f3b7a68e2617fa4056b2c12a1d`.
+
+Current evidence schema 9 retains that complete schema-8 record and adds one
+required persistent `wrapper_lifecycle` record. A POSIX record binds shim
+contract version 1, a digest of the reported `bin` directory, caller-owned
+PATH-first selection, status-produced opaque references, immutable material
+digests, the existing GitHub and Go bundle/plan/argv/result identities,
+ordinary help and execution outcomes, exact-reference removals, explicit final
+empty status, store/source/processor counters, hostile fault codes, and
+unchanged-filesystem observations. A Windows record carries no bin, material,
+bundle, plan, or reference claim; it records empty path-command, status-
+snapshot, and artifact collections, three structured unsupported install/
+status/remove faults, and zero store/source/processor attempts. Evidence stores
+no raw filesystem path, stdout/stderr stream,
+environment snapshot, credential, or secret, and adds no host, vendor, hook,
+settings, or activation field.
+
+Aggregate schema 2 remains unchanged. It validates exactly five strict schema-9
+rows and their candidate archive bindings, then emits only the path-free
+`workflow_index_unattested` digest index. Per-row paths, opaque artifact
+references, material digests, and bundle/plan identities do not enter the
+aggregate. This is the current acceptance mechanism, not a claim that an exact
+five-row schema-9 workflow has already been observed.
 
 The credential-free in-process production-composition fixture supplies the
 complete phase evidence that a portable exact-archive journey cannot safely
@@ -604,11 +662,11 @@ package patterns, `--`, and test-binary arguments remain outside the first
 runtime. The same launcher selecting Go 1.27 later is not detected by contract
 2. Ambient Go configuration and toolchain selection remain source-owned. The
 pass-only `go test -json` / RTK `go-test` optimizer is now the one accepted
-external-processor implementation tuple. Current evidence schema 8 and
+external-processor implementation tuple. Current evidence schema 9 and
 aggregate schema 2 can carry that optimizer claim together with the contract-2
-multi-command tailored-help and option-default claim, but only a successful
-five-target native run for one exact candidate revision can advance the
-implementation to a release-quality platform claim.
+multi-command tailored-help, option-default, and managed-shim claim, but only a
+successful five-target native run for one exact candidate revision can advance
+the implementation to a release-quality platform claim.
 
 Matrix artifacts use stable, target-unique names and explicit replacement of
 the prior same-name artifact. Candidate archives, native journey evidence, and
@@ -635,7 +693,7 @@ revision only. It is not publication, independent executable attestation, or
 evidence for another commit or tag; the exact revision selected for any release
 must replay all required rows again.
 
-Current bounded schema-8 observation: CI run
+Historical bounded schema-8 observation: CI run
 [29920148480](https://github.com/tasuku43/atsura/actions/runs/29920148480)
 passed the exact Linux amd64/arm64, Darwin amd64/arm64, and Windows amd64
 schema-8 journeys, canonical full/security/public gates, and aggregate schema
@@ -645,15 +703,21 @@ option-default implementation claim for that revision only. It is not
 publication, independent executable attestation, or evidence for another
 commit or tag.
 
+There is no bounded five-target schema-9 observation yet. Schema 9 is the
+implemented acceptance mechanism for a future exact candidate, and the native
+workflow plus aggregate must pass on that exact revision before it becomes a
+release-quality managed-shim claim.
+
 No public release has yet made the wrapper claim. A future candidate that
 passes the complete gates may claim only the fixed Linux/macOS POSIX
-materialization, the exact finite source/processor tuples, and the Windows
-unsupported contract above. It still has no claim for identity or argv
-transforms beyond the exact admitted cases, live stream timing or interleaving,
-signal-status passthrough, raw execution, arbitrary transformers, persistent
-wrapper installation, executable/PATH shims, coding-agent-host activation,
-executable attestation, RTK child-process/filesystem/network absence, or
-Windows POSIX activation.
+materialization and managed-shim lifecycle, the exact finite source/processor
+tuples, and the Windows unsupported contract above. It still has no claim for
+identity or argv transforms beyond the exact admitted cases, live stream timing
+or interleaving, signal-status passthrough, raw execution, arbitrary
+transformers, artifact replacement or automatic update, multi-profile
+selection, Atsura-owned `PATH` or shell-startup edits, coding-agent-host
+activation, executable attestation, RTK child-process/filesystem/network
+absence, Windows shim support, or Windows POSIX activation.
 The retired legacy `plan preview`/`run` slice is not runtime evidence.
 
 ## Failure and recovery

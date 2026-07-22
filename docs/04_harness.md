@@ -560,11 +560,9 @@ The slice must prove:
   presentation authority and emits no maintainer evidence envelope; exact
   scoped schema-12 help publishes all three typed result modes and points to the
   schema-6 `bundle preview` wrapper-plan governing the selected variant;
-- the current renderer persists nothing and edits no activation configuration;
-  any future persisted artifact lifecycle uses exact ownership, bounded
-  regular-file paths, symlink/special-file rejection, atomic replacement,
-  central mutation invocation, and read-only drift reconciliation without
-  editing caller-owned activation configuration; and
+- `wrapper render` persists nothing and edits no activation configuration;
+  the separate ADR 0017 managed-shim lifecycle below owns its fixed private
+  store without editing caller-owned activation configuration; and
 - optimizer implementation conformance is owned by local controlled tests;
   release-quality optimizer status additionally requires exact installed-
   artifact replay with the official RTK artifact on every claimed Linux and
@@ -579,6 +577,47 @@ attempt evidence without importing any coding-agent-host protocol. Downstream
 vendor integrations own their own activation and compatibility tests outside
 Atsura. Failure to activate a wrapper is outside Atsura's fail-closed claim
 because the product boundary begins only after the wrapper was selected.
+
+### Persistent wrapper shim lifecycle
+
+ADR 0017 adds one host-neutral managed-artifact lifecycle without broadening
+source execution or host integration:
+
+- `wrapper install --bundle <absolute-path>` is a fixed-target `RoleAct`
+  `EffectCreate`. It consumes and produces no reference, reuses the exact
+  adopted-bundle/materialization checks, creates at most one fixed-template
+  executable per ordinary command through the central mutation invoker, and
+  reports its private user-local `bin` directory. It starts no source or
+  processor and never replaces a different artifact or foreign path;
+- `wrapper status` is bounded read-only `RoleDiscover` `EffectRead`. It is the
+  sole producer of the opaque `wrapper-shim-artifact` reference and returns
+  only fully validated owned records. A foreign regular file, symlink, special
+  file, or tampered record fails the complete inventory instead of fabricating
+  or partially returning ownership;
+- `wrapper remove --artifact <reference>` is reference-bound `RoleAct`
+  `EffectWrite`. It consumes one current status reference byte-for-byte,
+  revalidates the immutable record and active shim, and removes only that exact
+  owned artifact. Unknown, tampered, collided, multiply matched, or uncertain
+  state is not absence-as-success and is never deleted;
+- Linux and macOS use only the private platform-config-root store and fixed
+  executable template. Atsura reports the `bin` directory but never edits
+  `PATH`, shell startup files, hooks, vendor settings, or coding-agent-host
+  configuration. Caller-owned resolution selects the managed directory first;
+  the selected ordinary `gh` or `go` shim must retain the same bundle/runtime
+  binding, fresh plan, forwarded argv, result, and zero/one process-attempt
+  rules as `wrapper run`; and
+- Windows returns the structured `wrapper_artifact_platform_not_supported`
+  fault before a store, source, or processor attempt and produces no artifact
+  reference. Replacement, automatic updates, multi-profile selection, and
+  Windows shims remain outside this contract.
+
+Store and lifecycle tests must cover private-root ownership, create-exclusive
+staging, publication and directory synchronization, bounded enumeration,
+manifest/material/reference binding, exact removal, uncertainty recovery
+through status, and every foreign/symlink/special/tamper collision. Hostile-case
+snapshots prove the fixture-owned filesystem is unchanged while source and
+processor attempt logs remain unchanged; fixture cleanup is not attributed to
+the product operation.
 
 ### External text and secrets
 
@@ -607,14 +646,15 @@ bytes in persisted or structured evidence.
   classification, optimizer admission/postconditions, and uncertain post-start
   fault suppression.
 - Infrastructure tests own bounded strict codecs, executable identity, process
-  limits, safe local persistence, source/output adapter mechanics, RTK identity,
-  isolated processor execution and observation, fixed POSIX quoting and
-  rendering, and bounded argv forwarding.
+  limits, safe local persistence, managed-shim root/record/link identity,
+  source/output adapter mechanics, RTK identity, isolated processor execution
+  and observation, fixed POSIX function/executable quoting and rendering, and
+  bounded argv forwarding.
 - CLI tests own catalog registration, typed argv, help, output schemas,
-  migration recovery, stdout/stderr routing, and any generic wrapper lifecycle,
-  invocation, output-authority, processor inspection, complete dual-stream
-  writes, source-status propagation, optimizer disposition presentation, and
-  mutation contracts.
+  migration recovery, stdout/stderr routing, managed install/status/remove
+  reference flow, wrapper invocation, output-authority, processor inspection,
+  complete dual-stream writes, source-status propagation, optimizer disposition
+  presentation, and mutation contracts.
 - CLI integration fixtures own clean-state specification through bundle status,
   adoption and preview, plus one synthetic GitHub-compatible transform that
   runs through the production compatibility verifier, identity-bound process
@@ -652,11 +692,13 @@ bytes in persisted or structured evidence.
   receipt through the production trust-store adapter for each tested bundle;
   this proves receipt consumption, not human consent. Controlling-terminal
   full-digest confirmation remains separate required production-adapter
-  evidence. Linux and macOS activate deterministic `wrapper render` bytes and
-  invoke the maintained GitHub and Go ordinary-command surfaces through the
-  extracted runtime. Windows verifies exact structured unsupported rendering
-  with no sourced bytes, zero wrapper source attempts, and no processor
-  artifact or evidence. The Go
+  evidence. Linux and macOS activate deterministic `wrapper render` bytes,
+  exercise install/status/caller-owned-PATH/remove through the extracted
+  runtime, and invoke the maintained GitHub and Go ordinary-command surfaces.
+  Windows verifies exact structured unsupported rendering and managed-shim
+  install/status/remove with no store state, no artifact reference, no sourced
+  bytes, zero wrapper source attempts, and no processor artifact or evidence.
+  The Go
   fixture sets `GOTOOLCHAIN=local`, disables download, and isolates module/cache
   roots; those are deterministic harness inputs, not production environment or
   effective-toolchain guarantees.
@@ -692,7 +734,7 @@ bytes in persisted or structured evidence.
   digests or wrapper contract, zero wrapper attempts, and 10 GitHub fixture
   attempts. Top-level journey identities remain required. Aggregate schema 2
   is unchanged and excludes the new per-case caller argv.
-- Current evidence schema 8 binds specification schema 5, bundle schema 4,
+- Historical evidence schema 8 binds specification schema 5, bundle schema 4,
   plan schema 6, generated-wrapper contract 3, exact source argv, the complete
   declared option-default list, and the exact applied subset. POSIX rows add
   ordered `default_applied` and `default_overridden` cases alongside
@@ -702,6 +744,23 @@ bytes in persisted or structured evidence.
   29920148480 passed the exact five-target schema-8 rows, canonical
   full/security/public gates, and aggregate schema 2 on 2026-07-22 for revision
   `99fbd0e97489b1f3b7a68e2617fa4056b2c12a1d`.
+- Current evidence schema 9 retains the complete schema-8 record and adds one
+  required `wrapper_lifecycle` record. Each POSIX row binds contract version 1,
+  the reported-bin digest and caller-owned path precedence, status-produced
+  opaque references to immutable material digests, the exact GitHub and Go
+  bundle/plan/argv/result identities used by ordinary help and execution,
+  install/remove/status outcomes, store/source/processor counters, hostile
+  fault codes, unchanged-filesystem observations, and an explicitly empty final
+  status after exact-reference removals. Windows records empty path-command,
+  status-snapshot, and artifact inventories plus three structured unsupported
+  install/status/remove faults and zero store, source, and processor attempts.
+  Raw filesystem paths, stdout, stderr, environment snapshots, credentials,
+  and secrets are absent. Evidence
+  schema 9 adds no host, vendor, hook, settings, or activation field. Aggregate
+  schema 2 remains the path-free `workflow_index_unattested` mechanism and does
+  not project per-row paths, opaque references, or material/binding digests.
+  Schema 9 is the current acceptance mechanism; no exact five-row schema-9 CI
+  run has yet been observed for this tree.
 - The four Linux/macOS optimizer targets must prove `optimized` and reachable
   `preserved_before_processor`; Windows records no optimizer case and no
   processor evidence. Installed evidence does not claim processor-launch
@@ -720,7 +779,7 @@ bytes in persisted or structured evidence.
 - Architecture and public guards own dependency direction and secret-free
   repository state.
 
-## Host-neutral wrapper and optimizer implementation gate
+## Host-neutral wrapper, persistent shim, and optimizer implementation gate
 
 This implementation milestone is complete only when all of the following are
 true on the same tree:
@@ -752,9 +811,11 @@ true on the same tree:
    separate zero/one source and processor attempt counts, isolated no-shell
    execution, post-source identity revalidation, no-byte processor faults, and
    no failure fallback;
-10. `wrapper render` and `wrapper run` catalog, typed-argv, output-authority,
-    fault, schema-2 review-envelope, and scoped-help contracts match the
-    implementation; `wrapper run` publishes all three schema-12 result modes;
+10. `wrapper render`, `wrapper run`, `wrapper install`, `wrapper status`, and
+    `wrapper remove` catalog, typed-argv, role/effect/reference-flow,
+    output-authority, fault, review-envelope, mutation, and scoped-help
+    contracts match the implementation; `wrapper run` publishes all three
+    schema-12 result modes;
 11. deterministic binding/render tests cover portable command names, POSIX
     quoting, contract-3 root/namespace/exact tailored help and option-default
     disclosure, exact bundle/runtime/source/processor closure, one- and two-
@@ -768,8 +829,8 @@ true on the same tree:
 13. retired authorization schemas fail with zero process attempts and legacy
     `plan preview` remains migration-only;
 14. exact scoped agent help publishes the finite source-catalog,
-    processor-inspection, specification-authoring, planning, and runtime
-    admission contracts;
+    processor-inspection, specification-authoring, planning, runtime-admission,
+    and managed install/status/remove contracts;
 15. `task check`, `task security`, and `task public:check` pass; and
 16. repository search finds no live source-wrapper requirement for
     allow/confirm/deny, source read/create/write, source target/impact, arbitrary
@@ -784,14 +845,18 @@ candidate revision:
 2. CI provides native Linux amd64/arm64, Darwin amd64/arm64, and Windows amd64
    base rows, with the exact official RTK v0.43.0 artifact supplied only to the
    four optimizer-supported rows;
-3. evidence schema 8 retains the historical optimizer, tailored-help, and
-   caller-argv records; binds specification schema 5, bundle schema 4, plan
+3. evidence schema 9 retains the historical schema-8 optimizer, tailored-help,
+   and caller-argv records; binds specification schema 5, bundle schema 4, plan
    schema 6, wrapper contract 3, exact source argv, declared/applied defaults,
    the four ordered POSIX wrapper cases, and all five help views; and records
-   the runtime-non-executable condition and zero-attempt fallthrough faults;
-4. Windows proves structured unsupported rendering and an explicit empty
-   `tailored_help: platform_not_supported` record without receiving a
-   processor artifact or claiming POSIX activation or an optimizer;
+   the runtime-non-executable condition, zero-attempt fallthrough faults, and
+   the complete persistent install/status/PATH-first/help/execution/exact-
+   remove/final-empty lifecycle with hostile unchanged-store evidence;
+4. Windows proves structured unsupported rendering, an explicit empty
+   `tailored_help: platform_not_supported` record, and unsupported
+   install/status/remove with zero store/source/processor attempts and no
+   artifact references, without receiving a processor artifact or claiming
+   POSIX activation, an optimizer, or a managed shim;
 5. aggregation recomputes every candidate Atsura archive hash, validates each
    applicable row's recorded processor identity against the code-pinned
    manifest, rejects missing or extra evidence, and the release publish job
@@ -805,21 +870,22 @@ Historical predecessor evidence: a clean detached-worktree
 `task release:check` and CI run 29910455312 passed the corresponding schema-6
 six-condition set on 2026-07-22 for revision
 `01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. That run does not satisfy current
-schema-8 condition 3 or the current six-condition set. The clean local gates
+schema-9 condition 3 or the current six-condition set. The clean local gates
 (`task check`, `task security`, `task public:check`, and `task release:check`)
 plus CI run 29914651542 passed the then-current schema-7 six-condition set on
 2026-07-22 for revision
 `8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`.
 That establishes the release-quality implementation claim for that exact
-historical revision only; it does not satisfy current schema-8 condition 3.
+historical revision only; it does not satisfy current schema-9 condition 3.
 Publication remains separately authorized, and the current candidate must run
 both the local gates and the native workflow before receiving that claim.
 
-Neither gate claims raw execution, richer argv transforms, persistent wrapper
-installation or executable shims, Windows POSIX activation, arbitrary
-transformer integration, support beyond an accepted source/processor contract,
-executable attestation, source authorization, sandboxing, coding-agent-host
-integration, or publication authorization.
+Neither gate claims raw execution, richer argv transforms, replacement or
+automatic update of wrapper artifacts, multi-profile selection, Atsura-owned
+`PATH` or shell-startup edits, Windows shim support or POSIX activation,
+arbitrary transformer integration, support beyond an accepted source/processor
+contract, executable attestation, source authorization, sandboxing,
+coding-agent-host integration, or publication authorization.
 
 ## Evidence discipline
 
