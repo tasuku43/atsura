@@ -219,7 +219,7 @@ func optimizerExecuteBundle(t *testing.T) (tailoringbundle.Bundle, string, sourc
 		Identity:      processorIdentity,
 		Version:       processorcompat.ProcessorVersion,
 		Probe: processorprocess.Probe{
-			Argv: []string{"--version"}, EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV1, Attempts: 1,
+			Argv: []string{"--version"}, EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV2, Attempts: 1,
 		},
 	}
 	registry := processorcompat.New()

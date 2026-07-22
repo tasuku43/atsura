@@ -322,7 +322,7 @@ func optimizerObservation(t *testing.T) processorprocess.Observation {
 		},
 		Version: processorcompat.ProcessorVersion,
 		Probe: processorprocess.Probe{
-			Argv: []string{"--version"}, EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV1, Attempts: 1,
+			Argv: []string{"--version"}, EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV2, Attempts: 1,
 		},
 	}
 }

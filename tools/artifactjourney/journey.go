@@ -12,19 +12,25 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"runtime"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/tasuku43/atsura/internal/app/processorcompat"
 	"github.com/tasuku43/atsura/internal/domain/bundletrust"
+	"github.com/tasuku43/atsura/internal/domain/processorprocess"
+	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
+	"github.com/tasuku43/atsura/internal/domain/tailoringplan"
 	"github.com/tasuku43/atsura/internal/infra/trustfile"
+	"github.com/tasuku43/atsura/tools/internal/processormanifest"
 )
 
 const (
 	maxCommandOutputBytes = 4 * 1024 * 1024
-	maxEvidenceBytes      = 8 * 1024
+	maxEvidenceBytes      = 16 * 1024
 	maxAttemptLogBytes    = 1024 * 1024
 	maxSourceStderrBytes  = 256 * 1024
 	maxTransformedBytes   = 2 * 1024 * 1024
@@ -32,13 +38,15 @@ const (
 	fixtureAttemptEnv     = "ATSURA_SOURCE_FIXTURE_ATTEMPT_LOG"
 	fixtureModeEnv        = "ATSURA_SOURCE_FIXTURE_MODE"
 	goTestAttemptEnv      = "ATSURA_GO_TEST_ATTEMPT_LOG"
+	goTestModeEnv         = "ATSURA_GO_TEST_MODE"
+	goTestProcessorDrift  = "ATSURA_GO_TEST_PROCESSOR_DRIFT_PATH"
 	goAdapterKind         = "atsura.source.go_cli"
-	goAdapterContract     = 1
+	goAdapterContract     = 2
 )
 
 var (
-	go126VersionPattern = regexp.MustCompile(`^go1\.26\.(0|[1-9][0-9]*)$`)
-	goTestOutputPattern = regexp.MustCompile(`^PASS\nok[ \t]+example\.com/atsura-artifact-go[ \t]+[0-9]+(?:\.[0-9]+)?s\n$`)
+	go126VersionPattern         = regexp.MustCompile(`^go1\.26\.(0|[1-9][0-9]*)$`)
+	goTestIdentityOutputPattern = regexp.MustCompile(`^PASS\nok[ \t]+example\.com/atsura-artifact-go[ \t]+[0-9]+(?:\.[0-9]+)?s\n$`)
 )
 
 var secretCanaries = []string{
@@ -90,6 +98,77 @@ type goSourceEvidence struct {
 	WrapperCases             []wrapperCaseEvidence `json:"wrapper_cases"`
 	WrapperSourceAttempts    int                   `json:"wrapper_source_process_attempts"`
 	ZeroAttemptRejections    int                   `json:"zero_attempt_rejections"`
+	Optimizer                goOptimizerEvidence   `json:"optimizer"`
+}
+
+type goOptimizerEvidence struct {
+	Outcome               string                      `json:"outcome"`
+	Processor             *processorArtifactEvidence  `json:"processor,omitempty"`
+	Execution             *optimizerExecutionEvidence `json:"execution,omitempty"`
+	BundleDigest          string                      `json:"bundle_digest,omitempty"`
+	PlanDigest            string                      `json:"plan_digest,omitempty"`
+	WrapperSourceSHA256   string                      `json:"wrapper_source_sha256,omitempty"`
+	Cases                 []optimizerCaseEvidence     `json:"cases"`
+	Faults                []optimizerFaultEvidence    `json:"faults"`
+	SourceProcessAttempts int                         `json:"source_process_attempts"`
+	ZeroAttemptRejections int                         `json:"zero_attempt_rejections"`
+}
+
+type optimizerExecutionEvidence struct {
+	CallerArgv                    []string `json:"caller_argv"`
+	SourceArgv                    []string `json:"source_argv"`
+	SourceStdinMode               string   `json:"source_stdin_mode"`
+	SourceWorkingDirectoryMode    string   `json:"source_working_directory_mode"`
+	SourceEnvironmentMode         string   `json:"source_environment_mode"`
+	SourceMaxAttempts             int      `json:"source_max_attempts"`
+	SourceTimeoutMillis           int64    `json:"source_timeout_millis"`
+	SourceStdoutLimitBytes        int      `json:"source_stdout_limit_bytes"`
+	SourceStderrLimitBytes        int      `json:"source_stderr_limit_bytes"`
+	InputFormat                   string   `json:"input_format"`
+	OutputFormat                  string   `json:"output_format"`
+	AllowOriginalOutput           bool     `json:"allow_original_output"`
+	ProcessorArgv                 []string `json:"processor_argv"`
+	ProcessorStdinMode            string   `json:"processor_stdin_mode"`
+	ProcessorWorkingDirectoryMode string   `json:"processor_working_directory_mode"`
+	ProcessorEnvironmentContract  string   `json:"processor_environment_contract"`
+	ProcessorMaxAttempts          int      `json:"processor_max_attempts"`
+	ProcessorTimeoutMillis        int64    `json:"processor_timeout_millis"`
+	ProcessorStdoutLimitBytes     int      `json:"processor_stdout_limit_bytes"`
+	ProcessorStderrLimitBytes     int      `json:"processor_stderr_limit_bytes"`
+}
+
+type processorArtifactEvidence struct {
+	ContractID                string `json:"contract_id"`
+	AdapterKind               string `json:"adapter_kind"`
+	AdapterContractVersion    int    `json:"adapter_contract_version"`
+	Version                   string `json:"version"`
+	Target                    string `json:"target"`
+	ArchiveName               string `json:"archive_name"`
+	ArchiveSHA256             string `json:"archive_sha256"`
+	BinarySHA256              string `json:"binary_sha256"`
+	BinarySize                int64  `json:"binary_size"`
+	ObservationDigest         string `json:"observation_digest"`
+	InspectionProcessAttempts int    `json:"inspection_process_attempts"`
+}
+
+type optimizerCaseEvidence struct {
+	Name                  string `json:"name"`
+	Disposition           string `json:"disposition"`
+	StdoutSHA256          string `json:"stdout_sha256"`
+	StderrSHA256          string `json:"stderr_sha256"`
+	SourceExitCode        int    `json:"source_exit_code"`
+	SourceProcessAttempts int    `json:"source_process_attempts"`
+}
+
+type optimizerFaultEvidence struct {
+	Name                  string `json:"name"`
+	Code                  string `json:"code"`
+	SourceProcessAttempts int    `json:"source_process_attempts"`
+}
+
+type preparedProcessor struct {
+	executablePath string
+	metadata       processormanifest.TargetMetadata
 }
 
 // wrapperCaseEvidence retains only identities, digests, conventional status,
@@ -155,7 +234,7 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 	if filepath.Base(archivePath) != wantedArchiveName {
 		return evidenceDocument{}, fmt.Errorf("archive name does not match target identity")
 	}
-	digest, err := archiveDigest(archivePath)
+	archive, digest, err := readReleaseArchive(archivePath)
 	if err != nil {
 		return evidenceDocument{}, fmt.Errorf("archive digest validation failed")
 	}
@@ -164,13 +243,37 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 		return evidenceDocument{}, fmt.Errorf("temporary workspace creation failed")
 	}
 	defer os.RemoveAll(workRoot)
-	executablePath, err := extractReleaseArchive(archivePath, configuration.goos, filepath.Join(workRoot, "artifact"))
+	executablePath, err := extractReleaseArchive(archive, configuration.goos, filepath.Join(workRoot, "artifact"))
 	if err != nil {
 		return evidenceDocument{}, fmt.Errorf("release archive extraction failed")
 	}
 	executablePath, err = filepath.EvalSymlinks(executablePath)
 	if err != nil || !filepath.IsAbs(executablePath) || filepath.Clean(executablePath) != executablePath {
 		return evidenceDocument{}, fmt.Errorf("release executable identity is invalid")
+	}
+	var processor *preparedProcessor
+	if configuration.goos != "windows" {
+		manifest, loadErr := processormanifest.LoadPinned(configuration.repositoryRoot)
+		if loadErr != nil {
+			return evidenceDocument{}, fmt.Errorf("pinned processor provenance is invalid")
+		}
+		metadata, targetErr := manifest.Target(configuration.goos + "/" + configuration.goarch)
+		if targetErr != nil {
+			return evidenceDocument{}, fmt.Errorf("processor target provenance is unavailable")
+		}
+		processorArchivePath, inputErr := prepareInputFile(configuration.processorArchive)
+		if inputErr != nil {
+			return evidenceDocument{}, fmt.Errorf("processor archive input is invalid")
+		}
+		processorExecutable, extractErr := extractProcessorArchive(processorArchivePath, filepath.Join(workRoot, "processor"), metadata)
+		if extractErr != nil {
+			return evidenceDocument{}, fmt.Errorf("processor archive extraction failed: %w", extractErr)
+		}
+		processorExecutable, extractErr = filepath.EvalSymlinks(processorExecutable)
+		if extractErr != nil || !filepath.IsAbs(processorExecutable) || filepath.Clean(processorExecutable) != processorExecutable {
+			return evidenceDocument{}, fmt.Errorf("processor executable identity is invalid")
+		}
+		processor = &preparedProcessor{executablePath: processorExecutable, metadata: metadata}
 	}
 
 	sourcePath, sourceBin, err := stageSourceFixture(sourceInputPath, configuration.goos, workRoot)
@@ -204,6 +307,7 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 	}
 	inspectionPayload, err := decodeInspection(inspection.stdout)
 	if err != nil || inspectionPayload.SourceProcessAttempts != 4 || !digestValue(inspectionPayload.CatalogDigest) ||
+		inspectionPayload.Catalog.SchemaVersion != 2 ||
 		inspectionPayload.Catalog.Source.RequestedExecutable != "gh" || inspectionPayload.Catalog.Source.ResolvedPath != sourcePath {
 		return evidenceDocument{}, fmt.Errorf("source inspection evidence is invalid")
 	}
@@ -369,7 +473,7 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 	wantedAttempts += wrapperEvidence.sourceProcessAttempts
 
 	goEvidence, goBoundaries, err := verifyGoSourceJourney(
-		ctx, runner, helpEvidence, configuration.goos, executablePath, trustPath, attemptLog, wantedAttempts, workRoot,
+		ctx, runner, helpEvidence, configuration.goos, executablePath, trustPath, attemptLog, wantedAttempts, workRoot, processor,
 	)
 	if err != nil {
 		return evidenceDocument{}, err
@@ -396,7 +500,7 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 		return evidenceDocument{}, fmt.Errorf("fixture attempt sequence is invalid")
 	}
 
-	return evidenceDocument{SchemaVersion: 4, ArtifactJourney: artifactJourneyEvidence{
+	return evidenceDocument{SchemaVersion: 5, ArtifactJourney: artifactJourneyEvidence{
 		Target: configuration.goos + "/" + configuration.goarch, ObservedHost: runtime.GOOS + "/" + runtime.GOARCH,
 		ArchiveName: filepath.Base(archivePath), ArchiveSHA256: digest,
 		Version: strings.TrimPrefix(configuration.tag, "v"), Revision: configuration.revision, HelpContractsVerified: len(helpEvidence.outputs),
@@ -458,7 +562,8 @@ type wrapperRenderDocument struct {
 			SHA256       string `json:"sha256"`
 			Size         int64  `json:"size"`
 		} `json:"runtime"`
-		SourceProcessAttempts int `json:"source_process_attempts"`
+		SourceProcessAttempts    int `json:"source_process_attempts"`
+		ProcessorProcessAttempts int `json:"processor_process_attempts"`
 	} `json:"wrapper"`
 }
 
@@ -600,6 +705,7 @@ func verifyGoSourceJourney(
 	goos, executablePath, trustPath, attemptLog string,
 	existingFixtureAttempts int,
 	workRoot string,
+	processor *preparedProcessor,
 ) (goSourceEvidence, [][]byte, error) {
 	goExecutable, err := exec.LookPath("go")
 	if err != nil {
@@ -619,6 +725,7 @@ func verifyGoSourceJourney(
 	}
 	inspectionPayload, err := decodeInspection(inspection.stdout)
 	if err != nil || inspectionPayload.SourceProcessAttempts != 3 ||
+		inspectionPayload.Catalog.SchemaVersion != 2 ||
 		inspectionPayload.Catalog.Adapter.Kind != goAdapterKind || inspectionPayload.Catalog.Adapter.ContractVersion != goAdapterContract ||
 		inspectionPayload.Catalog.Source.RequestedExecutable != "go" || !go126VersionPattern.MatchString(inspectionPayload.Catalog.Source.Version) ||
 		inspectionPayload.Catalog.Probe.Attempts != 3 || !inspectionHasCommand(inspectionPayload, []string{"test"}) ||
@@ -641,7 +748,44 @@ func verifyGoSourceJourney(
 		return goSourceEvidence{}, nil, fmt.Errorf("Go source attempt fixture is not initially empty")
 	}
 
-	draft, err := runner.success(ctx, "success", "spec", "init", "--catalog", catalogPath, "--", "test")
+	boundaries := [][]byte{inspection.stdout}
+	var processorInspection processorInspectionEvidence
+	processorObservationPath := ""
+	if goos == "windows" {
+		if processor != nil {
+			return goSourceEvidence{}, nil, fmt.Errorf("Windows unexpectedly received processor provenance")
+		}
+		declaration, declarationErr := help.fault("processor inspect", "unsupported_processor_platform")
+		if declarationErr != nil || declaration.Kind != "unsupported" || declaration.Retryable {
+			return goSourceEvidence{}, nil, fmt.Errorf("Windows processor platform help contract is invalid")
+		}
+		failure, failureErr := runner.failure(ctx, "success", 12, declaration,
+			"--error-format=json", "processor", "inspect", "--adapter=rtk", "--executable", goExecutable)
+		if failureErr != nil {
+			return goSourceEvidence{}, nil, fmt.Errorf("Windows processor platform rejection is invalid")
+		}
+		boundaries = append(boundaries, failure.stdout, failure.stderr)
+	} else {
+		if processor == nil || processor.metadata.Target() != goos+"/"+runtime.GOARCH {
+			return goSourceEvidence{}, nil, fmt.Errorf("POSIX processor provenance does not match the native target")
+		}
+		processorOutput, inspectErr := runner.success(ctx, "success", "processor", "inspect", "--adapter=rtk", "--executable", processor.executablePath)
+		if inspectErr != nil {
+			return goSourceEvidence{}, nil, fmt.Errorf("processor inspection failed")
+		}
+		processorInspection, inspectErr = decodeProcessorInspection(processorOutput.stdout)
+		if inspectErr != nil || validateProcessorInspection(processorInspection, *processor) != nil {
+			return goSourceEvidence{}, nil, fmt.Errorf("processor inspection evidence is invalid")
+		}
+		processorObservationPath = filepath.Join(workRoot, "processor-observation.json")
+		if err := writePrivate(processorObservationPath, processorOutput.stdout); err != nil {
+			return goSourceEvidence{}, nil, fmt.Errorf("processor observation write failed")
+		}
+		boundaries = append(boundaries, processorOutput.stdout)
+	}
+
+	draftArguments := []string{"spec", "init", "--catalog", catalogPath, "--", "test"}
+	draft, err := runner.success(ctx, "success", draftArguments...)
 	if err != nil {
 		return goSourceEvidence{}, nil, fmt.Errorf("Go source specification draft failed")
 	}
@@ -653,7 +797,8 @@ func verifyGoSourceJourney(
 	if err != nil || validateSpecificationEvidence(validation.stdout, inspectionPayload.CatalogDigest, 1, 0) != nil {
 		return goSourceEvidence{}, nil, fmt.Errorf("Go source specification validation evidence is invalid")
 	}
-	built, err := runner.success(ctx, "success", "bundle", "build", "--catalog", catalogPath, "--spec", specificationPath)
+	buildArguments := []string{"bundle", "build", "--catalog", catalogPath, "--spec", specificationPath}
+	built, err := runner.success(ctx, "success", buildArguments...)
 	if err != nil {
 		return goSourceEvidence{}, nil, fmt.Errorf("Go source bundle build failed")
 	}
@@ -681,18 +826,22 @@ func verifyGoSourceJourney(
 	}
 	previewPayload, err := decodePreview(preview.stdout)
 	if err != nil || previewPayload.SourceProcessAttempts != 0 || !digestValue(previewPayload.PlanDigest) ||
+		previewPayload.Plan.SchemaVersion != 5 ||
 		previewPayload.Plan.WrapperKind != "identity" || previewPayload.Plan.ResultMode != "source_stream_passthrough" {
 		return goSourceEvidence{}, nil, fmt.Errorf("Go source preview evidence is invalid")
+	}
+	if err := validateGoIdentityPreviewPlan(previewPayload.Plan, bundleDigest, inspectionPayload); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go identity plan contract is invalid: %w", err)
 	}
 	if err := requireGoTestAttempts(goAttemptLog, 0); err != nil {
 		return goSourceEvidence{}, nil, fmt.Errorf("Go source preparation started the test command")
 	}
 	journey := preparedCommandJourney{
 		bundleDigest: bundleDigest, planDigest: previewPayload.PlanDigest,
-		wrapperKind: previewPayload.Plan.WrapperKind, resultMode: previewPayload.Plan.ResultMode,
+		wrapperKind: string(previewPayload.Plan.WrapperKind), resultMode: string(previewPayload.Plan.ResultMode),
 		baseInvocation: baseInvocation,
 	}
-	boundaries := [][]byte{inspection.stdout, draft.stdout, validation.stdout, built.stdout, status.stdout, preview.stdout}
+	boundaries = append(boundaries, draft.stdout, validation.stdout, built.stdout, status.stdout, preview.stdout)
 	evidence := goSourceEvidence{
 		AdapterKind: goAdapterKind, AdapterContractVersion: goAdapterContract,
 		SourceVersion: inspectionPayload.Catalog.Source.Version, CatalogDigest: inspectionPayload.CatalogDigest,
@@ -716,11 +865,21 @@ func verifyGoSourceJourney(
 		evidence.WrapperOutcome = "platform_not_supported"
 		evidence.WrapperCases = []wrapperCaseEvidence{}
 		evidence.ZeroAttemptRejections = 1
+		evidence.Optimizer = goOptimizerEvidence{
+			Outcome: "platform_not_supported", Cases: []optimizerCaseEvidence{}, Faults: []optimizerFaultEvidence{}, ZeroAttemptRejections: 1,
+		}
 		return evidence, append(boundaries, failure.stdout, failure.stderr), nil
 	}
 	if goos != "linux" && goos != "darwin" {
 		return goSourceEvidence{}, nil, fmt.Errorf("Go source wrapper target is unsupported")
 	}
+	if processor == nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go optimizer processor is missing")
+	}
+	runner.environment = replaceEnvironment(runner.environment, map[string]string{
+		"GOFLAGS":     "-buildvcs=false -count=1",
+		goTestModeEnv: "pass", goTestProcessorDrift: "",
+	})
 
 	runtimeDigest, runtimeSize, err := regularFileIdentity(executablePath)
 	if err != nil {
@@ -738,56 +897,251 @@ func verifyGoSourceJourney(
 	if err != nil || string(textRender.stdout) != document.Wrapper.Source {
 		return goSourceEvidence{}, nil, fmt.Errorf("Go source wrapper text rendering is invalid")
 	}
-	sourceDigest := digestBytes(textRender.stdout)
-	if err := validateWrapperRenderEvidence(document, journey, "go", executablePath, runtimeDigest, runtimeSize, sourceDigest); err != nil {
+	identitySourceDigest := digestBytes(textRender.stdout)
+	if err := validateWrapperRenderEvidence(document, journey, "go", executablePath, runtimeDigest, runtimeSize, identitySourceDigest); err != nil {
 		return goSourceEvidence{}, nil, fmt.Errorf("Go source wrapper binding evidence is invalid: %w", err)
 	}
 	if err := requireGoTestAttempts(goAttemptLog, 0); err != nil {
 		return goSourceEvidence{}, nil, fmt.Errorf("Go source rendering started the test command")
 	}
-	wrapperPath := filepath.Join(workRoot, "caller-owned-go-wrapper.sh")
-	if err := writePrivate(wrapperPath, textRender.stdout); err != nil {
+	identityWrapperPath := filepath.Join(workRoot, "caller-owned-go-identity-wrapper.sh")
+	if err := writePrivate(identityWrapperPath, textRender.stdout); err != nil {
 		return goSourceEvidence{}, nil, fmt.Errorf("Go source caller-owned wrapper write failed")
 	}
-	rejectionDeclaration, err := help.fault("wrapper run", "wrapper_runtime_not_supported")
-	if err != nil || rejectionDeclaration.Kind != "unsupported" || rejectionDeclaration.Retryable {
-		return goSourceEvidence{}, nil, fmt.Errorf("Go source argv rejection help contract is invalid")
+	identityRejectionDeclaration, err := help.fault("wrapper run", "wrapper_runtime_not_supported")
+	if err != nil || identityRejectionDeclaration.Kind != "unsupported" || identityRejectionDeclaration.Retryable {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go identity argv rejection help contract is invalid")
 	}
-	rejection, err := runPOSIXCaller(ctx, runner, "go", wrapperPath, []string{"test", "extra"}, 12)
-	if err != nil || len(rejection.stdout) != 0 || validateFault(rejection.stderr, rejectionDeclaration) != nil {
-		return goSourceEvidence{}, nil, fmt.Errorf("Go source additional-argument rejection is invalid")
+	identityRejection, err := runPOSIXCaller(ctx, runner, "go", identityWrapperPath, []string{"test", "extra"}, 12)
+	if err != nil || len(identityRejection.stdout) != 0 || validateFault(identityRejection.stderr, identityRejectionDeclaration) != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go identity additional-argument rejection is invalid")
 	}
 	if err := requireGoTestAttempts(goAttemptLog, 0); err != nil {
-		return goSourceEvidence{}, nil, fmt.Errorf("Go source additional-argument rejection started the test command")
+		return goSourceEvidence{}, nil, fmt.Errorf("Go identity rejection started the source")
 	}
-	invocation, err := runPOSIXCaller(ctx, runner, "go", wrapperPath, []string{"test"}, 0)
-	if err != nil {
-		return goSourceEvidence{}, nil, fmt.Errorf("Go source caller-owned invocation failed")
-	}
-	if !goTestOutputPattern.Match(invocation.stdout) || len(invocation.stderr) != 0 {
-		return goSourceEvidence{}, nil, fmt.Errorf(
-			"Go source caller-owned result is invalid (stdout_bytes=%d stderr_bytes=%d lines=%d ok_prefix=%t module_marker=%t final_lf=%t)",
-			len(invocation.stdout), len(invocation.stderr), bytes.Count(invocation.stdout, []byte{'\n'}),
-			bytes.HasPrefix(invocation.stdout, []byte("ok")), bytes.Contains(invocation.stdout, []byte("example.com/atsura-artifact-go")),
-			bytes.HasSuffix(invocation.stdout, []byte{'\n'}),
-		)
+	identityInvocation, err := runPOSIXCaller(ctx, runner, "go", identityWrapperPath, []string{"test"}, 0)
+	if err != nil || !goTestIdentityOutputPattern.Match(identityInvocation.stdout) || len(identityInvocation.stderr) != 0 {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go identity caller-owned result is invalid")
 	}
 	if err := requireGoTestAttempts(goAttemptLog, 1); err != nil {
-		return goSourceEvidence{}, nil, fmt.Errorf("Go source one-attempt evidence is invalid")
-	}
-	if err := requireAttempts(attemptLog, existingFixtureAttempts); err != nil {
-		return goSourceEvidence{}, nil, fmt.Errorf("Go source journey started the GitHub source fixture")
+		return goSourceEvidence{}, nil, fmt.Errorf("Go identity one-attempt evidence is invalid")
 	}
 	evidence.WrapperOutcome = "ordinary_command_verified"
 	evidence.WrapperCases = []wrapperCaseEvidence{{
 		Name: "go_test_identity", WrapperKind: journey.wrapperKind, ResultMode: journey.resultMode,
-		BundleDigest: journey.bundleDigest, PlanDigest: journey.planDigest,
-		WrapperSourceSHA256: sourceDigest, StdoutSHA256: digestBytes(invocation.stdout), StderrSHA256: digestBytes(invocation.stderr),
-		SourceExitCode: invocation.exitCode, SourceProcessAttempts: 1,
+		BundleDigest: journey.bundleDigest, PlanDigest: journey.planDigest, WrapperSourceSHA256: identitySourceDigest,
+		StdoutSHA256: digestBytes(identityInvocation.stdout), StderrSHA256: digestBytes(identityInvocation.stderr),
+		SourceExitCode: identityInvocation.exitCode, SourceProcessAttempts: 1,
 	}}
 	evidence.WrapperSourceAttempts = 1
 	evidence.ZeroAttemptRejections = 1
-	boundaries = append(boundaries, jsonRender.stdout, textRender.stdout, rejection.stdout, rejection.stderr, invocation.stdout, invocation.stderr)
+	boundaries = append(boundaries, jsonRender.stdout, textRender.stdout, identityRejection.stdout, identityRejection.stderr, identityInvocation.stdout, identityInvocation.stderr)
+
+	optimizerDraft, err := runner.success(ctx, "success", "spec", "init", "--catalog", catalogPath, "--processor", processorObservationPath, "--", "test")
+	if err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go optimizer specification draft failed")
+	}
+	optimizerSpecificationPath := filepath.Join(workRoot, "go-optimizer-specification.yaml")
+	if err := writePrivate(optimizerSpecificationPath, optimizerDraft.stdout); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go optimizer specification write failed")
+	}
+	optimizerValidation, err := runner.success(ctx, "success", "spec", "validate", "--catalog", catalogPath, "--spec", optimizerSpecificationPath)
+	if err != nil || validateSpecificationEvidence(optimizerValidation.stdout, inspectionPayload.CatalogDigest, 0, 1) != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go optimizer specification validation evidence is invalid")
+	}
+	optimizerBuilt, err := runner.success(ctx, "success", "bundle", "build", "--catalog", catalogPath, "--spec", optimizerSpecificationPath, "--processor", processorObservationPath)
+	if err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go optimizer bundle build failed")
+	}
+	optimizerBundleDigest, err := decodeBundleDigest(optimizerBuilt.stdout)
+	if err != nil || optimizerBundleDigest == bundleDigest {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go optimizer bundle evidence is invalid")
+	}
+	optimizerBundlePath := filepath.Join(workRoot, "go-optimizer-bundle.json")
+	if err := writePrivate(optimizerBundlePath, optimizerBuilt.stdout); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go optimizer bundle write failed")
+	}
+	changed, err = store.Add(ctx, optimizerBundleDigest)
+	if err != nil || !changed || store.Inspect(ctx, optimizerBundleDigest) != bundletrust.StateAdopted {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go optimizer exact receipt seeding failed")
+	}
+	processorStatus := processorStatusExpectation{
+		Contract: processor.metadata.ContractID(), AdapterKind: processor.metadata.ProcessorKind(), Version: processor.metadata.Version(),
+		ResolvedPath: processor.executablePath, SHA256: processor.metadata.BinarySHA256(), Size: processor.metadata.BinarySize(),
+	}
+	optimizerStatus, err := runner.success(ctx, "success", "bundle", "status", "--bundle", optimizerBundlePath)
+	if err != nil || validateStatus(optimizerStatus.stdout, optimizerBundleDigest, bundletrust.StateAdopted, processorStatus) != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go optimizer adopted status evidence is invalid")
+	}
+	optimizerBaseInvocation := []string{"--bundle", optimizerBundlePath, "--", inspectionPayload.Catalog.Source.ResolvedPath, "test"}
+	optimizerPreview, err := runner.success(ctx, "success", append([]string{"bundle", "preview"}, optimizerBaseInvocation...)...)
+	if err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go optimizer preview failed")
+	}
+	optimizerPreviewPayload, err := decodePreview(optimizerPreview.stdout)
+	if err != nil || optimizerPreviewPayload.SourceProcessAttempts != 0 || !digestValue(optimizerPreviewPayload.PlanDigest) ||
+		optimizerPreviewPayload.Plan.SchemaVersion != 5 || optimizerPreviewPayload.Plan.WrapperKind != "transform" ||
+		optimizerPreviewPayload.Plan.ResultMode != "original_preserving_optimizer" {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go optimizer preview evidence is invalid")
+	}
+	optimizerExecution, err := validateGoOptimizerPreviewPlan(
+		optimizerPreviewPayload.Plan, optimizerBundleDigest, inspectionPayload, processorInspection.Observation,
+	)
+	if err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go optimizer plan contract is invalid: %w", err)
+	}
+	optimizerJourney := preparedCommandJourney{
+		bundleDigest: optimizerBundleDigest, planDigest: optimizerPreviewPayload.PlanDigest,
+		wrapperKind: string(optimizerPreviewPayload.Plan.WrapperKind), resultMode: string(optimizerPreviewPayload.Plan.ResultMode),
+		baseInvocation: optimizerBaseInvocation,
+	}
+	if err := requireGoTestAttempts(goAttemptLog, 1); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go optimizer preparation started the source")
+	}
+	boundaries = append(boundaries, optimizerDraft.stdout, optimizerValidation.stdout, optimizerBuilt.stdout, optimizerStatus.stdout, optimizerPreview.stdout)
+
+	projectionDeclaration, err := help.fault("bundle execute", "wrapper_runtime_not_supported")
+	if err != nil || projectionDeclaration.Kind != "unsupported" || projectionDeclaration.Retryable {
+		return goSourceEvidence{}, nil, fmt.Errorf("optimizer projection rejection help contract is invalid")
+	}
+	projectionArgs := append([]string{"--error-format=json", "bundle", "execute"}, optimizerBaseInvocation...)
+	projectionRejection, err := runner.failure(ctx, "success", 12, projectionDeclaration, projectionArgs...)
+	if err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("optimizer projection-only rejection is invalid")
+	}
+	if err := requireGoTestAttempts(goAttemptLog, 1); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("optimizer projection rejection started the source")
+	}
+	optimizerJSONRender, err := runner.success(ctx, "success", "wrapper", "render", "--bundle", optimizerBundlePath, "--format", "json")
+	if err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go optimizer wrapper JSON rendering failed")
+	}
+	optimizerDocument, err := decodeWrapperRender(optimizerJSONRender.stdout)
+	if err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go optimizer wrapper JSON evidence is invalid")
+	}
+	optimizerTextRender, err := runner.success(ctx, "success", "wrapper", "render", "--bundle", optimizerBundlePath)
+	if err != nil || string(optimizerTextRender.stdout) != optimizerDocument.Wrapper.Source {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go optimizer wrapper text rendering is invalid")
+	}
+	optimizerSourceDigest := digestBytes(optimizerTextRender.stdout)
+	if err := validateWrapperRenderEvidence(optimizerDocument, optimizerJourney, "go", executablePath, runtimeDigest, runtimeSize, optimizerSourceDigest); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go optimizer wrapper binding evidence is invalid: %w", err)
+	}
+	if err := requireGoTestAttempts(goAttemptLog, 1); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go optimizer rendering started the source")
+	}
+	optimizerWrapperPath := filepath.Join(workRoot, "caller-owned-go-optimizer-wrapper.sh")
+	if err := writePrivate(optimizerWrapperPath, optimizerTextRender.stdout); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go optimizer caller-owned wrapper write failed")
+	}
+
+	processorBytes, err := readExactRegularFile(processor.executablePath, processor.metadata.BinarySize())
+	if err != nil || digestBytes(processorBytes) != processor.metadata.BinarySHA256() {
+		return goSourceEvidence{}, nil, fmt.Errorf("processor drift fixture identity is invalid")
+	}
+	driftDeclaration, err := help.fault("wrapper run", "processor_identity_changed")
+	if err != nil || driftDeclaration.Kind != "rejected" || driftDeclaration.Retryable {
+		return goSourceEvidence{}, nil, fmt.Errorf("processor drift help contract is invalid")
+	}
+	if err := overwriteRegularFixture(processor.executablePath, []byte("preflight drift"), 0o700); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("preflight processor drift setup failed")
+	}
+	preflightDrift, err := runPOSIXCaller(ctx, runner, "go", optimizerWrapperPath, []string{"test"}, 10)
+	if err != nil || len(preflightDrift.stdout) != 0 || validateFault(preflightDrift.stderr, driftDeclaration) != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("preflight processor drift rejection is invalid")
+	}
+	if err := requireGoTestAttempts(goAttemptLog, 1); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("preflight processor drift started the source")
+	}
+	if err := overwriteRegularFixture(processor.executablePath, processorBytes, 0o700); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("preflight processor fixture restoration failed")
+	}
+
+	postSourceRunner := runner
+	postSourceRunner.environment = replaceEnvironment(runner.environment, map[string]string{
+		goTestModeEnv: "pass", goTestProcessorDrift: processor.executablePath,
+	})
+	postSourceDrift, err := runPOSIXCaller(ctx, postSourceRunner, "go", optimizerWrapperPath, []string{"test"}, 10)
+	if err != nil || len(postSourceDrift.stdout) != 0 || validateFault(postSourceDrift.stderr, driftDeclaration) != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("post-source processor drift rejection is invalid")
+	}
+	if err := requireGoTestAttempts(goAttemptLog, 2); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("post-source processor drift attempt evidence is invalid")
+	}
+	if err := overwriteRegularFixture(processor.executablePath, processorBytes, 0o700); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("post-source processor fixture restoration failed")
+	}
+	if digest, size, identityErr := regularFileIdentity(processor.executablePath); identityErr != nil ||
+		digest != processor.metadata.BinarySHA256() || size != processor.metadata.BinarySize() {
+		return goSourceEvidence{}, nil, fmt.Errorf("restored processor fixture identity is invalid")
+	}
+
+	type optimizerCase struct {
+		name, mode, disposition, action string
+		exitCode                        int
+		stdout                          []byte
+	}
+	cases := []optimizerCase{
+		{name: "optimized_pass", mode: "pass", disposition: "optimized", exitCode: 0, stdout: []byte("Go test: 2 passed in 1 packages")},
+		{name: "preserved_before_skip", mode: "skip", disposition: "preserved_before_processor", action: "skip", exitCode: 0},
+		{name: "preserved_before_fail", mode: "fail", disposition: "preserved_before_processor", action: "fail", exitCode: 1},
+		{name: "preserved_before_ineligible", mode: "no_tests", disposition: "preserved_before_processor", action: "no_tests", exitCode: 0},
+	}
+	optimizerCases := make([]optimizerCaseEvidence, 0, len(cases))
+	for index, test := range cases {
+		caseRunner := runner
+		caseRunner.environment = replaceEnvironment(runner.environment, map[string]string{
+			goTestModeEnv: test.mode, goTestProcessorDrift: "",
+		})
+		invocation, invokeErr := runPOSIXCaller(ctx, caseRunner, "go", optimizerWrapperPath, []string{"test"}, test.exitCode)
+		if invokeErr != nil || len(invocation.stderr) != 0 {
+			return goSourceEvidence{}, nil, fmt.Errorf("optimizer case %s invocation failed", test.name)
+		}
+		if test.stdout != nil {
+			if !bytes.Equal(invocation.stdout, test.stdout) {
+				return goSourceEvidence{}, nil, fmt.Errorf("optimizer case %s summary is invalid", test.name)
+			}
+		} else if err := validateGoTestJSONL(invocation.stdout, test.action); err != nil {
+			return goSourceEvidence{}, nil, fmt.Errorf("optimizer case %s preservation is invalid: %w", test.name, err)
+		}
+		if err := requireGoTestAttempts(goAttemptLog, index+3); err != nil {
+			return goSourceEvidence{}, nil, fmt.Errorf("optimizer case %s source attempt evidence is invalid", test.name)
+		}
+		optimizerCases = append(optimizerCases, optimizerCaseEvidence{
+			Name: test.name, Disposition: test.disposition,
+			StdoutSHA256: digestBytes(invocation.stdout), StderrSHA256: digestBytes(invocation.stderr),
+			SourceExitCode: invocation.exitCode, SourceProcessAttempts: 1,
+		})
+		boundaries = append(boundaries, invocation.stdout, invocation.stderr)
+	}
+	if err := requireAttempts(attemptLog, existingFixtureAttempts); err != nil {
+		return goSourceEvidence{}, nil, fmt.Errorf("Go source journey started the GitHub source fixture")
+	}
+	evidence.Optimizer = goOptimizerEvidence{
+		Outcome:   "reachable_outcomes_verified",
+		Execution: optimizerExecution,
+		Processor: &processorArtifactEvidence{
+			ContractID: processor.metadata.ContractID(), AdapterKind: processor.metadata.ProcessorKind(),
+			AdapterContractVersion: processorInspection.Observation.Adapter.ContractVersion,
+			Version:                processor.metadata.Version(), Target: processor.metadata.Target(),
+			ArchiveName: processor.metadata.ArchiveName(), ArchiveSHA256: processor.metadata.ArchiveSHA256(),
+			BinarySHA256: processor.metadata.BinarySHA256(), BinarySize: processor.metadata.BinarySize(),
+			ObservationDigest:         processorInspection.ObservationDigest,
+			InspectionProcessAttempts: processorInspection.ProcessorProcessAttempts,
+		},
+		BundleDigest: optimizerBundleDigest, PlanDigest: optimizerPreviewPayload.PlanDigest, WrapperSourceSHA256: optimizerSourceDigest,
+		Cases: optimizerCases,
+		Faults: []optimizerFaultEvidence{
+			{Name: "projection_rejection", Code: "wrapper_runtime_not_supported", SourceProcessAttempts: 0},
+			{Name: "preflight_processor_drift", Code: "processor_identity_changed", SourceProcessAttempts: 0},
+			{Name: "post_source_processor_drift", Code: "processor_identity_changed", SourceProcessAttempts: 1},
+		},
+		SourceProcessAttempts: len(cases) + 1, ZeroAttemptRejections: 2,
+	}
+	boundaries = append(boundaries, optimizerJSONRender.stdout, optimizerTextRender.stdout,
+		projectionRejection.stdout, projectionRejection.stderr,
+		preflightDrift.stdout, preflightDrift.stderr, postSourceDrift.stdout, postSourceDrift.stderr)
 	return evidence, boundaries, nil
 }
 
@@ -801,21 +1155,51 @@ import (
 	"testing"
 )
 
-func TestPass(t *testing.T) {
+func TestMain(m *testing.M) {
 	path := os.Getenv("ATSURA_GO_TEST_ATTEMPT_LOG")
 	if path == "" {
-		t.Fatal("attempt log is not configured")
+		os.Exit(97)
 	}
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
 	if err != nil {
-		t.Fatal("attempt log could not be opened")
+		os.Exit(96)
 	}
 	if _, err := io.WriteString(file, "attempt\n"); err != nil {
 		_ = file.Close()
-		t.Fatal("attempt log could not be written")
+		os.Exit(95)
 	}
 	if err := file.Close(); err != nil {
-		t.Fatal("attempt log could not be closed")
+		os.Exit(94)
+	}
+	if drift := os.Getenv("ATSURA_GO_TEST_PROCESSOR_DRIFT_PATH"); drift != "" {
+		if err := os.WriteFile(drift, []byte("post-source drift"), 0o700); err != nil {
+			os.Exit(93)
+		}
+	}
+	if os.Getenv("ATSURA_GO_TEST_MODE") == "no_tests" {
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
+func TestOne(t *testing.T) {
+	applyMode(t)
+}
+
+func TestTwo(t *testing.T) {
+	applyMode(t)
+}
+
+func applyMode(t *testing.T) {
+	t.Helper()
+	switch os.Getenv("ATSURA_GO_TEST_MODE") {
+	case "pass":
+	case "skip":
+		t.Skip("synthetic skip")
+	case "fail":
+		t.Fatal("synthetic failure")
+	default:
+		t.Fatal("unsupported synthetic mode")
 	}
 }
 `)
@@ -826,7 +1210,7 @@ func TestPass(t *testing.T) {
 }
 
 func requireGoTestAttempts(path string, wanted int) error {
-	if wanted < 0 || wanted > 1 {
+	if wanted < 0 || wanted > 16 {
 		return fmt.Errorf("Go source attempt bound is invalid")
 	}
 	if wanted == 0 {
@@ -835,15 +1219,83 @@ func requireGoTestAttempts(path string, wanted int) error {
 		}
 		return fmt.Errorf("Go source attempt log exists before execution")
 	}
-	value, err := readBoundedFile(path, 64)
-	if err != nil || string(value) != "attempt\n" {
+	value, err := readBoundedFile(path, int64(16*len("attempt\n")))
+	if err != nil || string(value) != strings.Repeat("attempt\n", wanted) {
 		return fmt.Errorf("Go source attempt log is invalid")
 	}
 	return nil
 }
 
+func overwriteRegularFixture(path string, value []byte, mode os.FileMode) error {
+	root, name, err := openParentRoot(path)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	before, err := root.Lstat(name)
+	if err != nil || before.Mode()&os.ModeSymlink != 0 || !before.Mode().IsRegular() {
+		return fmt.Errorf("fixture is not a regular file")
+	}
+	file, err := root.OpenFile(name, os.O_WRONLY|os.O_TRUNC, mode)
+	if err != nil {
+		return err
+	}
+	written, writeErr := file.Write(value)
+	closeErr := file.Close()
+	if writeErr != nil || written != len(value) || closeErr != nil {
+		return fmt.Errorf("fixture replacement failed")
+	}
+	if err := root.Chmod(name, mode); err != nil {
+		return err
+	}
+	after, err := root.Lstat(name)
+	if err != nil || !os.SameFile(before, after) || !after.Mode().IsRegular() || after.Size() != int64(len(value)) {
+		return fmt.Errorf("fixture replacement identity is invalid")
+	}
+	return nil
+}
+
+func validateGoTestJSONL(value []byte, wantedAction string) error {
+	if len(value) == 0 || len(value) > maxCommandOutputBytes || value[len(value)-1] != '\n' {
+		return fmt.Errorf("Go test JSONL framing is invalid")
+	}
+	foundAction := false
+	foundTest := false
+	scanner := bufio.NewScanner(bytes.NewReader(value))
+	scanner.Buffer(make([]byte, 4096), 256*1024)
+	for scanner.Scan() {
+		var event struct {
+			Action  string `json:"Action"`
+			Package string `json:"Package"`
+			Test    string `json:"Test"`
+		}
+		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil || event.Action == "" || event.Package != "example.com/atsura-artifact-go" {
+			return fmt.Errorf("Go test JSONL record is invalid")
+		}
+		if event.Test != "" {
+			foundTest = true
+		}
+		if event.Action == wantedAction {
+			foundAction = true
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("Go test JSONL scan failed")
+	}
+	if wantedAction == "no_tests" {
+		if foundTest {
+			return fmt.Errorf("ineligible no-tests output unexpectedly names a test")
+		}
+		return nil
+	}
+	if !foundAction {
+		return fmt.Errorf("Go test JSONL action %q is missing", wantedAction)
+	}
+	return nil
+}
+
 func validateWrapperRenderEvidence(document wrapperRenderDocument, journey preparedCommandJourney, ordinaryCommand, executablePath, runtimeDigest string, runtimeSize int64, sourceDigest string) error {
-	if document.SchemaVersion != 1 || document.Wrapper.Command != ordinaryCommand || document.Wrapper.Contract.Version != 1 || document.Wrapper.Contract.Shell != "posix" {
+	if document.SchemaVersion != 2 || document.Wrapper.Command != ordinaryCommand || document.Wrapper.Contract.Version != 1 || document.Wrapper.Contract.Shell != "posix" {
 		return fmt.Errorf("contract identity mismatch")
 	}
 	if document.Wrapper.Bundle.Locator != journey.bundlePath() || document.Wrapper.Bundle.Digest != journey.bundleDigest {
@@ -852,7 +1304,7 @@ func validateWrapperRenderEvidence(document wrapperRenderDocument, journey prepa
 	if document.Wrapper.Runtime.ResolvedPath != executablePath || document.Wrapper.Runtime.SHA256 != runtimeDigest || document.Wrapper.Runtime.Size != runtimeSize {
 		return fmt.Errorf("runtime identity mismatch")
 	}
-	if document.Wrapper.SourceSHA256 != sourceDigest || document.Wrapper.SourceProcessAttempts != 0 {
+	if document.Wrapper.SourceSHA256 != sourceDigest || document.Wrapper.SourceProcessAttempts != 0 || document.Wrapper.ProcessorProcessAttempts != 0 {
 		return fmt.Errorf("rendered source identity mismatch")
 	}
 	return nil
@@ -1046,7 +1498,7 @@ func prepareCommandJourney(
 		return preparedCommandJourney{}, fmt.Errorf("adopted preview failed")
 	}
 	previewEvidence, err := decodePreview(preview.stdout)
-	if err != nil || previewEvidence.SourceProcessAttempts != 0 || !digestValue(previewEvidence.PlanDigest) || previewEvidence.Plan.WrapperKind != "transform" || previewEvidence.Plan.ResultMode != "transformed_json" {
+	if err != nil || previewEvidence.SourceProcessAttempts != 0 || !digestValue(previewEvidence.PlanDigest) || previewEvidence.Plan.SchemaVersion != 5 || previewEvidence.Plan.WrapperKind != "transform" || previewEvidence.Plan.ResultMode != "transformed_json" {
 		return preparedCommandJourney{}, fmt.Errorf("adopted preview evidence is invalid")
 	}
 	if err := requireAttempts(attemptLog, existingAttempts); err != nil {
@@ -1055,7 +1507,7 @@ func prepareCommandJourney(
 
 	return preparedCommandJourney{
 		bundleDigest: bundleDigest, planDigest: previewEvidence.PlanDigest,
-		wrapperKind: previewEvidence.Plan.WrapperKind, resultMode: previewEvidence.Plan.ResultMode,
+		wrapperKind: string(previewEvidence.Plan.WrapperKind), resultMode: string(previewEvidence.Plan.ResultMode),
 		baseInvocation: baseInvocation, zeroAttemptRejections: zeroAttemptRejections,
 		boundaries: [][]byte{draft.stdout, transformedSpecification, validation.stdout, built.stdout, preAdoptionStatus.stdout, adoptedStatus.stdout, preview.stdout},
 	}, nil
@@ -1126,7 +1578,7 @@ func prepareSourceStreamJourney(
 	if name == "identity" {
 		wantedKind = "identity"
 	}
-	if err != nil || previewEvidence.SourceProcessAttempts != 0 || !digestValue(previewEvidence.PlanDigest) || previewEvidence.Plan.WrapperKind != wantedKind || previewEvidence.Plan.ResultMode != "source_stream_passthrough" {
+	if err != nil || previewEvidence.SourceProcessAttempts != 0 || !digestValue(previewEvidence.PlanDigest) || previewEvidence.Plan.SchemaVersion != 5 || string(previewEvidence.Plan.WrapperKind) != wantedKind || previewEvidence.Plan.ResultMode != "source_stream_passthrough" {
 		return preparedCommandJourney{}, fmt.Errorf("source-stream preview evidence is invalid")
 	}
 	if err := requireAttempts(attemptLog, existingAttempts); err != nil {
@@ -1134,7 +1586,7 @@ func prepareSourceStreamJourney(
 	}
 	return preparedCommandJourney{
 		bundleDigest: bundleDigest, planDigest: previewEvidence.PlanDigest,
-		wrapperKind: previewEvidence.Plan.WrapperKind, resultMode: previewEvidence.Plan.ResultMode,
+		wrapperKind: string(previewEvidence.Plan.WrapperKind), resultMode: string(previewEvidence.Plan.ResultMode),
 		baseInvocation: baseInvocation,
 		boundaries:     [][]byte{draft.stdout, specification, validation.stdout, built.stdout, status.stdout, preview.stdout},
 	}, nil
@@ -1181,7 +1633,7 @@ var bundlePreviewHelpFaults = []helpFaultDeclaration{
 	expectedHelpFault("bundle_file_too_large", "invalid_input", false, "bundle build", "Build a bundle within the 2 MiB limit."),
 	expectedHelpFault("bundle_file_read_failed", "unavailable", true, "bundle status", "Retry after the bundle file is readable."),
 	expectedHelpFault("invalid_bundle_file", "invalid_input", false, "bundle build", "Rebuild and review strict canonical bundle JSON."),
-	expectedHelpFault("legacy_tailoring_schema", "invalid_input", false, "help bundle build", "Rebuild with a schema-3 specification and bundle schema 2."),
+	expectedHelpFault("legacy_tailoring_schema", "invalid_input", false, "help bundle build", "Rebuild with a schema-4 specification and bundle schema 3."),
 	expectedHelpFault("bundle_digest_mismatch", "rejected", false, "bundle build", "Rebuild and review the changed bundle content."),
 	expectedHelpFault("invalid_bundle_trust_store", "rejected", false, "bundle status", "Repair or reconcile invalid user-local adoption state."),
 	expectedHelpFault("bundle_not_adopted", "rejected", false, "bundle trust", "Review and adopt the exact bundle digest before previewing a plan."),
@@ -1211,7 +1663,7 @@ var bundleExecuteHelpFaults = []helpFaultDeclaration{
 	expectedHelpFault("bundle_file_too_large", "invalid_input", false, "bundle build", "Build a bundle within the 2 MiB limit."),
 	expectedHelpFault("bundle_file_read_failed", "unavailable", true, "bundle status", "Retry after the bundle file is readable."),
 	expectedHelpFault("invalid_bundle_file", "invalid_input", false, "bundle build", "Rebuild and review strict canonical bundle JSON."),
-	expectedHelpFault("legacy_tailoring_schema", "invalid_input", false, "help bundle build", "Rebuild with a schema-3 specification and bundle schema 2."),
+	expectedHelpFault("legacy_tailoring_schema", "invalid_input", false, "help bundle build", "Rebuild with a schema-4 specification and bundle schema 3."),
 	expectedHelpFault("bundle_digest_mismatch", "rejected", false, "bundle build", "Rebuild and review the changed bundle content."),
 	expectedHelpFault("invalid_bundle_trust_store", "rejected", false, "bundle status", "Repair or reconcile invalid user-local adoption state."),
 	expectedHelpFault("bundle_not_adopted", "rejected", false, "bundle trust", "Review and adopt the exact bundle digest before execution."),
@@ -1256,7 +1708,7 @@ func wrapperBundleFileHelpFaults(command, invalidReason string) []helpFaultDecla
 		expectedHelpFault("bundle_file_too_large", "invalid_input", false, "bundle build", "Build a bundle within the 2 MiB limit."),
 		expectedHelpFault("bundle_file_read_failed", "unavailable", true, "bundle status", "Retry after the bundle file is readable."),
 		expectedHelpFault("invalid_bundle_file", "invalid_input", false, "bundle build", "Rebuild and review strict canonical bundle JSON."),
-		expectedHelpFault("legacy_tailoring_schema", "invalid_input", false, "help bundle build", "Rebuild with a schema-3 specification and bundle schema 2."),
+		expectedHelpFault("legacy_tailoring_schema", "invalid_input", false, "help bundle build", "Rebuild with a schema-4 specification and bundle schema 3."),
 		expectedHelpFault("bundle_digest_mismatch", "rejected", false, "bundle build", "Rebuild and review the changed bundle content."),
 	}
 }
@@ -1273,6 +1725,12 @@ var wrapperRenderHelpFaults = append(
 	expectedHelpFault("unsafe_source_executable", "invalid_input", false, "bundle status", "Select and inspect a supported regular source executable."),
 	expectedHelpFault("source_identity_changed", "rejected", false, "bundle status", "Rebuild from stable current source identity evidence."),
 	expectedHelpFault("invalid_source_identity", "contract", false, "bundle status", "Repair invalid source identity evidence."),
+	expectedHelpFault("invalid_processor_executable", "invalid_input", false, "bundle status", "Reconcile the exact bundle-bound processor executable."),
+	expectedHelpFault("unsafe_processor_executable", "invalid_input", false, "bundle status", "Replace or re-inspect the bundle-bound processor as a supported regular executable."),
+	expectedHelpFault("processor_identity_unavailable", "unavailable", true, "bundle status", "Retry only after the exact bundle-bound processor identity can be read."),
+	expectedHelpFault("processor_identity_changed", "rejected", false, "bundle status", "Rebuild and adopt current processor identity evidence."),
+	expectedHelpFault("invalid_processor_identity", "contract", false, "bundle status", "Repair invalid processor identity evidence."),
+	expectedHelpFault("bundle_processor_drift", "rejected", false, "bundle status", "Rebuild and adopt current processor identity evidence before rendering a wrapper."),
 	expectedHelpFault("wrapper_runtime_not_supported", "unsupported", false, "help wrapper render", "Review the exact adopted-bundle, runtime, surface, and POSIX wrapper requirements."),
 	expectedHelpFault("wrapper_runtime_unavailable", "unavailable", false, "help wrapper render", "Retry only after the current Atsura executable identity is readable and stable."),
 	expectedHelpFault("wrapper_render_failed", "contract", false, "help wrapper render", "Repair the fixed POSIX renderer or its validated product binding."),
@@ -1316,6 +1774,24 @@ var wrapperRunHelpFaults = append(
 	expectedHelpFault("source_json_invalid", "contract", false, "bundle preview", "Repair the source output selector or adapter contract; raw output is not a fallback."),
 	expectedHelpFault("output_transform_failed", "contract", false, "bundle preview", "Repair selected fields and typed transform expectations; raw output is not a fallback."),
 	expectedHelpFault("unclassified_source_execution_outcome", "contract", false, "bundle status", "Reconcile source-owned effects before considering another invocation."),
+	expectedHelpFault("processor_identity_unavailable", "unavailable", true, "wrapper run", "Retry only because the processor identity could not be read before any source attempt."),
+	expectedHelpFault("processor_identity_unavailable_after_source", "unavailable", false, "bundle status", "Reconcile the exact bundle-bound processor identity after the source completed; replay is not known to be safe."),
+	expectedHelpFault("processor_identity_changed", "rejected", false, "bundle status", "Rebuild and adopt current processor evidence; do not replay a source attempt that may already have completed."),
+	expectedHelpFault("invalid_processor_executable", "invalid_input", false, "bundle status", "Reconcile the bundle-bound processor executable after the completed source attempt."),
+	expectedHelpFault("unsafe_processor_executable", "invalid_input", false, "bundle status", "Replace or re-inspect the unsafe bundle-bound processor without replaying the completed source attempt."),
+	expectedHelpFault("invalid_processor_identity", "contract", false, "bundle status", "Repair invalid processor identity evidence without replaying the completed source attempt."),
+	expectedHelpFault("invalid_processor_process_request", "contract", false, "bundle preview", "Repair the exact plan-derived processor request; the source was not retried."),
+	expectedHelpFault("processor_environment_setup_failed_after_source", "unavailable", false, "bundle status", "Reconcile source-owned effects and the isolated processor environment before another invocation."),
+	expectedHelpFault("processor_process_start_failed_after_source", "unavailable", false, "bundle status", "Reconcile source-owned effects before another invocation; no fallback bytes were published."),
+	expectedHelpFault("processor_stdout_too_large", "contract", false, "bundle status", "Reconcile source-owned effects and reduce processor output within its declared bound."),
+	expectedHelpFault("processor_stderr_too_large", "contract", false, "bundle status", "Reconcile source-owned effects and reduce processor stderr within its declared bound."),
+	expectedHelpFault("processor_execution_canceled", "canceled", false, "help wrapper run", "Review the exact optimizer runtime outcome; replay is not known to be safe."),
+	expectedHelpFault("processor_timeout", "unavailable", false, "bundle status", "Reconcile source-owned effects after the processor timed out."),
+	expectedHelpFault("processor_command_failed", "rejected", false, "bundle status", "Reconcile source-owned effects and inspect the processor independently; no fallback bytes were published."),
+	expectedHelpFault("processor_process_wait_failed", "unavailable", false, "bundle status", "Reconcile source-owned effects after the processor result could not be collected."),
+	expectedHelpFault("processor_cleanup_failed", "unavailable", false, "bundle status", "Reconcile source-owned effects and the isolated processor environment before another invocation."),
+	expectedHelpFault("processor_output_not_admitted", "contract", false, "bundle status", "Reconcile source-owned effects and the rejected optimizer result; no fallback bytes were published."),
+	expectedHelpFault("unclassified_processor_execution_outcome", "contract", false, "bundle status", "Reconcile source-owned effects after the processor result could not be classified."),
 	expectedHelpFault("output_contract_exceeded", "contract", false, "bundle preview", "Inspect the bounded fresh-plan result; the source was not retried."),
 	expectedHelpFault("output_encoding_failed", "contract", false, "bundle preview", "Repair deterministic compact wrapper JSON; the source was not retried."),
 	expectedHelpFault("internal_error", "internal", false, "bundle status", "Inspect wrapper execution wiring without replaying the source."),
@@ -1362,16 +1838,23 @@ type helpOutputSchemaReference struct {
 }
 
 type helpPlanResultModeProjection struct {
-	Mode             string `json:"mode"`
-	Stdout           string `json:"stdout"`
-	Stderr           string `json:"stderr"`
-	ExitStatus       string `json:"exit_status"`
-	Framing          string `json:"framing"`
-	Projection       string `json:"projection"`
-	Delivery         string `json:"delivery"`
-	CrossStreamOrder string `json:"cross_stream_order"`
-	StdoutLimitBytes int    `json:"stdout_limit_bytes"`
-	StderrLimitBytes int    `json:"stderr_limit_bytes"`
+	Mode            string                            `json:"mode"`
+	SuccessVariants []helpPlanResultSuccessProjection `json:"success_variants"`
+}
+
+type helpPlanResultSuccessProjection struct {
+	Disposition              string `json:"disposition"`
+	Stdout                   string `json:"stdout"`
+	Stderr                   string `json:"stderr"`
+	ExitStatus               string `json:"exit_status"`
+	Framing                  string `json:"framing"`
+	Projection               string `json:"projection"`
+	Delivery                 string `json:"delivery"`
+	CrossStreamOrder         string `json:"cross_stream_order"`
+	StdoutLimitBytes         int    `json:"stdout_limit_bytes"`
+	StderrLimitBytes         int    `json:"stderr_limit_bytes"`
+	SourceProcessAttempts    int    `json:"source_process_attempts"`
+	ProcessorProcessAttempts int    `json:"processor_process_attempts"`
 }
 
 type helpInputProjection struct {
@@ -1464,6 +1947,25 @@ var sourceCatalogSchemaFields = []helpSchemaFieldProjection{
 	schemaField("/source/version", "string", true),
 }
 
+var processorObservationSchemaFields = []helpSchemaFieldProjection{
+	schemaField("/adapter", "object", true),
+	schemaField("/adapter/contract_version", "integer", true),
+	schemaField("/adapter/kind", "string", true),
+	schemaField("/identity", "object", true),
+	schemaField("/identity/resolved_path", "string", true),
+	schemaField("/identity/sha256", "string", true),
+	schemaField("/identity/size", "integer", true),
+	schemaField("/platform", "object", true),
+	schemaField("/platform/arch", "string", true),
+	schemaField("/platform/os", "string", true),
+	schemaField("/probe", "object", true),
+	schemaArray("/probe/argv", "string"),
+	schemaField("/probe/attempts", "integer", true),
+	schemaField("/probe/environment_contract", "string", true),
+	schemaField("/schema_version", "integer", true),
+	schemaField("/version", "string", true),
+}
+
 var tailoringSpecificationSchemaFields = []helpSchemaFieldProjection{
 	schemaField("/catalog_digest", "string", true),
 	schemaArray("/commands", "object"),
@@ -1481,12 +1983,18 @@ var tailoringSpecificationSchemaFields = []helpSchemaFieldProjection{
 	schemaArray("/commands/*/wrapper/invoke/append_args", "string"),
 	schemaField("/commands/*/wrapper/kind", "string", true),
 	schemaField("/commands/*/wrapper/output", "object", false),
-	schemaField("/commands/*/wrapper/output/input", "string", true),
-	schemaArray("/commands/*/wrapper/output/rename", "object"),
-	schemaField("/commands/*/wrapper/output/rename/*/from", "string", true),
-	schemaField("/commands/*/wrapper/output/rename/*/to", "string", true),
-	schemaField("/commands/*/wrapper/output/render", "string", true),
-	schemaArray("/commands/*/wrapper/output/select", "string"),
+	schemaField("/commands/*/wrapper/output/kind", "string", true),
+	schemaField("/commands/*/wrapper/output/optimizer", "object", false),
+	schemaField("/commands/*/wrapper/output/optimizer/allow_original_output", "boolean", true),
+	schemaField("/commands/*/wrapper/output/optimizer/contract", "string", true),
+	schemaField("/commands/*/wrapper/output/optimizer/input", "string", true),
+	schemaField("/commands/*/wrapper/output/projection", "object", false),
+	schemaField("/commands/*/wrapper/output/projection/input", "string", true),
+	schemaArray("/commands/*/wrapper/output/projection/rename", "object"),
+	schemaField("/commands/*/wrapper/output/projection/rename/*/from", "string", true),
+	schemaField("/commands/*/wrapper/output/projection/rename/*/to", "string", true),
+	schemaField("/commands/*/wrapper/output/projection/render", "string", true),
+	schemaArray("/commands/*/wrapper/output/projection/select", "string"),
 	schemaField("/schema_version", "integer", true),
 	schemaField("/surface", "object", true),
 	schemaField("/surface/default", "string", true),
@@ -1546,12 +2054,52 @@ func validateOutputSchema(command helpCommandProjection, fieldName, schemaID str
 	return nil
 }
 
+var bundleProcessorStatusSchemaFields = []helpSchemaFieldProjection{
+	schemaField("/adapter_kind", "string", true),
+	schemaField("/contract", "string", true),
+	schemaField("/resolved_path", "string", true),
+	schemaField("/sha256", "string", true),
+	schemaField("/size", "integer", true),
+	schemaField("/state", "string", true),
+	schemaField("/version", "string", true),
+}
+
+func validateCatalogJSONOutput(command helpCommandProjection, envelope string, version int, fields []struct{ name, fieldType string }) error {
+	output := command.Contract.Output
+	if output.Authority != "catalog" || strings.Join(output.Formats, ",") != "json" || output.DefaultFormat != "json" ||
+		output.Delivery != "complete" || output.CollectionCoverage != "not_applicable" || output.JSONEnvelope != envelope ||
+		output.JSONSchemaVersion != version || output.PlanSchema != nil || output.JSONShape != "" || output.JSONRendering != "" ||
+		output.JSONFraming != "" || len(output.PlanResultModes) != 0 || len(output.Fields) != len(fields) {
+		return fmt.Errorf("catalog JSON output contract is invalid")
+	}
+	for index, wanted := range fields {
+		got := output.Fields[index]
+		if got.Name != wanted.name || got.Type != wanted.fieldType {
+			return fmt.Errorf("catalog JSON output field %d is invalid", index)
+		}
+		if got.Name == "processors" {
+			if got.Schema == nil || got.Schema.ID != "bundle-processor-status" || got.Schema.Version != 1 ||
+				len(got.Schema.Fields) != len(bundleProcessorStatusSchemaFields) {
+				return fmt.Errorf("processor status schema is invalid")
+			}
+			for fieldIndex := range bundleProcessorStatusSchemaFields {
+				if got.Schema.Fields[fieldIndex] != bundleProcessorStatusSchemaFields[fieldIndex] {
+					return fmt.Errorf("processor status schema field is invalid")
+				}
+			}
+		} else if got.Schema != nil {
+			return fmt.Errorf("unexpected nested output schema")
+		}
+	}
+	return nil
+}
+
 func validateWrapperRenderOutput(command helpCommandProjection) error {
 	output := command.Contract.Output
 	if output.Authority != "catalog" || strings.Join(output.Formats, ",") != "text,json" || output.DefaultFormat != "text" ||
 		output.Delivery != "complete" || output.CollectionCoverage != "not_applicable" ||
-		output.JSONEnvelope != "wrapper" || output.JSONSchemaVersion != 1 || output.PlanSchema != nil ||
-		output.JSONShape != "" || output.JSONRendering != "" || output.JSONFraming != "" || len(output.Fields) != 7 {
+		output.JSONEnvelope != "wrapper" || output.JSONSchemaVersion != 2 || output.PlanSchema != nil ||
+		output.JSONShape != "" || output.JSONRendering != "" || output.JSONFraming != "" || len(output.Fields) != 8 {
 		return fmt.Errorf("wrapper render output contract is invalid")
 	}
 	wanted := []struct {
@@ -1571,6 +2119,7 @@ func validateWrapperRenderOutput(command helpCommandProjection) error {
 			schemaField("/resolved_path", "string", true), schemaField("/sha256", "string", true), schemaField("/size", "integer", true),
 		}},
 		{name: "source_process_attempts", fieldType: "integer"},
+		{name: "processor_process_attempts", fieldType: "integer"},
 	}
 	for index, expected := range wanted {
 		actual := output.Fields[index]
@@ -1598,17 +2147,32 @@ func validateWrapperRenderOutput(command helpCommandProjection) error {
 
 func validateWrapperRunOutput(command helpCommandProjection) error {
 	output := command.Contract.Output
-	wantedReference := helpOutputSchemaReference{Command: "bundle preview", Field: "plan", ID: "wrapper-plan", Version: 4}
+	wantedReference := helpOutputSchemaReference{Command: "bundle preview", Field: "plan", ID: "wrapper-plan", Version: 5}
+	success := func(disposition, stdout, stderr, exitStatus, framing, projection, crossStreamOrder string, stdoutLimit, stderrLimit, sourceAttempts, processorAttempts int) helpPlanResultSuccessProjection {
+		return helpPlanResultSuccessProjection{
+			Disposition: disposition, Stdout: stdout, Stderr: stderr, ExitStatus: exitStatus,
+			Framing: framing, Projection: projection, Delivery: "buffered_after_completion", CrossStreamOrder: crossStreamOrder,
+			StdoutLimitBytes: stdoutLimit, StderrLimitBytes: stderrLimit,
+			SourceProcessAttempts: sourceAttempts, ProcessorProcessAttempts: processorAttempts,
+		}
+	}
 	wantedModes := []helpPlanResultModeProjection{
 		{
-			Mode: "transformed_json", Stdout: "compact_json", Stderr: "empty", ExitStatus: "zero",
-			Framing: "one_value_lf", Projection: "visible_json", Delivery: "buffered_after_completion", CrossStreamOrder: "not_applicable",
-			StdoutLimitBytes: maxTransformedBytes, StderrLimitBytes: 0,
+			Mode: "transformed_json", SuccessVariants: []helpPlanResultSuccessProjection{
+				success("not_applicable", "compact_json", "empty", "zero", "one_value_lf", "visible_json", "not_applicable", maxTransformedBytes, 0, 1, 0),
+			},
 		},
 		{
-			Mode: "source_stream_passthrough", Stdout: "exact_bounded_source_bytes", Stderr: "exact_bounded_source_bytes", ExitStatus: "source_conventional",
-			Framing: "none", Projection: "none", Delivery: "buffered_after_completion", CrossStreamOrder: "not_preserved",
-			StdoutLimitBytes: maxCommandOutputBytes, StderrLimitBytes: maxSourceStderrBytes,
+			Mode: "source_stream_passthrough", SuccessVariants: []helpPlanResultSuccessProjection{
+				success("not_applicable", "exact_bounded_source_bytes", "exact_bounded_source_bytes", "source_conventional", "none", "none", "not_preserved", maxCommandOutputBytes, maxSourceStderrBytes, 1, 0),
+			},
+		},
+		{
+			Mode: "original_preserving_optimizer", SuccessVariants: []helpPlanResultSuccessProjection{
+				success("preserved_before_processor", "exact_bounded_source_bytes", "exact_bounded_source_bytes", "source_conventional", "none", "none", "not_preserved", maxCommandOutputBytes, maxSourceStderrBytes, 1, 0),
+				success("preserved_after_processor", "byte_identical_admitted_input", "empty", "zero", "none", "none", "not_applicable", maxCommandOutputBytes, 0, 1, 1),
+				success("optimized", "validated_newline_free_utf8_optimizer_summary", "empty", "zero", "none", "none", "not_applicable", maxCommandOutputBytes, 0, 1, 1),
+			},
 		},
 	}
 	if output.Authority != "fresh_wrapper_plan" || strings.Join(output.Formats, ",") != "plan_result" || output.DefaultFormat != "plan_result" ||
@@ -1625,8 +2189,13 @@ func equalPlanResultModes(left, right []helpPlanResultModeProjection) bool {
 		return false
 	}
 	for index := range left {
-		if left[index] != right[index] {
+		if left[index].Mode != right[index].Mode || len(left[index].SuccessVariants) != len(right[index].SuccessVariants) {
 			return false
+		}
+		for variantIndex := range left[index].SuccessVariants {
+			if left[index].SuccessVariants[variantIndex] != right[index].SuccessVariants[variantIndex] {
+				return false
+			}
 		}
 	}
 	return true
@@ -1649,7 +2218,10 @@ func verifyPackagedHelp(ctx context.Context, runner journeyRunner) (packagedHelp
 	if err != nil {
 		return packagedHelpEvidence{}, fmt.Errorf("packaged root help verification failed")
 	}
-	wanted := []string{"source inspect", "spec init", "spec validate", "bundle preview", "bundle execute", "wrapper render", "wrapper run"}
+	wanted := []string{
+		"source inspect", "processor inspect", "spec init", "spec validate", "bundle build", "bundle status",
+		"bundle trust", "bundle preview", "bundle execute", "wrapper render", "wrapper run",
+	}
 	if err := validateRootHelp(root.stdout, wanted); err != nil {
 		return packagedHelpEvidence{}, fmt.Errorf("packaged root help contract is invalid")
 	}
@@ -1694,7 +2266,7 @@ func validateRootHelp(value []byte, wanted []string) error {
 			Path string `json:"path"`
 		} `json:"commands"`
 	}
-	if err := json.Unmarshal(value, &document); err != nil || document.SchemaVersion != 10 || document.View != "index" || document.Program != "atr" {
+	if err := json.Unmarshal(value, &document); err != nil || document.SchemaVersion != 12 || document.View != "index" || document.Program != "atr" {
 		return fmt.Errorf("invalid root agent help")
 	}
 	paths := make(map[string]struct{}, len(document.Commands))
@@ -1720,7 +2292,7 @@ func validateScopedHelp(path string, value []byte) (helpCommandProjection, error
 		} `json:"scope"`
 		Commands []helpCommandProjection `json:"commands"`
 	}
-	if err := json.Unmarshal(value, &document); err != nil || document.SchemaVersion != 10 || document.View != "scope" || document.Program != "atr" || document.Scope.Selector != path || document.Scope.Kind != "command" || len(document.Commands) != 1 || document.Commands[0].Path != path {
+	if err := json.Unmarshal(value, &document); err != nil || document.SchemaVersion != 12 || document.View != "scope" || document.Program != "atr" || document.Scope.Selector != path || document.Scope.Kind != "command" || len(document.Commands) != 1 || document.Commands[0].Path != path {
 		return helpCommandProjection{}, fmt.Errorf("invalid scoped agent help")
 	}
 	command := document.Commands[0]
@@ -1731,20 +2303,40 @@ func validateScopedHelp(path string, value []byte) (helpCommandProjection, error
 			return helpCommandProjection{}, fmt.Errorf("source inspection invocation contract is incomplete")
 		}
 		if len(command.Contract.Output.Fields) != 3 || command.Contract.Output.Fields[2].Name != "source_process_attempts" ||
-			command.Contract.Output.Fields[2].Description != "Exact bounded offline probe attempts: four for github-cli contract 2 and three for go-cli contract 1." {
+			command.Contract.Output.Fields[2].Description != "Exact bounded offline probe attempts: four for github-cli contract 2 and three for go-cli contract 2." {
 			return helpCommandProjection{}, fmt.Errorf("source inspection attempt contract is incomplete")
 		}
-		if err := validateOutputSchema(command, "catalog", "source-command-catalog", 1, sourceCatalogSchemaFields); err != nil {
+		if err := validateOutputSchema(command, "catalog", "source-command-catalog", 2, sourceCatalogSchemaFields); err != nil {
 			return helpCommandProjection{}, fmt.Errorf("source catalog schema is incomplete")
 		}
+	case "processor inspect":
+		if command.Usage != "atr processor inspect --adapter=rtk --executable <absolute-path>" || validateInputs(command.Contract.Inputs, []helpInputProjection{
+			input("--adapter", "flag", "single", "rtk"), input("--executable", "flag", "single"),
+		}) != nil {
+			return helpCommandProjection{}, fmt.Errorf("processor inspection invocation contract is incomplete")
+		}
+		if len(command.Contract.Output.Fields) != 3 || command.Contract.Output.Fields[2].Name != "processor_process_attempts" ||
+			command.Contract.Output.Fields[2].Description != "Exact isolated processor probe attempts; successful inspection is always one." {
+			return helpCommandProjection{}, fmt.Errorf("processor inspection attempt contract is incomplete")
+		}
+		if err := validateOutputSchema(command, "observation", "processor-observation", 1, processorObservationSchemaFields); err != nil {
+			return helpCommandProjection{}, fmt.Errorf("processor observation schema is incomplete")
+		}
+		for _, marker := range []string{"official RTK v0.43.0", "explicit absolute path", "exactly one no-shell --version", "atsura.processor.rtk_isolated.v2"} {
+			if !strings.Contains(prerequisites, marker) {
+				return helpCommandProjection{}, fmt.Errorf("processor inspection marker is missing")
+			}
+		}
 	case "spec init":
-		if command.Usage != "atr spec init --catalog <path> -- <command>" || validateInputs(command.Contract.Inputs, []helpInputProjection{input("--catalog", "flag", "single"), input("command", "argument", "repeatable")}) != nil || !strings.Contains(command.Summary, "authoring baseline") || !strings.Contains(command.Contract.Outcome, "identity wrapper") {
+		if command.Usage != "atr spec init --catalog <path> [--processor <inspection.json>] -- <command>" || validateInputs(command.Contract.Inputs, []helpInputProjection{
+			input("--catalog", "flag", "single"), typedInput("--processor", "flag", "text", "single", false), input("command", "argument", "repeatable"),
+		}) != nil || !strings.Contains(command.Summary, "schema-4") || !strings.Contains(command.Contract.Outcome, "finite registry-owned optimizer") {
 			return helpCommandProjection{}, fmt.Errorf("specification baseline contract is incomplete")
 		}
-		if err := validateOutputSchema(command, "specification", "tailoring-specification", 3, tailoringSpecificationSchemaFields); err != nil {
+		if err := validateOutputSchema(command, "specification", "tailoring-specification", 4, tailoringSpecificationSchemaFields); err != nil {
 			return helpCommandProjection{}, fmt.Errorf("specification schema is incomplete")
 		}
-		for _, marker := range []string{"kind=transform", "output.select", "output.rename", "output.render=compact_json", "Shell, script, jq, plugin, RTK"} {
+		for _, marker := range []string{"Without --processor", "With --processor", "output.kind=projection", "Optimizers require", "Arbitrary shell"} {
 			if !strings.Contains(prerequisites, marker) {
 				return helpCommandProjection{}, fmt.Errorf("specification authoring marker is missing")
 			}
@@ -1753,8 +2345,48 @@ func validateScopedHelp(path string, value []byte) (helpCommandProjection, error
 		if command.Usage != "atr spec validate --catalog <path> --spec <path>" || validateInputs(command.Contract.Inputs, []helpInputProjection{input("--catalog", "flag", "single"), input("--spec", "flag", "single")}) != nil {
 			return helpCommandProjection{}, fmt.Errorf("specification validation invocation contract is incomplete")
 		}
-		if err := validateOutputSchema(command, "specification", "tailoring-specification", 3, tailoringSpecificationSchemaFields); err != nil {
+		if err := validateOutputSchema(command, "specification", "tailoring-specification", 4, tailoringSpecificationSchemaFields); err != nil {
 			return helpCommandProjection{}, fmt.Errorf("normalized specification schema is incomplete")
+		}
+	case "bundle build":
+		if command.Usage != "atr bundle build --catalog <path> --spec <path> [--processor <inspection.json>]" || validateInputs(command.Contract.Inputs, []helpInputProjection{
+			input("--catalog", "flag", "single"), input("--spec", "flag", "single"), typedInput("--processor", "flag", "text", "single", false),
+		}) != nil || validateCatalogJSONOutput(command, "build", 2, []struct{ name, fieldType string }{
+			{name: "bundle_digest", fieldType: "string"}, {name: "bundle", fieldType: "object"},
+		}) != nil {
+			return helpCommandProjection{}, fmt.Errorf("bundle build contract is incomplete")
+		}
+		for _, marker := range []string{"schema-4 specification", "optimizer specification requires exactly one explicit --processor", "without an optimizer rejects that option", "no processor inspection or execution"} {
+			if !strings.Contains(prerequisites, marker) {
+				return helpCommandProjection{}, fmt.Errorf("bundle build marker is missing")
+			}
+		}
+	case "bundle status":
+		if command.Usage != "atr bundle status --bundle <path>" || validateInputs(command.Contract.Inputs, []helpInputProjection{input("--bundle", "flag", "single")}) != nil ||
+			validateCatalogJSONOutput(command, "status", 3, []struct{ name, fieldType string }{
+				{name: "bundle_digest", fieldType: "string"}, {name: "catalog_digest", fieldType: "string"},
+				{name: "specification_digest", fieldType: "string"}, {name: "adoption", fieldType: "string"},
+				{name: "source", fieldType: "string"}, {name: "adopted", fieldType: "boolean"},
+				{name: "source_path", fieldType: "string"}, {name: "source_sha256", fieldType: "string"},
+				{name: "source_version", fieldType: "string"}, {name: "processors", fieldType: "array"},
+				{name: "source_process_attempts", fieldType: "integer"}, {name: "processor_process_attempts", fieldType: "integer"},
+			}) != nil || !strings.Contains(prerequisites, "source and processor file identities without starting either executable") {
+			return helpCommandProjection{}, fmt.Errorf("bundle status contract is incomplete")
+		}
+	case "bundle trust":
+		if command.Usage != "atr bundle trust --bundle <path>" || validateInputs(command.Contract.Inputs, []helpInputProjection{input("--bundle", "flag", "single")}) != nil ||
+			validateCatalogJSONOutput(command, "trust", 3, []struct{ name, fieldType string }{
+				{name: "bundle_digest", fieldType: "string"}, {name: "adopted", fieldType: "boolean"},
+				{name: "already_adopted", fieldType: "boolean"}, {name: "source", fieldType: "string"},
+				{name: "processors", fieldType: "array"}, {name: "source_process_attempts", fieldType: "integer"},
+				{name: "processor_process_attempts", fieldType: "integer"},
+			}) != nil {
+			return helpCommandProjection{}, fmt.Errorf("bundle trust contract is incomplete")
+		}
+		for _, marker := range []string{"exact source and every bound processor identity are current", "interactive controlling terminal", "adoption is not source authorization"} {
+			if !strings.Contains(prerequisites, marker) {
+				return helpCommandProjection{}, fmt.Errorf("bundle trust marker is missing")
+			}
 		}
 	case "bundle preview":
 		if command.Usage != "atr bundle preview --bundle <path> -- <source-executable> <argv>" || validateInputs(command.Contract.Inputs, []helpInputProjection{input("--bundle", "flag", "single"), input("source-executable", "argument", "single"), input("argv", "argument", "repeatable")}) != nil || !strings.Contains(prerequisites, "never treats adoption as source authorization") {
@@ -1776,7 +2408,7 @@ func validateScopedHelp(path string, value []byte) (helpCommandProjection, error
 		}) != nil || validateWrapperRenderOutput(command) != nil {
 			return helpCommandProjection{}, fmt.Errorf("wrapper render contract is incomplete")
 		}
-		for _, marker := range []string{"Linux or macOS", "portable non-reserved POSIX Name", "complete included surface", "caller-owned"} {
+		for _, marker := range []string{"Linux or macOS", "source, processor, plus Atsura executable identities", "portable non-reserved POSIX Name", "complete included surface", "exact processor tuple", "caller-owned"} {
 			if !strings.Contains(prerequisites, marker) {
 				return helpCommandProjection{}, fmt.Errorf("wrapper render admission marker is missing")
 			}
@@ -1793,7 +2425,7 @@ func validateScopedHelp(path string, value []byte) (helpCommandProjection, error
 		}) != nil || validateWrapperRunOutput(command) != nil {
 			return helpCommandProjection{}, fmt.Errorf("wrapper run contract is incomplete")
 		}
-		for _, marker := range []string{"complete closure emitted by wrapper render", "exact bundle to remain adopted", "transformed_json", "source_stream_passthrough", "without a shell"} {
+		for _, marker := range []string{"complete closure emitted by wrapper render", "exact bundle to remain adopted", "transformed_json", "source_stream_passthrough", "original_preserving_optimizer", "preserved_before_processor", "preserved_after_processor", "optimized", "source and processor each start at most once", "processor fault never falls back", "without a shell"} {
 			if !strings.Contains(prerequisites, marker) {
 				return helpCommandProjection{}, fmt.Errorf("wrapper run admission marker is missing")
 			}
@@ -2184,12 +2816,14 @@ func transformDraft(value []byte, command []string) ([]byte, error) {
 		indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
 		output := []string{
 			indent + "output:",
-			indent + "    input: json",
-			indent + "    select: [number, title, state]",
-			indent + "    rename:",
-			indent + "        - from: number",
-			indent + "          to: id",
-			indent + "    render: compact_json",
+			indent + "    kind: projection",
+			indent + "    projection:",
+			indent + "        input: json",
+			indent + "        select: [number, title, state]",
+			indent + "        rename:",
+			indent + "            - from: number",
+			indent + "              to: id",
+			indent + "        render: compact_json",
 		}
 		lines = append(lines[:index], append(output, lines[index:]...)...)
 		inserted = true
@@ -2250,7 +2884,8 @@ func transformSourceStreamDraft(value []byte, name string, command []string) ([]
 type inspectionEvidence struct {
 	CatalogDigest string `json:"catalog_digest"`
 	Catalog       struct {
-		Adapter struct {
+		SchemaVersion int `json:"schema_version"`
+		Adapter       struct {
 			Kind            string `json:"kind"`
 			ContractVersion int    `json:"contract_version"`
 		} `json:"adapter"`
@@ -2267,6 +2902,45 @@ type inspectionEvidence struct {
 		} `json:"commands"`
 	} `json:"catalog"`
 	SourceProcessAttempts int `json:"source_process_attempts"`
+}
+
+type processorInspectionEvidence struct {
+	ObservationDigest        string                       `json:"observation_digest"`
+	Observation              processorprocess.Observation `json:"observation"`
+	ProcessorProcessAttempts int                          `json:"processor_process_attempts"`
+}
+
+func decodeProcessorInspection(value []byte) (processorInspectionEvidence, error) {
+	var document struct {
+		SchemaVersion int                         `json:"schema_version"`
+		Inspection    processorInspectionEvidence `json:"inspection"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(value))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&document); err != nil || document.SchemaVersion != 1 {
+		return processorInspectionEvidence{}, fmt.Errorf("invalid processor inspection document")
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return processorInspectionEvidence{}, fmt.Errorf("processor inspection contains trailing JSON")
+	}
+	return document.Inspection, nil
+}
+
+func validateProcessorInspection(value processorInspectionEvidence, processor preparedProcessor) error {
+	observation := value.Observation
+	digest, err := observation.Digest()
+	if err != nil || value.ObservationDigest != digest || value.ProcessorProcessAttempts != 1 || observation.Probe.Attempts != 1 {
+		return fmt.Errorf("processor observation digest or attempts are invalid")
+	}
+	if observation.Adapter.Kind != processor.metadata.ProcessorKind() || observation.Adapter.ContractVersion != 1 ||
+		observation.Platform.OS+"/"+observation.Platform.Arch != processor.metadata.Target() ||
+		observation.Identity.ResolvedPath != processor.executablePath || observation.Identity.SHA256 != processor.metadata.BinarySHA256() ||
+		observation.Identity.Size != processor.metadata.BinarySize() || observation.Version != processor.metadata.Version() ||
+		len(observation.Probe.Argv) != 1 || observation.Probe.Argv[0] != "--version" ||
+		observation.Probe.EnvironmentContract != processorprocess.EnvironmentRTKIsolatedV2 {
+		return fmt.Errorf("processor observation does not match pinned provenance")
+	}
+	return nil
 }
 
 func inspectionHasCommand(inspection inspectionEvidence, wanted []string) bool {
@@ -2302,13 +2976,16 @@ func validateSpecificationEvidence(value []byte, catalogDigest string, wantedIde
 			ExcludedCount         int    `json:"excluded_count"`
 			IdentityWrapperCount  int    `json:"identity_wrapper_count"`
 			TransformWrapperCount int    `json:"transform_wrapper_count"`
+			Specification         struct {
+				SchemaVersion int `json:"schema_version"`
+			} `json:"specification"`
 		} `json:"validation"`
 	}
 	if err := json.Unmarshal(value, &document); err != nil || document.SchemaVersion != 2 {
 		return fmt.Errorf("invalid validation document")
 	}
 	result := document.Validation
-	if !result.Valid || result.CatalogDigest != catalogDigest || !digestValue(result.SpecificationDigest) || result.CommandCount != 1 || result.IncludedCount != 1 || result.ExcludedCount != 0 || result.IdentityWrapperCount != wantedIdentity || result.TransformWrapperCount != wantedTransform || wantedIdentity+wantedTransform != 1 {
+	if !result.Valid || result.CatalogDigest != catalogDigest || !digestValue(result.SpecificationDigest) || result.Specification.SchemaVersion != 4 || result.CommandCount != 1 || result.IncludedCount != 1 || result.ExcludedCount != 0 || result.IdentityWrapperCount != wantedIdentity || result.TransformWrapperCount != wantedTransform || wantedIdentity+wantedTransform != 1 {
 		return fmt.Errorf("unexpected validation evidence")
 	}
 	return nil
@@ -2319,42 +2996,66 @@ func decodeBundleDigest(value []byte) (string, error) {
 		SchemaVersion int `json:"schema_version"`
 		Build         struct {
 			BundleDigest string `json:"bundle_digest"`
+			Bundle       struct {
+				SchemaVersion int `json:"schema_version"`
+			} `json:"bundle"`
 		} `json:"build"`
 	}
-	if err := json.Unmarshal(value, &document); err != nil || document.SchemaVersion != 2 || !digestValue(document.Build.BundleDigest) {
+	if err := json.Unmarshal(value, &document); err != nil || document.SchemaVersion != 2 || document.Build.Bundle.SchemaVersion != 3 || !digestValue(document.Build.BundleDigest) {
 		return "", fmt.Errorf("invalid bundle document")
 	}
 	return document.Build.BundleDigest, nil
 }
 
-func validateStatus(value []byte, digest string, state bundletrust.State) error {
+type processorStatusExpectation struct {
+	Contract, AdapterKind, Version, ResolvedPath, SHA256 string
+	Size                                                 int64
+}
+
+func validateStatus(value []byte, digest string, state bundletrust.State, wantedProcessors ...processorStatusExpectation) error {
 	var document struct {
 		SchemaVersion int `json:"schema_version"`
 		Status        struct {
-			BundleDigest          string            `json:"bundle_digest"`
-			Adoption              bundletrust.State `json:"adoption"`
-			Source                string            `json:"source"`
-			Adopted               bool              `json:"adopted"`
-			SourceProcessAttempts int               `json:"source_process_attempts"`
+			BundleDigest string            `json:"bundle_digest"`
+			Adoption     bundletrust.State `json:"adoption"`
+			Source       string            `json:"source"`
+			Adopted      bool              `json:"adopted"`
+			Processors   []struct {
+				Contract     string                     `json:"contract"`
+				AdapterKind  string                     `json:"adapter_kind"`
+				Version      string                     `json:"version"`
+				ResolvedPath string                     `json:"resolved_path"`
+				SHA256       string                     `json:"sha256"`
+				Size         int64                      `json:"size"`
+				State        bundletrust.ProcessorState `json:"state"`
+			} `json:"processors"`
+			SourceProcessAttempts    int `json:"source_process_attempts"`
+			ProcessorProcessAttempts int `json:"processor_process_attempts"`
 		} `json:"status"`
 	}
-	if err := json.Unmarshal(value, &document); err != nil || document.SchemaVersion != 2 {
+	if err := json.Unmarshal(value, &document); err != nil || document.SchemaVersion != 3 {
 		return fmt.Errorf("invalid status document")
 	}
 	wantedAdopted := state == bundletrust.StateAdopted
-	if document.Status.BundleDigest != digest || document.Status.Adoption != state || document.Status.Source != "current" || document.Status.Adopted != wantedAdopted || document.Status.SourceProcessAttempts != 0 {
+	if document.Status.BundleDigest != digest || document.Status.Adoption != state || document.Status.Source != "current" ||
+		document.Status.Adopted != wantedAdopted || document.Status.SourceProcessAttempts != 0 ||
+		document.Status.ProcessorProcessAttempts != 0 || len(document.Status.Processors) != len(wantedProcessors) {
 		return fmt.Errorf("unexpected status evidence")
+	}
+	for index, wanted := range wantedProcessors {
+		got := document.Status.Processors[index]
+		if got.Contract != wanted.Contract || got.AdapterKind != wanted.AdapterKind || got.Version != wanted.Version ||
+			got.ResolvedPath != wanted.ResolvedPath || got.SHA256 != wanted.SHA256 || got.Size != wanted.Size || got.State != bundletrust.ProcessorCurrent {
+			return fmt.Errorf("unexpected processor status evidence")
+		}
 	}
 	return nil
 }
 
 type previewEvidence struct {
-	PlanDigest string `json:"plan_digest"`
-	Plan       struct {
-		WrapperKind string `json:"wrapper_kind"`
-		ResultMode  string `json:"result_mode"`
-	} `json:"plan"`
-	SourceProcessAttempts int `json:"source_process_attempts"`
+	PlanDigest            string             `json:"plan_digest"`
+	Plan                  tailoringplan.Plan `json:"plan"`
+	SourceProcessAttempts int                `json:"source_process_attempts"`
 }
 
 func decodePreview(value []byte) (previewEvidence, error) {
@@ -2362,10 +3063,75 @@ func decodePreview(value []byte) (previewEvidence, error) {
 		SchemaVersion int             `json:"schema_version"`
 		Preview       previewEvidence `json:"preview"`
 	}
-	if err := json.Unmarshal(value, &document); err != nil || document.SchemaVersion != 2 {
+	decoder := json.NewDecoder(bytes.NewReader(value))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&document); err != nil || document.SchemaVersion != 2 {
 		return previewEvidence{}, fmt.Errorf("invalid preview document")
 	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return previewEvidence{}, fmt.Errorf("preview document contains trailing JSON")
+	}
+	digest, err := document.Preview.Plan.Digest()
+	if err != nil || digest != document.Preview.PlanDigest {
+		return previewEvidence{}, fmt.Errorf("preview plan digest is invalid")
+	}
 	return document.Preview, nil
+}
+
+func validateGoIdentityPreviewPlan(plan tailoringplan.Plan, bundleDigest string, inspection inspectionEvidence) error {
+	if err := plan.Validate(); err != nil {
+		return err
+	}
+	source := inspection.Catalog.Source
+	if plan.BundleDigest != bundleDigest || plan.CatalogDigest != inspection.CatalogDigest ||
+		plan.Source.RequestedExecutable != source.RequestedExecutable || plan.Source.ResolvedPath != source.ResolvedPath ||
+		plan.Source.Version != source.Version || plan.Source.AdapterKind != goAdapterKind ||
+		plan.Source.AdapterContractVersion != goAdapterContract || plan.SurfaceOrigin != tailoringplan.SurfaceOriginExplicit ||
+		plan.ResultMode != tailoringplan.ResultModeSourceStreamPassthrough || plan.WrapperKind != "identity" || plan.Processor != nil ||
+		!reflect.DeepEqual(plan.MatchedCommand, []string{"test"}) ||
+		!reflect.DeepEqual(plan.OriginalArgv, []string{source.ResolvedPath, "test"}) ||
+		!reflect.DeepEqual(plan.TransformedArgv, []string{source.ResolvedPath, "test"}) ||
+		!reflect.DeepEqual(plan.Stages.Invoke.Args, []string{"test"}) ||
+		plan.Stages.Invoke.MaxAttempts != 1 || plan.Stages.Invoke.TimeoutMillis != sourceprocess.MaxTimeout.Milliseconds() ||
+		plan.Stages.Invoke.StdoutLimitBytes != sourceprocess.MaxStdoutBytes ||
+		plan.Stages.Invoke.StderrLimitBytes != sourceprocess.MaxStderrBytes {
+		return fmt.Errorf("identity plan does not match the exact Go test tuple")
+	}
+	return nil
+}
+
+func validateGoOptimizerPreviewPlan(
+	plan tailoringplan.Plan,
+	bundleDigest string,
+	inspection inspectionEvidence,
+	observation processorprocess.Observation,
+) (*optimizerExecutionEvidence, error) {
+	if err := processorcompat.New().VerifyPlan(plan); err != nil {
+		return nil, err
+	}
+	source := inspection.Catalog.Source
+	if plan.BundleDigest != bundleDigest || plan.CatalogDigest != inspection.CatalogDigest ||
+		plan.Source.RequestedExecutable != source.RequestedExecutable || plan.Source.ResolvedPath != source.ResolvedPath ||
+		plan.Source.Version != source.Version || plan.Processor == nil ||
+		!reflect.DeepEqual(plan.Processor.Observation, observation) {
+		return nil, fmt.Errorf("optimizer plan does not match inspected source and processor evidence")
+	}
+	invoke := plan.Stages.Invoke
+	processor := plan.Processor
+	return &optimizerExecutionEvidence{
+		CallerArgv: append([]string(nil), plan.OriginalArgv[1:]...), SourceArgv: append([]string(nil), invoke.Args...),
+		SourceStdinMode: string(invoke.StdinMode), SourceWorkingDirectoryMode: string(invoke.WorkingDirectoryMode),
+		SourceEnvironmentMode: string(invoke.EnvironmentMode), SourceMaxAttempts: invoke.MaxAttempts,
+		SourceTimeoutMillis: invoke.TimeoutMillis, SourceStdoutLimitBytes: invoke.StdoutLimitBytes,
+		SourceStderrLimitBytes: invoke.StderrLimitBytes, InputFormat: processor.InputFormat,
+		OutputFormat: processor.OutputFormat, AllowOriginalOutput: processor.AllowOriginalOutput,
+		ProcessorArgv: append([]string(nil), processor.Execution.Args...), ProcessorStdinMode: processor.Execution.StdinMode,
+		ProcessorWorkingDirectoryMode: processor.Execution.WorkingDirectoryMode,
+		ProcessorEnvironmentContract:  processor.Execution.EnvironmentContract,
+		ProcessorMaxAttempts:          processor.Execution.MaxAttempts, ProcessorTimeoutMillis: processor.Execution.TimeoutMillis,
+		ProcessorStdoutLimitBytes: processor.Execution.StdoutLimitBytes,
+		ProcessorStderrLimitBytes: processor.Execution.StderrLimitBytes,
+	}, nil
 }
 
 type executionEvidence struct {

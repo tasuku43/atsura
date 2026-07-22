@@ -56,7 +56,7 @@ func TestInspectReturnsExactOfficialObservationAndRequest(t *testing.T) {
 	request := process.request
 	if request.Executable != path || !slicesEqual(request.Args, []string{"--version"}) || request.Input != nil ||
 		request.Timeout != processorprocess.MaxTimeout || request.StdoutLimit != versionStdoutLimit ||
-		request.StderrLimit != processorprocess.MaxStderrBytes || request.EnvironmentContract != processorprocess.EnvironmentRTKIsolatedV1 {
+		request.StderrLimit != processorprocess.MaxStderrBytes || request.EnvironmentContract != processorprocess.EnvironmentRTKIsolatedV2 {
 		t.Fatalf("request = %+v", request)
 	}
 	if observation.Adapter.Kind != AdapterKind || observation.Adapter.ContractVersion != ContractVersion ||

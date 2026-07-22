@@ -27,7 +27,7 @@ func fixtureObservation(t *testing.T) Observation {
 		Version:       "0.43.0",
 		Probe: Probe{
 			Argv:                []string{"--version"},
-			EnvironmentContract: EnvironmentRTKIsolatedV1,
+			EnvironmentContract: EnvironmentRTKIsolatedV2,
 			Attempts:            1,
 		},
 	}
@@ -44,7 +44,7 @@ func fixtureRequest(t *testing.T) Request {
 		StdoutLimit:         MaxStdoutBytes,
 		StderrLimit:         MaxStderrBytes,
 		ExpectedIdentity:    identity,
-		EnvironmentContract: EnvironmentRTKIsolatedV1,
+		EnvironmentContract: EnvironmentRTKIsolatedV2,
 	}
 }
 
@@ -140,6 +140,9 @@ func TestRequestEnforcesBoundIdentityIsolationAndFiniteLimits(t *testing.T) {
 		{name: "stdout", mutate: func(v *Request) { v.StdoutLimit = MaxStdoutBytes + 1 }},
 		{name: "stderr", mutate: func(v *Request) { v.StderrLimit = MaxStderrBytes + 1 }},
 		{name: "environment", mutate: func(v *Request) { v.EnvironmentContract = "atsura.processor.other.v1" }},
+		{name: "retired host-specific environment", mutate: func(v *Request) {
+			v.EnvironmentContract = "atsura.processor.rtk_isolated.v1"
+		}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

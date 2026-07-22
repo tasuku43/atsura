@@ -93,7 +93,7 @@ func (i *Inspector) Inspect(ctx context.Context, executable string) (processorpr
 		StdoutLimit:         versionStdoutLimit,
 		StderrLimit:         processorprocess.MaxStderrBytes,
 		ExpectedIdentity:    identity,
-		EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV1,
+		EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV2,
 	}
 	result, err := i.processes.Run(ctx, request)
 	if validateErr := result.Validate(request, err == nil); validateErr != nil {
@@ -117,7 +117,7 @@ func (i *Inspector) Inspect(ctx context.Context, executable string) (processorpr
 		Version:  Version,
 		Probe: processorprocess.Probe{
 			Argv:                []string{"--version"},
-			EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV1,
+			EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV2,
 			Attempts:            1,
 		},
 	}
@@ -140,7 +140,7 @@ func VerifyObservation(observation processorprocess.Observation) error {
 		return fmt.Errorf("%w: %s", processorprocess.ErrUnsupportedVersion, observation.Version)
 	}
 	if len(observation.Probe.Argv) != 1 || observation.Probe.Argv[0] != "--version" ||
-		observation.Probe.EnvironmentContract != processorprocess.EnvironmentRTKIsolatedV1 || observation.Probe.Attempts != 1 {
+		observation.Probe.EnvironmentContract != processorprocess.EnvironmentRTKIsolatedV2 || observation.Probe.Attempts != 1 {
 		return fmt.Errorf("%w: RTK probe contract does not match", processorprocess.ErrInvalidObservation)
 	}
 	artifact, supported := OfficialArtifact(observation.Platform.OS, observation.Platform.Arch)

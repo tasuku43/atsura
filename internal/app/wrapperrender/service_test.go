@@ -139,13 +139,13 @@ func renderProcessorBundle(t *testing.T) (tailoringbundle.Bundle, string) {
 			},
 			Version: "0.43.0",
 			Probe: processorprocess.Probe{
-				Argv: []string{"--version"}, EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV1, Attempts: 1,
+				Argv: []string{"--version"}, EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV2, Attempts: 1,
 			},
 		},
 		InputFormat: "go_test_jsonl", OutputFormat: "go_test_pass_summary", AllowOriginalOutput: true,
 		Execution: tailoringbundle.ProcessorExecution{
 			Args: []string{"pipe", "--filter=go-test"}, StdinMode: "stage_input", WorkingDirectoryMode: "isolated",
-			EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV1, MaxAttempts: 1, TimeoutMillis: 5_000,
+			EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV2, MaxAttempts: 1, TimeoutMillis: 5_000,
 			StdoutLimitBytes: processorprocess.MaxStdoutBytes, StderrLimitBytes: processorprocess.MaxStderrBytes,
 		},
 	}

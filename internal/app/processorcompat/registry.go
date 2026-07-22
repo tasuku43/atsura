@@ -136,7 +136,7 @@ func (r *Registry) VerifyObservation(observation processorprocess.Observation) e
 		return compatibilityError(ErrorObservation, "processor version is not admitted")
 	}
 	if len(observation.Probe.Argv) != 1 || observation.Probe.Argv[0] != "--version" ||
-		observation.Probe.EnvironmentContract != processorprocess.EnvironmentRTKIsolatedV1 || observation.Probe.Attempts != 1 {
+		observation.Probe.EnvironmentContract != processorprocess.EnvironmentRTKIsolatedV2 || observation.Probe.Attempts != 1 {
 		return compatibilityError(ErrorObservation, "processor probe contract is not admitted")
 	}
 	wanted, exists := officialArtifacts[observation.Platform]
@@ -166,7 +166,7 @@ func (r *Registry) Binding(observation processorprocess.Observation) (tailoringb
 			Args:                 []string{"pipe", "--filter=go-test"},
 			StdinMode:            "stage_input",
 			WorkingDirectoryMode: "isolated",
-			EnvironmentContract:  processorprocess.EnvironmentRTKIsolatedV1,
+			EnvironmentContract:  processorprocess.EnvironmentRTKIsolatedV2,
 			MaxAttempts:          1,
 			TimeoutMillis:        processorprocess.MaxTimeout.Milliseconds(),
 			StdoutLimitBytes:     processorprocess.MaxStdoutBytes,

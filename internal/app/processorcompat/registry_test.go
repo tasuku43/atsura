@@ -58,6 +58,9 @@ func TestVerifyObservationRejectsEveryTupleDimension(t *testing.T) {
 		{name: "architecture", mutate: func(v *processorprocess.Observation) { v.Platform.Arch = "riscv64" }},
 		{name: "probe argv", mutate: func(v *processorprocess.Observation) { v.Probe.Argv = []string{"version"} }},
 		{name: "probe environment", mutate: func(v *processorprocess.Observation) { v.Probe.EnvironmentContract = "atsura.processor.other.v1" }},
+		{name: "retired host-specific probe environment", mutate: func(v *processorprocess.Observation) {
+			v.Probe.EnvironmentContract = "atsura.processor.rtk_isolated.v1"
+		}},
 		{name: "probe attempts", mutate: func(v *processorprocess.Observation) { v.Probe.Attempts = 2 }},
 		{name: "artifact hash", mutate: func(v *processorprocess.Observation) { v.Identity.SHA256 = strings.Repeat("a", 64) }},
 		{name: "artifact size", mutate: func(v *processorprocess.Observation) { v.Identity.Size++ }},
@@ -92,7 +95,7 @@ func TestBindingIsCanonicalBoundedAndDetached(t *testing.T) {
 		Args:                 []string{"pipe", "--filter=go-test"},
 		StdinMode:            "stage_input",
 		WorkingDirectoryMode: "isolated",
-		EnvironmentContract:  processorprocess.EnvironmentRTKIsolatedV1,
+		EnvironmentContract:  processorprocess.EnvironmentRTKIsolatedV2,
 		MaxAttempts:          1,
 		TimeoutMillis:        processorprocess.MaxTimeout.Milliseconds(),
 		StdoutLimitBytes:     processorprocess.MaxStdoutBytes,
@@ -288,7 +291,7 @@ func observationFixture(t *testing.T, platform processorprocess.Platform) proces
 		},
 		Version: processorcompat.ProcessorVersion,
 		Probe: processorprocess.Probe{
-			Argv: []string{"--version"}, EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV1, Attempts: 1,
+			Argv: []string{"--version"}, EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV2, Attempts: 1,
 		},
 	}
 }

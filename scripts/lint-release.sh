@@ -47,7 +47,9 @@ git ls-files -co --exclude-standard -z -- '*.sh' |
     [[ -f $script ]] && printf '%s\0' "$script"
   done |
   xargs -0 shellcheck
-go test ./tools/archivepack ./tools/artifactevidence ./tools/internal/releaseversion ./tools/releaseversion
+go test ./tools/archivepack ./tools/artifactjourney ./tools/artifactevidence \
+  ./tools/internal/processormanifest ./tools/processorfetch \
+  ./tools/internal/releaseversion ./tools/releaseversion
 required_go=go$(awk '$1 == "go" { print $2 }' go.mod)
 actual_go=$(go env GOVERSION)
 if [[ $actual_go != "$required_go" ]]; then
@@ -158,6 +160,17 @@ for required in \
 done
 scripts/test-check-environment.sh >/dev/null
 scripts/test-release-archive-entries.sh >/dev/null
+
+for required in \
+  'go run ./tools/processorfetch' \
+  "--target \"\$goos/\$goarch\"" \
+  "--output-dir \"\$processor_root\"" \
+  "--processor-archive \"\$processor_archive\""; do
+  if ! grep -qF -- "$required" scripts/test-release-artifact.sh; then
+    echo "installed-artifact replay is missing pinned processor acquisition: $required" >&2
+    exit 1
+  fi
+done
 
 for forbidden in 'HOMEBREW_GITHUB_API_TOKEN' 'api.github.com/repos/' 'Authorization: Bearer'; do
   if grep -R -F "$forbidden" Formula scripts/render-formula.sh .github/workflows/release.yml >/dev/null 2>&1; then
@@ -313,6 +326,10 @@ expected_release_evidence_run="go run ./tools/artifactevidence \\
   --revision \"\${{ needs.preflight.outputs.revision }}\" \\
   >native-evidence-summary.json"
 expected_native_recovery_run="go test -count=1 ./internal/infra/sourceexec
+go test -count=1 ./internal/infra/processorexec
+go test -count=1 ./internal/infra/processorjson
+go test -count=1 ./internal/infra/rtkprocessor
+go test -count=1 ./internal/infra/gotestjson
 go test -count=1 ./internal/infra/trustfile
 go test -count=1 ./internal/infra/bundlejson -run '^TestFileFaultMapsEveryLocalFileFailureToExactPublicContract$'
 go test -count=1 ./internal/cli -run '^(TestBundlePreviewProductionCompositionCoversEveryRecovery|TestBundleExecuteProductionCompositionCoversEveryPreAndPostStartRecovery)$'"

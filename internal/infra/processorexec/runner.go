@@ -168,7 +168,6 @@ type isolation struct {
 	root        string
 	work        string
 	environment []string
-	claude      string
 	rootInfo    os.FileInfo
 	markerInfo  os.FileInfo
 }
@@ -199,6 +198,8 @@ func (r *Runner) prepareIsolation() (isolation, error) {
 	if len(entries) != 0 {
 		return isolation{}, fmt.Errorf("isolated root must begin as an empty directory")
 	}
+	// #nosec G302 -- a directory requires owner execute permission; 0700 is the
+	// least-privilege usable mode and the restriction is covered by a mode test.
 	if err := os.Chmod(root, 0o700); err != nil {
 		return isolation{}, err
 	}
@@ -225,10 +226,8 @@ func (r *Runner) prepareIsolation() (isolation, error) {
 		}
 		paths[name] = path
 	}
-	claude := filepath.Join(root, "claude")
 	environment := []string{
 		"APPDATA=" + paths["appdata"],
-		"CLAUDE_CONFIG_DIR=" + claude,
 		"HOME=" + paths["home"],
 		"LANG=C",
 		"LC_ALL=C",
@@ -258,7 +257,6 @@ func (r *Runner) prepareIsolation() (isolation, error) {
 	sort.Strings(environment)
 	isolated.work = paths["work"]
 	isolated.environment = environment
-	isolated.claude = claude
 	if r != nil && r.prepared != nil {
 		r.prepared(isolated)
 	}

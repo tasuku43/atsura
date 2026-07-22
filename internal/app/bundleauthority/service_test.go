@@ -114,12 +114,12 @@ func optimizerAuthorityFixture(t *testing.T) (tailoringbundle.Bundle, string, so
 		SchemaVersion: processorprocess.ObservationSchemaVersion,
 		Adapter:       processorprocess.Adapter{Kind: "atsura.processor.rtk", ContractVersion: 1},
 		Platform:      processorprocess.Platform{OS: "darwin", Arch: "arm64"}, Identity: processorIdentity, Version: "0.43.0",
-		Probe: processorprocess.Probe{Argv: []string{"--version"}, EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV1, Attempts: 1},
+		Probe: processorprocess.Probe{Argv: []string{"--version"}, EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV2, Attempts: 1},
 	}
 	binding := tailoringbundle.ProcessorBinding{
 		Contract: contract, Observation: observation, InputFormat: "go_test_jsonl", OutputFormat: "go_test_pass_summary", AllowOriginalOutput: true,
 		Execution: tailoringbundle.ProcessorExecution{
-			Args: []string{"pipe", "--filter=go-test"}, StdinMode: "stage_input", WorkingDirectoryMode: "isolated", EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV1,
+			Args: []string{"pipe", "--filter=go-test"}, StdinMode: "stage_input", WorkingDirectoryMode: "isolated", EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV2,
 			MaxAttempts: 1, TimeoutMillis: processorprocess.MaxTimeout.Milliseconds(), StdoutLimitBytes: processorprocess.MaxStdoutBytes, StderrLimitBytes: processorprocess.MaxStderrBytes,
 		},
 	}

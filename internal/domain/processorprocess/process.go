@@ -16,7 +16,7 @@ import (
 
 const (
 	ObservationSchemaVersion = 1
-	EnvironmentRTKIsolatedV1 = "atsura.processor.rtk_isolated.v1"
+	EnvironmentRTKIsolatedV2 = "atsura.processor.rtk_isolated.v2"
 
 	MaxArguments       = 16
 	MaxArgumentBytes   = 4096
@@ -216,7 +216,7 @@ func (r Request) Validate() error {
 	if r.StdoutLimit <= 0 || r.StdoutLimit > MaxStdoutBytes || r.StderrLimit <= 0 || r.StderrLimit > MaxStderrBytes {
 		return fmt.Errorf("%w: output limits must be positive and within the supported maxima", ErrInvalidRequest)
 	}
-	if r.EnvironmentContract != EnvironmentRTKIsolatedV1 {
+	if r.EnvironmentContract != EnvironmentRTKIsolatedV2 {
 		return fmt.Errorf("%w: environment contract is not supported", ErrInvalidRequest)
 	}
 	return nil

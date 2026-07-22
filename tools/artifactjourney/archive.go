@@ -3,6 +3,7 @@ package main
 import (
 	"archive/tar"
 	"archive/zip"
+	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
 	"fmt"
@@ -37,23 +38,29 @@ func prepareInputFile(value string) (string, error) {
 	return absolute, nil
 }
 
-func archiveDigest(path string) (string, error) {
+// readReleaseArchive binds the evidence digest and later extraction to one
+// bounded open of the candidate archive.
+func readReleaseArchive(path string) ([]byte, string, error) {
 	file, info, err := openRegularInput(path)
 	if err != nil || info.Size() <= 0 || info.Size() > maxArchiveBytes {
 		if file != nil {
 			_ = file.Close()
 		}
-		return "", fmt.Errorf("archive size is invalid")
+		return nil, "", fmt.Errorf("archive size is invalid")
 	}
 	defer file.Close()
-	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return "", fmt.Errorf("archive digest failed")
+	value, err := io.ReadAll(io.LimitReader(file, maxArchiveBytes+1))
+	if err != nil || int64(len(value)) != info.Size() {
+		return nil, "", fmt.Errorf("archive read failed")
 	}
-	return fmt.Sprintf("%x", hash.Sum(nil)), nil
+	digest := sha256.Sum256(value)
+	return value, fmt.Sprintf("%x", digest), nil
 }
 
-func extractReleaseArchive(path, goos, destination string) (string, error) {
+func extractReleaseArchive(archive []byte, goos, destination string) (string, error) {
+	if len(archive) == 0 || int64(len(archive)) > maxArchiveBytes {
+		return "", fmt.Errorf("archive size is invalid")
+	}
 	if err := os.Mkdir(destination, 0o700); err != nil {
 		return "", fmt.Errorf("extraction directory creation failed")
 	}
@@ -67,9 +74,9 @@ func extractReleaseArchive(path, goos, destination string) (string, error) {
 		executable = "atr.exe"
 	}
 	if goos == "windows" {
-		err = extractZIP(path, root)
+		err = extractZIP(archive, root)
 	} else {
-		err = extractTarGzip(path, root)
+		err = extractTarGzip(archive, root)
 	}
 	if err != nil {
 		return "", err
@@ -85,16 +92,8 @@ func extractReleaseArchive(path, goos, destination string) (string, error) {
 	return executablePath, nil
 }
 
-func extractTarGzip(path string, destination *os.Root) error {
-	file, info, err := openRegularInput(path)
-	if err != nil {
-		return fmt.Errorf("archive open failed")
-	}
-	defer file.Close()
-	if info.Size() <= 0 || info.Size() > maxArchiveBytes {
-		return fmt.Errorf("archive size is invalid")
-	}
-	compressed, err := gzip.NewReader(file)
+func extractTarGzip(archive []byte, destination *os.Root) error {
+	compressed, err := gzip.NewReader(bytes.NewReader(archive))
 	if err != nil {
 		return fmt.Errorf("archive gzip header is invalid")
 	}
@@ -128,16 +127,8 @@ func extractTarGzip(path string, destination *os.Root) error {
 	return validateMemberSet(seen)
 }
 
-func extractZIP(path string, destination *os.Root) error {
-	file, info, err := openRegularInput(path)
-	if err != nil {
-		return fmt.Errorf("archive zip stream is invalid")
-	}
-	defer file.Close()
-	if info.Size() <= 0 || info.Size() > maxArchiveBytes {
-		return fmt.Errorf("archive size is invalid")
-	}
-	reader, err := zip.NewReader(file, info.Size())
+func extractZIP(archive []byte, destination *os.Root) error {
+	reader, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
 	if err != nil {
 		return fmt.Errorf("archive zip stream is invalid")
 	}

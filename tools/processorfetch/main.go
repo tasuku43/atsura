@@ -1,5 +1,5 @@
 // Command processorfetch downloads one pinned external processor archive for
-// native CI. It is intentionally absent from deterministic local gates.
+// repository release and native CI evidence. It is not part of product runtime.
 package main
 
 import (

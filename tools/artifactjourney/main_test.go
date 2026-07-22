@@ -6,38 +6,68 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
+var errEvidenceWriter = errors.New("write failed")
+
+type shortEvidenceWriter struct{}
+
+func (shortEvidenceWriter) Write(value []byte) (int, error) { return len(value) - 1, nil }
+
+type failedEvidenceWriter struct{}
+
+func (failedEvidenceWriter) Write([]byte) (int, error) { return 0, errEvidenceWriter }
+
+func TestWriteEvidenceRejectsShortAndFailedWriters(t *testing.T) {
+	for _, writer := range []interface{ Write([]byte) (int, error) }{shortEvidenceWriter{}, failedEvidenceWriter{}} {
+		if err := writeEvidence(writer, evidenceDocument{}); err == nil {
+			t.Fatalf("writer %T was accepted", writer)
+		}
+	}
+	var output bytes.Buffer
+	if err := writeEvidence(&output, evidenceDocument{}); err != nil || !bytes.HasSuffix(output.Bytes(), []byte{'\n'}) {
+		t.Fatalf("normal evidence write = %q, %v", output.Bytes(), err)
+	}
+}
+
 func TestParseOptionsRequiresExactSupportedIdentity(t *testing.T) {
 	valid := []string{
 		"--archive", "artifact.tar.gz", "--source", "fixture", "--tag", "v1.2.3-rc.1",
 		"--revision", strings.Repeat("a", 40), "--goos", "linux", "--goarch", "arm64",
+		"--processor-archive", "rtk.tar.gz",
 	}
 	got, err := parseOptions(valid)
-	if err != nil || got.tag != "v1.2.3-rc.1" || got.goos != "linux" || got.goarch != "arm64" {
+	if err != nil || got.tag != "v1.2.3-rc.1" || got.goos != "linux" || got.goarch != "arm64" || got.processorArchive != "rtk.tar.gz" {
 		t.Fatalf("parseOptions() = %+v, %v", got, err)
 	}
 	tests := [][]string{
-		valid[:len(valid)-2],
-		append(append([]string{}, valid[:7]...), append([]string{"bad"}, valid[8:]...)...),
-		append(append([]string{}, valid[:9]...), append([]string{strings.Repeat("A", 40)}, valid[10:]...)...),
-		append(append([]string{}, valid[:11]...), append([]string{"plan9"}, valid[12:]...)...),
+		{"--archive", "artifact.tar.gz", "--source", "fixture", "--tag", "v1.2.3-rc.1", "--revision", strings.Repeat("a", 40), "--goos", "linux", "--goarch", "arm64"},
+		{"--archive", "artifact.tar.gz", "--source", "fixture", "--tag", "bad", "--revision", strings.Repeat("a", 40), "--goos", "linux", "--goarch", "arm64", "--processor-archive", "rtk.tar.gz"},
+		{"--archive", "artifact.tar.gz", "--source", "fixture", "--tag", "v1.2.3", "--revision", strings.Repeat("A", 40), "--goos", "linux", "--goarch", "arm64", "--processor-archive", "rtk.tar.gz"},
+		{"--archive", "artifact.tar.gz", "--source", "fixture", "--tag", "v1.2.3", "--revision", strings.Repeat("a", 40), "--goos", "plan9", "--goarch", "arm64", "--processor-archive", "rtk.tar.gz"},
+		{"--archive", "artifact.zip", "--source", "fixture", "--tag", "v1.2.3", "--revision", strings.Repeat("a", 40), "--goos", "windows", "--goarch", "amd64", "--processor-archive", "rtk.tar.gz"},
+		{"--archive", "artifact.tar.gz", "--source", "fixture", "--tag", "v1.2.3", "--revision", strings.Repeat("a", 40), "--goos", "linux", "--goarch", "arm64", "--processor-archive", "rtk.tar.gz", "--processor-archive", "other.tar.gz"},
 	}
 	for _, arguments := range tests {
 		if _, err := parseOptions(arguments); err == nil {
 			t.Fatalf("parseOptions(%v) succeeded", arguments)
 		}
 	}
+	windows, err := parseOptions([]string{"--archive", "artifact.zip", "--source", "fixture", "--tag", "v1.2.3", "--revision", strings.Repeat("a", 40), "--goos", "windows", "--goarch", "amd64"})
+	if err != nil || windows.processorArchive != "" {
+		t.Fatalf("Windows options = %+v, %v", windows, err)
+	}
 }
 
 func TestTransformDraftProducesOneTypedTransform(t *testing.T) {
 	for _, command := range []string{"pr", "issue"} {
 		t.Run(command, func(t *testing.T) {
-			draft := []byte(`schema_version: 3
+			draft := []byte(`schema_version: 4
 catalog_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 surface:
     default: exclude
@@ -64,7 +94,7 @@ commands:
 			}
 			for _, required := range []string{
 				"kind: transform", `append_args: ["--json=number,title,state"]`,
-				"default: exclude", "include: [--limit]", "select: [number, title, state]", "from: number", "to: id", "render: compact_json",
+				"default: exclude", "include: [--limit]", "kind: projection", "projection:", "select: [number, title, state]", "from: number", "to: id", "render: compact_json",
 			} {
 				if !bytes.Contains(result, []byte(required)) {
 					t.Fatalf("transform missing %q:\n%s", required, result)
@@ -90,7 +120,7 @@ commands:
 
 func TestTransformSourceStreamDraftProducesExactIdentityAndAppendOnlyCases(t *testing.T) {
 	draft := func(command string) []byte {
-		return []byte(`schema_version: 3
+		return []byte(`schema_version: 4
 catalog_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 surface:
     default: exclude
@@ -175,7 +205,11 @@ func TestExtractReleaseArchiveAcceptsExactTarAndZIPMembers(t *testing.T) {
 			} else {
 				writeTarGzip(t, archivePath, map[string]archiveTestMember{executable: {mode: 0o755, value: "binary"}, "LICENSE": {mode: 0o644, value: "license"}})
 			}
-			got, err := extractReleaseArchive(archivePath, goos, filepath.Join(root, "extract"))
+			archive, digest, err := readReleaseArchive(archivePath)
+			if err != nil || digest != digestBytes(archive) {
+				t.Fatalf("read release archive = %s, %v", digest, err)
+			}
+			got, err := extractReleaseArchive(archive, goos, filepath.Join(root, "extract"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -197,9 +231,85 @@ func TestExtractReleaseArchiveRejectsUnsafeMembers(t *testing.T) {
 		root := t.TempDir()
 		archivePath := filepath.Join(root, "archive.tar.gz")
 		writeTarGzip(t, archivePath, members)
-		if _, err := extractReleaseArchive(archivePath, "linux", filepath.Join(root, "extract")); err == nil {
+		archive, _, err := readReleaseArchive(archivePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := extractReleaseArchive(archive, "linux", filepath.Join(root, "extract")); err == nil {
 			t.Fatalf("unsafe archive %d was accepted", index)
 		}
+	}
+}
+
+func TestReleaseArchiveDigestAndExtractionUseTheSameBytes(t *testing.T) {
+	root := t.TempDir()
+	archivePath := filepath.Join(root, "archive.tar.gz")
+	writeTarGzip(t, archivePath, map[string]archiveTestMember{
+		"atr": {mode: 0o755, value: "first-binary"}, "LICENSE": {mode: 0o644, value: "license"},
+	})
+	archive, digest, err := readReleaseArchive(archivePath)
+	if err != nil || digest != digestBytes(archive) {
+		t.Fatalf("read release archive = %s, %v", digest, err)
+	}
+	if err := os.Remove(archivePath); err != nil {
+		t.Fatal(err)
+	}
+	writeTarGzip(t, archivePath, map[string]archiveTestMember{
+		"atr": {mode: 0o755, value: "replacement"}, "LICENSE": {mode: 0o644, value: "license"},
+	})
+	executable, err := extractReleaseArchive(archive, "linux", filepath.Join(root, "extract"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := os.ReadFile(executable)
+	if err != nil || string(value) != "first-binary" {
+		t.Fatalf("extracted executable = %q, %v", value, err)
+	}
+}
+
+func TestExtractProcessorArchiveRequiresExactArchiveAndBinaryIdentity(t *testing.T) {
+	root := t.TempDir()
+	archivePath := filepath.Join(root, "rtk-test.tar.gz")
+	writeTarGzip(t, archivePath, map[string]archiveTestMember{"rtk": {mode: 0o755, value: "processor-binary"}})
+	archive, err := os.ReadFile(archivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract := processorArchiveContract{
+		archiveName: filepath.Base(archivePath), archiveSHA256: digestBytes(archive), archiveSize: int64(len(archive)),
+		binaryMember: "rtk", binarySHA256: digestBytes([]byte("processor-binary")), binarySize: int64(len("processor-binary")),
+	}
+	executable, err := extractProcessorArchiveContract(archivePath, filepath.Join(root, "extract"), contract)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := os.ReadFile(executable)
+	if err != nil || string(value) != "processor-binary" {
+		t.Fatalf("processor executable = %q, %v", value, err)
+	}
+
+	wrong := contract
+	wrong.archiveSHA256 = strings.Repeat("0", 64)
+	if _, err := extractProcessorArchiveContract(archivePath, filepath.Join(root, "wrong-hash"), wrong); err == nil {
+		t.Fatal("processor archive with wrong provenance hash was accepted")
+	}
+	wrongBinary := contract
+	wrongBinary.binarySHA256 = strings.Repeat("0", 64)
+	if _, err := extractProcessorArchiveContract(archivePath, filepath.Join(root, "wrong-binary"), wrongBinary); err == nil {
+		t.Fatal("processor archive with wrong binary identity was accepted")
+	}
+	unsafePath := filepath.Join(root, "rtk-extra.tar.gz")
+	writeTarGzip(t, unsafePath, map[string]archiveTestMember{
+		"rtk": {mode: 0o755, value: "processor-binary"}, "extra": {mode: 0o644, value: "extra"},
+	})
+	unsafeArchive, err := os.ReadFile(unsafePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unsafe := contract
+	unsafe.archiveName, unsafe.archiveSHA256, unsafe.archiveSize = filepath.Base(unsafePath), digestBytes(unsafeArchive), int64(len(unsafeArchive))
+	if _, err := extractProcessorArchiveContract(unsafePath, filepath.Join(root, "unsafe"), unsafe); err == nil {
+		t.Fatal("processor archive with an extra member was accepted")
 	}
 }
 
@@ -252,7 +362,9 @@ func TestGoSourceFixtureAndInspectionEvidenceAreFinite(t *testing.T) {
 		t.Fatalf("module = %q, %v", module, err)
 	}
 	testSource, err := os.ReadFile(filepath.Join(root, "artifact_test.go"))
-	if err != nil || !bytes.Contains(testSource, []byte(goTestAttemptEnv)) || !bytes.Contains(testSource, []byte("func TestPass")) {
+	if err != nil || !bytes.Contains(testSource, []byte(goTestAttemptEnv)) || !bytes.Contains(testSource, []byte("func TestMain")) ||
+		!bytes.Contains(testSource, []byte("func TestOne")) || !bytes.Contains(testSource, []byte("func TestTwo")) ||
+		!bytes.Contains(testSource, []byte(goTestModeEnv)) || !bytes.Contains(testSource, []byte(goTestProcessorDrift)) {
 		t.Fatalf("test source = %q, %v", testSource, err)
 	}
 	attemptLog := filepath.Join(root, "go-test-attempts.log")
@@ -268,8 +380,8 @@ func TestGoSourceFixtureAndInspectionEvidenceAreFinite(t *testing.T) {
 	if err := os.WriteFile(attemptLog, []byte("attempt\nattempt\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := requireGoTestAttempts(attemptLog, 1); err == nil {
-		t.Fatal("two Go source attempts were accepted")
+	if err := requireGoTestAttempts(attemptLog, 2); err != nil {
+		t.Fatal(err)
 	}
 
 	inspection := inspectionEvidence{}
@@ -285,23 +397,27 @@ func TestGoSourceFixtureAndInspectionEvidenceAreFinite(t *testing.T) {
 	if inspectionHasCommand(inspection, []string{"test"}) {
 		t.Fatal("duplicate Go inspection command was accepted")
 	}
+	skip := []byte("{\"Time\":\"2026-01-01T00:00:00Z\",\"Action\":\"skip\",\"Package\":\"example.com/atsura-artifact-go\",\"Test\":\"TestOne\"}\n")
+	if err := validateGoTestJSONL(skip, "skip"); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateGoTestJSONL(skip, "fail"); err == nil {
+		t.Fatal("mismatched Go test action was accepted")
+	}
+	noTests := []byte("{\"Time\":\"2026-01-01T00:00:00Z\",\"Action\":\"pass\",\"Package\":\"example.com/atsura-artifact-go\"}\n")
+	if err := validateGoTestJSONL(noTests, "no_tests"); err != nil {
+		t.Fatal(err)
+	}
 	for _, output := range []string{
 		"PASS\nok  \texample.com/atsura-artifact-go\t0.003s\n",
 		"PASS\nok example.com/atsura-artifact-go 1s\n",
 	} {
-		if !goTestOutputPattern.MatchString(output) {
-			t.Fatalf("valid Go test output rejected: %q", output)
+		if !goTestIdentityOutputPattern.MatchString(output) {
+			t.Fatalf("valid Go identity output rejected: %q", output)
 		}
 	}
-	for _, output := range []string{
-		"ok  \texample.com/atsura-artifact-go\t0.003s\n",
-		"? example.com/atsura-artifact-go [no test files]\n",
-		"ok example.com/other 0.003s\n",
-		"ok example.com/atsura-artifact-go (cached)\n",
-	} {
-		if goTestOutputPattern.MatchString(output) {
-			t.Fatalf("invalid Go test output accepted: %q", output)
-		}
+	if goTestIdentityOutputPattern.MatchString("ok example.com/atsura-artifact-go 0.003s\n") {
+		t.Fatal("Go identity output without PASS was accepted")
 	}
 }
 
@@ -404,8 +520,9 @@ func TestOutputSchemaInventoriesAreExact(t *testing.T) {
 		version int
 		fields  []helpSchemaFieldProjection
 	}{
-		{name: "catalog", field: "catalog", id: "source-command-catalog", version: 1, fields: sourceCatalogSchemaFields},
-		{name: "specification", field: "specification", id: "tailoring-specification", version: 3, fields: tailoringSpecificationSchemaFields},
+		{name: "catalog", field: "catalog", id: "source-command-catalog", version: 2, fields: sourceCatalogSchemaFields},
+		{name: "processor", field: "observation", id: "processor-observation", version: 1, fields: processorObservationSchemaFields},
+		{name: "specification", field: "specification", id: "tailoring-specification", version: 4, fields: tailoringSpecificationSchemaFields},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -446,8 +563,8 @@ func TestBundleRuntimeHelpFaultMatricesAreExact(t *testing.T) {
 	}{
 		{path: "bundle preview", count: 27, faults: bundlePreviewHelpFaults},
 		{path: "bundle execute", count: 41, faults: bundleExecuteHelpFaults},
-		{path: "wrapper render", count: 27, faults: wrapperRenderHelpFaults},
-		{path: "wrapper run", count: 45, faults: wrapperRunHelpFaults},
+		{path: "wrapper render", count: 33, faults: wrapperRenderHelpFaults},
+		{path: "wrapper run", count: 63, faults: wrapperRunHelpFaults},
 	}
 	for _, test := range tests {
 		t.Run(test.path, func(t *testing.T) {

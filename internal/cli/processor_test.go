@@ -47,7 +47,7 @@ func testProcessorInspectionResult(t *testing.T) processorinspect.Result {
 		Version: "0.43.0",
 		Probe: processorprocess.Probe{
 			Argv:                []string{"--version"},
-			EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV1,
+			EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV2,
 			Attempts:            1,
 		},
 	}

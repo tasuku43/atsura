@@ -29,20 +29,16 @@ func TestProcessorExecHelper(t *testing.T) {
 	case "environment":
 		input, _ := io.ReadAll(os.Stdin)
 		cwd, _ := os.Getwd()
-		claude := os.Getenv("CLAUDE_CONFIG_DIR")
-		_, statErr := os.Stat(claude)
 		value := struct {
-			Args         []string `json:"args"`
-			Input        string   `json:"input"`
-			CWD          string   `json:"cwd"`
-			Environment  []string `json:"environment"`
-			ClaudeAbsent bool     `json:"claude_absent"`
+			Args        []string `json:"args"`
+			Input       string   `json:"input"`
+			CWD         string   `json:"cwd"`
+			Environment []string `json:"environment"`
 		}{
-			Args:         append([]string(nil), os.Args[separator+2:]...),
-			Input:        string(input),
-			CWD:          cwd,
-			Environment:  os.Environ(),
-			ClaudeAbsent: errors.Is(statErr, os.ErrNotExist),
+			Args:        append([]string(nil), os.Args[separator+2:]...),
+			Input:       string(input),
+			CWD:         cwd,
+			Environment: os.Environ(),
 		}
 		_ = json.NewEncoder(os.Stdout).Encode(value)
 	case "large_stdout":
@@ -88,7 +84,7 @@ func helperRequest(t *testing.T, runner *Runner, mode string) processorprocess.R
 		StdoutLimit:         4096,
 		StderrLimit:         1024,
 		ExpectedIdentity:    identity,
-		EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV1,
+		EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV2,
 	}
 }
 
@@ -108,6 +104,7 @@ func assertProcessorFault(t *testing.T, err error, kind fault.Kind, code, messag
 
 func TestRunUsesExactArgvInputAndIsolatedEnvironment(t *testing.T) {
 	t.Setenv("ATSURA_SECRET_CANARY", "must-not-be-inherited")
+	t.Setenv("CLAUDE_CONFIG_DIR", "/must/not/be/inherited")
 	t.Setenv("PATH", "/must/not/be/inherited")
 	runner := New()
 	request := helperRequest(t, runner, "environment")
@@ -119,11 +116,10 @@ func TestRunUsesExactArgvInputAndIsolatedEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	var got struct {
-		Args         []string `json:"args"`
-		Input        string   `json:"input"`
-		CWD          string   `json:"cwd"`
-		Environment  []string `json:"environment"`
-		ClaudeAbsent bool     `json:"claude_absent"`
+		Args        []string `json:"args"`
+		Input       string   `json:"input"`
+		CWD         string   `json:"cwd"`
+		Environment []string `json:"environment"`
 	}
 	if err := json.Unmarshal(result.Stdout, &got); err != nil {
 		t.Fatalf("decode helper output: %v (%q)", err, result.Stdout)
@@ -131,30 +127,42 @@ func TestRunUsesExactArgvInputAndIsolatedEnvironment(t *testing.T) {
 	if !slices.Equal(got.Args, []string{"literal", "$(not-a-shell)", ""}) || got.Input != string(request.Input) {
 		t.Fatalf("args/input = %#v / %q", got.Args, got.Input)
 	}
-	if !got.ClaudeAbsent || filepath.Base(got.CWD) != "work" {
-		t.Fatalf("cwd=%q claude_absent=%t", got.CWD, got.ClaudeAbsent)
+	if filepath.Base(got.CWD) != "work" {
+		t.Fatalf("cwd=%q", got.CWD)
 	}
 	environment := strings.Join(got.Environment, "\n")
 	for _, required := range []string{
 		"RTK_TELEMETRY_DISABLED=1", "RTK_TEE=0", "RTK_NO_TOML=1",
 		"LANG=C", "LC_ALL=C", "TZ=UTC", "NO_COLOR=1",
 		"HOME=", "XDG_CONFIG_HOME=", "XDG_DATA_HOME=", "XDG_CACHE_HOME=",
-		"XDG_STATE_HOME=", "RTK_DB_PATH=", "CLAUDE_CONFIG_DIR=",
+		"XDG_STATE_HOME=", "RTK_DB_PATH=",
 	} {
 		if !strings.Contains(environment, required) {
 			t.Fatalf("environment lacks %q: %q", required, environment)
 		}
 	}
 	environmentKeys := make(map[string]struct{}, len(got.Environment))
+	orderedKeys := make([]string, 0, len(got.Environment))
 	for _, entry := range got.Environment {
 		key, _, _ := strings.Cut(entry, "=")
 		environmentKeys[key] = struct{}{}
+		orderedKeys = append(orderedKeys, key)
 	}
-	if _, exists := environmentKeys["ATSURA_SECRET_CANARY"]; exists {
-		t.Fatalf("ambient environment leaked: %q", environment)
+	for _, forbidden := range []string{"ATSURA_SECRET_CANARY", "CLAUDE_CONFIG_DIR", "PATH"} {
+		if _, exists := environmentKeys[forbidden]; exists {
+			t.Fatalf("ambient environment %q leaked: %q", forbidden, environment)
+		}
 	}
-	if _, exists := environmentKeys["PATH"]; exists {
-		t.Fatalf("PATH leaked: %q", environment)
+	if runtime.GOOS != "windows" {
+		wantedKeys := []string{
+			"APPDATA", "HOME", "LANG", "LC_ALL", "LOCALAPPDATA", "NO_COLOR",
+			"RTK_DB_PATH", "RTK_NO_TOML", "RTK_TEE", "RTK_TELEMETRY_DISABLED",
+			"TEMP", "TMP", "TMPDIR", "TZ", "USERPROFILE", "XDG_CACHE_HOME",
+			"XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME",
+		}
+		if !slices.Equal(orderedKeys, wantedKeys) {
+			t.Fatalf("environment keys = %q", orderedKeys)
+		}
 	}
 	root := filepath.Dir(got.CWD)
 	if _, err := os.Stat(root); !errors.Is(err, os.ErrNotExist) {
@@ -242,6 +250,32 @@ func TestRunFailsClosedWhenSetupOrCleanupFails(t *testing.T) {
 	assertProcessorFault(t, err, fault.KindUnavailable, "processor_cleanup_failed", "The isolated processor environment could not be removed completely.", false)
 	if removeErr := os.RemoveAll(root); removeErr != nil {
 		t.Fatal(removeErr)
+	}
+}
+
+func TestPrepareIsolationRestrictsRootMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX directory permission contract")
+	}
+	root := filepath.Join(t.TempDir(), "atsura-processor-mode")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runner := New()
+	runner.createRoot = func() (string, error) { return root, nil }
+	isolated, err := runner.prepareIsolation()
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o700 {
+		t.Fatalf("root mode = %v", info.Mode().Perm())
+	}
+	if err := runner.cleanupIsolation(isolated); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -385,7 +419,7 @@ func copiedRequest(t *testing.T, runner *Runner, path, mode string) processorpro
 	return processorprocess.Request{
 		Executable: path, Args: []string{"-test.run=TestProcessorExecHelper", "--", mode},
 		Timeout: processorprocess.MaxTimeout, StdoutLimit: 4096, StderrLimit: 1024,
-		ExpectedIdentity: identity, EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV1,
+		ExpectedIdentity: identity, EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV2,
 	}
 }
 

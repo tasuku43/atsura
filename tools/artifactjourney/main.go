@@ -1,5 +1,7 @@
 // Command artifactjourney verifies one exact Atsura release archive through a
-// credential- and network-free native source journey.
+// credential-free native source journey and an explicitly supplied pinned
+// processor artifact. It makes no child-process, filesystem, or network-absence
+// claim without an external observer.
 package main
 
 import (
@@ -18,12 +20,30 @@ import (
 const toolName = "artifactjourney"
 
 type options struct {
-	archive  string
-	source   string
-	tag      string
-	revision string
-	goos     string
-	goarch   string
+	archive          string
+	processorArchive string
+	source           string
+	tag              string
+	revision         string
+	goos             string
+	goarch           string
+	repositoryRoot   string
+}
+
+type singleOption struct {
+	value string
+	set   bool
+}
+
+func (o *singleOption) String() string { return o.value }
+
+func (o *singleOption) Set(value string) error {
+	if o.set {
+		return fmt.Errorf("argument was provided more than once")
+	}
+	o.value = value
+	o.set = true
+	return nil
 }
 
 func main() {
@@ -38,6 +58,11 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 	if err != nil {
 		return err
 	}
+	repositoryRoot, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("repository root is unavailable")
+	}
+	configuration.repositoryRoot = repositoryRoot
 	if runtime.GOOS != configuration.goos || runtime.GOARCH != configuration.goarch {
 		return fmt.Errorf("native host tuple does not match --goos/--goarch")
 	}
@@ -45,12 +70,17 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 	if err != nil {
 		return err
 	}
+	return writeEvidence(output, evidence)
+}
+
+func writeEvidence(output io.Writer, evidence evidenceDocument) error {
 	encoded, err := json.Marshal(evidence)
 	if err != nil || len(encoded)+1 > maxEvidenceBytes {
 		return fmt.Errorf("evidence encoding failed")
 	}
 	encoded = append(encoded, '\n')
-	if _, err := output.Write(encoded); err != nil {
+	written, err := output.Write(encoded)
+	if err != nil || written != len(encoded) {
 		return fmt.Errorf("evidence write failed")
 	}
 	return nil
@@ -58,9 +88,11 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 
 func parseOptions(args []string) (options, error) {
 	var result options
+	var processorArchive singleOption
 	flags := flag.NewFlagSet(toolName, flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	flags.StringVar(&result.archive, "archive", "", "exact release archive")
+	flags.Var(&processorArchive, "processor-archive", "already-downloaded official processor archive")
 	flags.StringVar(&result.source, "source", "", "native GitHub-compatible source fixture")
 	flags.StringVar(&result.tag, "tag", "", "release tag")
 	flags.StringVar(&result.revision, "revision", "", "full release revision")
@@ -80,6 +112,14 @@ func parseOptions(args []string) (options, error) {
 	}
 	if !supportedTarget(result.goos, result.goarch) {
 		return options{}, fmt.Errorf("--goos/--goarch is not a supported release target")
+	}
+	result.processorArchive = processorArchive.value
+	if result.goos == "windows" {
+		if processorArchive.set {
+			return options{}, fmt.Errorf("--processor-archive is unsupported for Windows")
+		}
+	} else if !processorArchive.set || result.processorArchive == "" {
+		return options{}, fmt.Errorf("--processor-archive is required for POSIX targets")
 	}
 	return result, nil
 }

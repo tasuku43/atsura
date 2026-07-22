@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Replay the bounded source and ordinary-wrapper journey against one exact
-# native release archive.
+# Replay the bounded source, ordinary-wrapper, and finite optimizer journey
+# against one exact native release archive.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export GO111MODULE=on
@@ -41,6 +41,7 @@ if [[ $host_os != "$goos" || $host_arch != "$goarch" ]]; then
 fi
 
 journey_root=$(mktemp -d "${TMPDIR:-/tmp}/atsura-artifact-journey.XXXXXXXX")
+journey_root=$(cd "$journey_root" && pwd -P)
 cleanup() { rm -rf -- "$journey_root"; }
 trap cleanup EXIT
 
@@ -50,8 +51,23 @@ if [[ $goos == windows ]]; then
 fi
 go build -buildvcs=false -trimpath -o "$fixture" ./tools/sourcefixture
 
+processor_arguments=()
+if [[ $goos != windows ]]; then
+  processor_root=$journey_root/processor-download
+  mkdir -m 700 "$processor_root"
+  processor_archive=$(go run ./tools/processorfetch \
+    --target "$goos/$goarch" \
+    --output-dir "$processor_root")
+  if [[ $processor_archive != /* || ! -f $processor_archive ]]; then
+    echo "pinned processor archive fetch did not return an absolute file" >&2
+    exit 1
+  fi
+  processor_arguments=(--processor-archive "$processor_archive")
+fi
+
 go run ./tools/artifactjourney \
   --archive "$archive" \
+  "${processor_arguments[@]}" \
   --source "$fixture" \
   --tag "$tag" \
   --revision "$revision" \

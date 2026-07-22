@@ -1857,7 +1857,7 @@ func DefaultCatalog() Catalog {
 				},
 				Prerequisites: []string{
 					"An official RTK v0.43.0 executable at one explicit absolute path on a maintained Linux or Darwin architecture; Atsura does not discover, download, install, or configure it.",
-					"Inspection starts exactly one no-shell --version probe in atsura.processor.rtk_isolated.v1 with no inherited credentials or coding-agent host configuration.",
+					"Inspection starts exactly one no-shell --version probe in atsura.processor.rtk_isolated.v2 with no inherited credentials or coding-agent host configuration.",
 				},
 				Errors: []CommandError{
 					declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help processor inspect", "Pass the exact rtk adapter and one absolute executable path."),

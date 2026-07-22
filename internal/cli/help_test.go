@@ -436,7 +436,7 @@ func TestTailoringExactAgentHelpPublishesSelfContainedAuthoringContracts(t *test
 		t.Fatalf("processor inspect schema=%+v", schema)
 	}
 	processorPrerequisites := strings.Join(processorInspect.Contract.Prerequisites, "\n")
-	for _, want := range []string{"does not discover, download, install, or configure", "exactly one no-shell --version probe", "atsura.processor.rtk_isolated.v1", "no inherited credentials"} {
+	for _, want := range []string{"does not discover, download, install, or configure", "exactly one no-shell --version probe", "atsura.processor.rtk_isolated.v2", "no inherited credentials"} {
 		if !strings.Contains(processorPrerequisites, want) {
 			t.Errorf("processor inspect prerequisites lack %q: %s", want, processorPrerequisites)
 		}

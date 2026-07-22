@@ -38,7 +38,7 @@ func observationFixture(t *testing.T) processorprocess.Observation {
 		},
 		Version: "1.0.0",
 		Probe: processorprocess.Probe{
-			Argv: []string{"--version"}, EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV1, Attempts: 1,
+			Argv: []string{"--version"}, EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV2, Attempts: 1,
 		},
 	}
 }
