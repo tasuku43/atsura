@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tasuku43/atsura/internal/app/planapply"
 	"github.com/tasuku43/atsura/internal/domain/bundletrust"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
@@ -15,6 +16,16 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/tailoring"
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
 	"github.com/tasuku43/atsura/internal/domain/tailoringplan"
+)
+
+const (
+	runtimeMessageGeneric  = "The source adapter cannot prove this wrapper's runtime output contract."
+	runtimeMessageAdapter  = "The wrapper plan's source adapter contract is not admitted by this runtime."
+	runtimeMessageVersion  = "The wrapper plan's source version is not admitted by this runtime."
+	runtimeMessageCommand  = "The wrapper plan's source command is not admitted by this runtime."
+	runtimeMessageOutput   = "The wrapper plan does not declare the admitted transforming JSON output contract."
+	runtimeMessageArgv     = "The wrapper plan's source arguments are outside the admitted command grammar."
+	runtimeMessageSelector = "The wrapper plan does not contain exactly one admitted JSON selector matching its output fields."
 )
 
 type bundleStub struct {
@@ -140,7 +151,8 @@ func executeBundle(t *testing.T, transform bool) (tailoringbundle.Bundle, string
 func executeService(t *testing.T, compatibility *compatibilityStub, process *processStub, parser *parserStub) (*Service, tailoringplan.Attempt) {
 	t.Helper()
 	bundle, digest, identity := executeBundle(t, true)
-	return New(&bundleStub{bundle: bundle, digest: digest}, &adoptionStub{state: bundletrust.StateAdopted}, &identityStub{value: identity}, compatibility, process, parser), tailoringplan.Attempt{Executable: "fixture", Args: []string{"item", "list"}}
+	applier := planapply.New(&bundleStub{bundle: bundle, digest: digest}, &adoptionStub{state: bundletrust.StateAdopted}, &identityStub{value: identity}, compatibility, process, parser)
+	return NewWithApplier(applier), tailoringplan.Attempt{Executable: "fixture", Args: []string{"item", "list"}}
 }
 
 func TestExecuteRebuildsPlanRunsBoundSourceOnceAndTransformsTypedJSON(t *testing.T) {
