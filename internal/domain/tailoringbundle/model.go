@@ -15,6 +15,7 @@ import (
 
 	"github.com/tasuku43/atsura/internal/domain/processorprocess"
 	"github.com/tasuku43/atsura/internal/domain/sourcecatalog"
+	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
 	"github.com/tasuku43/atsura/internal/domain/tailoring"
 )
 
@@ -496,6 +497,9 @@ func validateOptionDefaults(command sourcecatalog.Command, surface OptionSurface
 		}
 		if err := validateText(optionDefault.Value, 4096); err != nil {
 			return fmt.Errorf("option default %d value: %v", index, err)
+		}
+		if len(optionDefault.Option)+1+len(optionDefault.Value) > sourceprocess.MaxArgumentBytes {
+			return fmt.Errorf("option default %d canonical argument exceeds its bound", index)
 		}
 		if _, duplicate := seen[optionDefault.Option]; duplicate {
 			return fmt.Errorf("option default %q is duplicated", optionDefault.Option)

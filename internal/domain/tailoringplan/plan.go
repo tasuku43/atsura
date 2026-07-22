@@ -671,6 +671,9 @@ func validatePlanOptionDefaults(defaults []tailoringbundle.OptionDefault, append
 		if err := validateText(optionDefault.Value, sourceprocess.MaxArgumentBytes); err != nil {
 			return fmt.Errorf("option %q value: %v", optionDefault.Option, err)
 		}
+		if len(optionDefault.Option)+1+len(optionDefault.Value) > sourceprocess.MaxArgumentBytes {
+			return fmt.Errorf("option %q canonical argument exceeds its bound", optionDefault.Option)
+		}
 		if _, exists := configured[optionDefault.Option]; exists {
 			return fmt.Errorf("option %q is duplicated", optionDefault.Option)
 		}

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/tasuku43/atsura/internal/domain/sourcecatalog"
+	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
 )
 
 func bundleCatalog() sourcecatalog.Catalog {
@@ -338,7 +339,9 @@ func TestOptionDefaultsValidateCatalogSurfaceValuesAndAppendOverlap(t *testing.T
 		{name: "flag without value", mutate: func(entry *CommandEntry) { entry.Wrapper.Invoke.OptionDefaults[0].Option = "--verbose" }},
 		{name: "structured output selector", mutate: func(entry *CommandEntry) { entry.Wrapper.Invoke.OptionDefaults[0].Option = "--json" }},
 		{name: "empty value", mutate: func(entry *CommandEntry) { entry.Wrapper.Invoke.OptionDefaults[0].Value = "" }},
-		{name: "oversize value", mutate: func(entry *CommandEntry) { entry.Wrapper.Invoke.OptionDefaults[0].Value = strings.Repeat("x", 4097) }},
+		{name: "oversize canonical argument", mutate: func(entry *CommandEntry) {
+			entry.Wrapper.Invoke.OptionDefaults[0].Value = strings.Repeat("x", sourceprocess.MaxArgumentBytes-len("--limit=")+1)
+		}},
 		{name: "unsafe control value", mutate: func(entry *CommandEntry) { entry.Wrapper.Invoke.OptionDefaults[0].Value = "unsafe\nvalue" }},
 		{name: "unsafe format value", mutate: func(entry *CommandEntry) { entry.Wrapper.Invoke.OptionDefaults[0].Value = "unsafe\u2060value" }},
 		{name: "unsafe line separator value", mutate: func(entry *CommandEntry) { entry.Wrapper.Invoke.OptionDefaults[0].Value = "unsafe\u2028value" }},
@@ -379,7 +382,7 @@ func TestOptionDefaultsValidateCatalogSurfaceValuesAndAppendOverlap(t *testing.T
 	}
 
 	boundary := valid
-	boundary.Wrapper = defaultingWrapper(OptionDefault{Option: "--limit", Value: strings.Repeat("x", 4096)})
+	boundary.Wrapper = defaultingWrapper(OptionDefault{Option: "--limit", Value: strings.Repeat("x", sourceprocess.MaxArgumentBytes-len("--limit="))})
 	boundary.Wrapper.Invoke.AppendArgs = make([]string, MaxWrapperArguments-1)
 	for index := range boundary.Wrapper.Invoke.AppendArgs {
 		boundary.Wrapper.Invoke.AppendArgs[index] = "argument"

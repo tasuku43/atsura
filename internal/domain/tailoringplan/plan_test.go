@@ -525,6 +525,11 @@ func TestPlanValidationReDerivesOptionDefaultDecisionsAndInvocation(t *testing.T
 			plan.Stages.Invoke.OptionDefaults[0].Value = "bad\nvalue"
 			plan.SpecificationEntry.Wrapper.Invoke.OptionDefaults[0].Value = "bad\nvalue"
 		}},
+		{name: "oversize canonical default argument", mutate: func(plan *Plan) {
+			value := strings.Repeat("x", sourceprocess.MaxArgumentBytes-len("--limit=")+1)
+			plan.Stages.Invoke.OptionDefaults[0].Value = value
+			plan.SpecificationEntry.Wrapper.Invoke.OptionDefaults[0].Value = value
+		}},
 		{name: "coordinated append overlap", mutate: func(plan *Plan) {
 			plan.Stages.Invoke.AppendedArgs = []string{"--limit=1"}
 			plan.SpecificationEntry.Wrapper.Invoke.AppendArgs = []string{"--limit=1"}
