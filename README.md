@@ -41,7 +41,10 @@ source inspect + optional processor inspect
   bound to one exact adopted bundle and the current absolute `atr` identity.
   Its JSON review envelope is schema 2 and reports both source and processor
   attempts as zero.
-  The fixed function forwards ordinary argv to `wrapper run`, which applies the
+  Contract 2 compiles root, included-namespace, and included-command final
+  `--help` views from that exact bundle. Those views start no bound `atr`,
+  source, or processor; every other argv list is forwarded unchanged to
+  `wrapper run`, which applies the
   same fresh plan. A `transformed_json` plan emits one compact JSON object or
   array; a `source_stream_passthrough` plan returns conventionally completed
   source stdout, stderr, and status without changing their bytes; and an
@@ -231,13 +234,26 @@ function. Activation is deliberately caller-owned:
   --bundle /tmp/atsura-bundle.json > /tmp/atsura-gh-wrapper.sh
 
 . /tmp/atsura-gh-wrapper.sh
+gh --help
+gh pr --help
+gh pr list --help
 gh pr list --limit=2
 unset -f gh
 ```
 
-The fixed function invokes the absolute `atr` that rendered it, passes the
-complete bundle/runtime closure to `wrapper run`, inserts the required `--`, and
-forwards `"$@"` without `eval` or `sh -c`. Successful ordinary-command stdout
+Sourcing deliberately removes an existing `gh` alias before defining the
+function so the ordinary name resolves to the wrapper. It does not edit shell
+startup files; restore a prior alias yourself after `unset -f gh` if needed.
+This activation expects `unalias` to be the standard shell utility rather than
+a caller-defined function.
+
+The fixed function answers the three shown help selectors from the exact
+bundle-derived surface and prints its full bundle digest. This artifact-local
+help does not execute raw source help or claim that later source/runtime state
+is current. For every non-help argv list, the function invokes the absolute
+`atr` that rendered it, passes the complete bundle/runtime closure to
+`wrapper run`, inserts the required `--`, and forwards `"$@"` without `eval` or
+`sh -c`. Successful ordinary-command stdout
 and status follow the fresh plan's required result mode. `transformed_json`
 emits exactly one compact object or array plus LF, empty stderr, and status
 zero. `source_stream_passthrough` emits the conventionally completed source
@@ -405,10 +421,17 @@ The following remain later research or vertical-slice decisions:
 - jq, plugin, or additional external-transformer contracts.
 
 The optimizer implementation and controlled conformance tests are distinct
-from release evidence. A release-quality optimizer claim still requires the
-optimizer-aware successor to installed-artifact evidence schema 4 to pass on
-Linux and Darwin amd64/arm64 with the exact official RTK artifact. Windows has
-no optimizer claim.
+from release evidence. Historical installed-artifact schema 4 predates the
+optimizer, and schema 5 adds optimizer evidence but predates static tailored
+help. Current evidence schema 6 retains both earlier proof sets and adds one
+bounded `tailored_help` record. On POSIX rows it binds the full bundle and
+rendered-wrapper digests plus wrapper contract 2, proves exact root, namespace,
+and command `--help` while the bound `atr` is non-executable, and records the
+hidden/unknown fallthrough faults with zero source and processor attempts.
+Windows records an explicit unsupported result with an empty help proof.
+Aggregate schema 2 remains unchanged. A release-quality claim still requires
+all five native schema-6 rows and that aggregate to pass for one exact revision;
+that has not yet been established for the current revision.
 
 Current plan parsing is deliberately bounded. Source short options,
 root/global options, and command-specific positional grammar are not completely

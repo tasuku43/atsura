@@ -19,6 +19,7 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
 	"github.com/tasuku43/atsura/internal/domain/tailoringplan"
+	"github.com/tasuku43/atsura/internal/domain/wrapperbinding"
 )
 
 const (
@@ -1234,6 +1235,7 @@ func legacyMigrationCommand(path, summary, args, outcome, recovery string, input
 
 // DefaultCatalog returns the public CLI contract.
 func DefaultCatalog() Catalog {
+	wrapperContractVersion := strconv.Itoa(wrapperbinding.ContractVersion)
 	return NewCatalog(
 		CommandSpec{
 			Path:    "doctor",
@@ -1597,13 +1599,13 @@ func DefaultCatalog() Catalog {
 		},
 		CommandSpec{
 			Path:    "wrapper render",
-			Summary: "Render one adopted bundle as a deterministic POSIX function",
+			Summary: "Render one adopted bundle as a self-describing deterministic POSIX function",
 			Args:    "--bundle <absolute-path> [--format text|json]",
 			Effect:  operation.EffectRead,
 			Role:    RoleUtility,
 			Agent: AgentContract{
 				CapabilityID: "tailoring.wrapper.materialize",
-				Outcome:      "Produce fixed POSIX function bytes and a review digest bound to one adopted purpose bundle, every exact external processor, and the exact current Atsura runtime",
+				Outcome:      "Produce fixed POSIX function bytes with bundle-derived tailored help and a review digest bound to one adopted purpose bundle, every exact external processor, and the exact current Atsura runtime",
 				Inputs: []CommandInput{
 					{Name: "--bundle", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Use one exact absolute clean path to the bounded canonical JSON document emitted by bundle build.", AllowedValues: []string{}},
 					{Name: "--format", Source: InputSourceFlag, Required: false, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Choose raw sourceable function text or its schema-2 JSON review envelope.", AllowedValues: []string{"text", "json"}, DefaultValue: stringPointer("text")},
@@ -1626,9 +1628,9 @@ func DefaultCatalog() Catalog {
 				},
 				Prerequisites: []string{
 					"Linux or macOS, one absolute-path current-schema bundle whose exact digest is user-adopted, and current source, processor, plus Atsura executable identities.",
-					"The bundle requested executable must be one portable non-reserved POSIX Name; it is never derived from a path or basename.",
+					"The bundle requested executable must be one portable POSIX Name outside the maintained reserved, fixed-utility, and shell-conflict set; it is never derived from a path or basename.",
 					"The complete included surface and any exact processor tuple must be admitted by the maintained source and processor runtime contracts, including every exposed option.",
-					"Text output is fixed product source, not specification-authored code; activation and later modification of those bytes remain caller-owned.",
+					"Contract-2 text output is fixed product source, not specification-authored code; root, included-namespace, and included-command final --help views are compiled from the bundle, while activation and later modification of the bytes remain caller-owned.",
 				},
 				Errors: wrapperRenderErrors(),
 			},
@@ -1637,14 +1639,14 @@ func DefaultCatalog() Catalog {
 		CommandSpec{
 			Path:    "wrapper run",
 			Summary: "Apply one render-bound wrapper invocation through a fresh plan",
-			Args:    "--contract-version=1 --bundle=<absolute-path> --bundle-digest=<sha256> --runtime-path=<absolute-path> --runtime-sha256=<sha256> --runtime-size=<bytes> -- [argv]",
+			Args:    "--contract-version=" + wrapperContractVersion + " --bundle=<absolute-path> --bundle-digest=<sha256> --runtime-path=<absolute-path> --runtime-sha256=<sha256> --runtime-size=<bytes> -- [argv]",
 			Effect:  operation.EffectExecute,
 			Role:    RoleUtility,
 			Agent: AgentContract{
 				CapabilityID: "tailoring.wrapper.materialize",
 				Outcome:      "Verify one render-produced bundle and runtime closure, rebuild its fresh plan, and emit only its declared transformed-JSON, source-stream, or original-preserving optimizer result after at most one exact source and one exact processor attempt",
 				Inputs: []CommandInput{
-					{Name: "--contract-version", Source: InputSourceFlag, Required: true, ValueKind: InputValueInteger, Cardinality: InputCardinalitySingle, Description: "Use the exact generated wrapper binding contract version.", AllowedValues: []string{"1"}, Minimum: int64Pointer(1), Maximum: int64Pointer(1)},
+					{Name: "--contract-version", Source: InputSourceFlag, Required: true, ValueKind: InputValueInteger, Cardinality: InputCardinalitySingle, Description: "Use the exact generated wrapper binding contract version.", AllowedValues: []string{wrapperContractVersion}, Minimum: int64Pointer(int64(wrapperbinding.ContractVersion)), Maximum: int64Pointer(int64(wrapperbinding.ContractVersion))},
 					{Name: "--bundle", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Pass the exact absolute clean bundle locator emitted by wrapper render.", AllowedValues: []string{}},
 					{Name: "--bundle-digest", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Pass the exact lowercase SHA-256 bundle digest emitted by wrapper render.", AllowedValues: []string{}},
 					{Name: "--runtime-path", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Pass the exact absolute clean Atsura executable path emitted by wrapper render.", AllowedValues: []string{}},

@@ -366,7 +366,7 @@ plan schema 5. It binds exact caller argv `go test`, source argv
   claim absence of child
   processes, outside-root filesystem access, or network attempts without a
   separately implemented and validated external observer. A release-quality
-  native claim belongs only to an exact revision whose evidence schema 5 rows
+  native claim belongs only to an exact revision whose evidence schema 6 rows
   and aggregate schema 2 pass the required five-target workflow.
 
 ADR 0009's rejected `git-log` tuple remains a negative fixture: executable
@@ -464,7 +464,8 @@ The slice must prove:
   structured `wrapper_platform_not_supported`, emits no wrapper bytes, and has
   no POSIX activation claim;
 - the bundle's requested executable is used verbatim only when it is a portable
-  non-reserved POSIX Name; no basename or path normalization invents a command;
+  POSIX Name outside the maintained reserved/fixed and implementation-specific
+  function-name set; no basename or path normalization invents a command;
 - the complete included surface contains exactly one command and result mode
   covered by its registry-selected verifier before bytes are rendered: GitHub
   CLI contract 2 admits finite `issue list` / `pr list` transform, identity, or
@@ -472,7 +473,8 @@ The slice must prove:
   or the exact RTK-bound `test -json` optimizer, each with no caller-visible
   option surface;
 - the wrapper binding contains only wrapper contract, bundle identity, runtime
-  identity, source identity, and ordinary command spelling;
+  identity, source identity, ordinary command spelling, and the bounded help
+  projection rederived from the included surface;
 - no bundle, binding, plan, result, help, or capability field names a
   coding-agent host, hook event, permission value, settings path, session,
   transcript, or model;
@@ -484,12 +486,26 @@ The slice must prove:
   integration/hook routes and capability identifiers without reserving a
   generic `integration` namespace;
 - the generated function passes the complete render-produced closure to
-  `wrapper run`, includes the explicit `--` separator, accepts exact argv rather
-  than a shell command string, and reaches the same plan constructor and
-  source-execution boundary as the direct gateway;
+  `wrapper run` for every non-help argv list, includes the explicit `--`
+  separator, accepts exact argv rather than a shell command string, and reaches
+  the same plan constructor and source-execution boundary as the direct
+  gateway;
+- generated-wrapper contract 2 derives root, namespace, and exact-command
+  views only from included surface entries and effective long options; final
+  exact `--help` prints deterministic bundle-digested text with zero bound
+  `atr`, source, and processor attempts, while excluded and unknown selectors
+  expose no raw source help and retain existing fail-closed faults;
 - spaces, empty values, Unicode, dash-prefixed values, literal metacharacters,
   and ordering survive wrapper forwarding without `eval`, `sh -c`, or shell
   reconstruction;
+- caller-defined `command`, `return`, `test`, and `printf` functions or aliases
+  cannot intercept tailored-help matching, rendering, or termination; cleanup
+  is confined to the generated function's subshell and the caller's
+  definitions remain intact;
+- an existing exact same-name alias is removed before the function definition,
+  alias-safe no-op fallback cannot intercept activation, and source-file tests
+  prove the intended wrapper name is defined and selected under the declared
+  standard-`unalias` POSIX activation precondition;
 - missing adoption, runtime or bundle mismatch, source drift, absent surface
   command, invalid option, processor drift, or unsupported runtime starts zero
   source and processor processes;
@@ -614,27 +630,37 @@ bytes in persisted or structured evidence.
   change the bytes selected for replay.
 - Artifact-evidence aggregate schema 2 owns the exact five-target base set.
   Historical evidence schema 4 proves only the pre-optimizer GitHub and Go
-  identity-wrapper journey. Current schema 5 retains those base facts and adds Go
-  CLI contract 2, processor-observation schema 1, the exact RTK identity and
+  identity-wrapper journey. Schema 5 retains those base facts and adds Go CLI
+  contract 2, processor-observation schema 1, the exact RTK identity and
   invocation, schema-3 bundle and schema-5 plan identities, exact caller/source/
   processor argv, formats, modes, v2 environment and bounds, separate source
   and processor-inspection evidence, disposition/status, source-fixture attempt
-  counts, and leak booleans. The four Linux/macOS optimizer targets must prove
-  `optimized` and reachable `preserved_before_processor`; Windows records no
-  optimizer case and no processor evidence. Installed evidence does not claim
-  processor-launch counts without an accepted external observer; controlled
-  application and infrastructure tests own that attempt truth. Each native
-  journey locally verifies the supplied RTK archive and extracted executable
-  against the code-pinned manifest; the processor archive is never uploaded as
-  an Atsura artifact. A dependent job pairs each document with the actual
-  candidate Atsura archive, validates the exact pinned processor identity
-  recorded by every applicable row, recomputes candidate hashes, strictly
-  rejects missing, extra, duplicate, symlinked, malformed, or cross-revision
-  inputs, and emits a path-free unattested digest index. No candidate rebuild
-  or replay substitute is admitted.
-  In schema 5, the outer `go_source` wrapper fields continue to
-  own the identity-wrapper baseline; its nested `optimizer` object owns a
-  separate bundle, plan, rendered-wrapper digest, cases, and faults.
+  counts, and leak booleans. It is optimizer-aware but predates static tailored
+  help.
+- Current evidence schema 6 retains the complete schema-5 record and adds a
+  bounded `tailored_help` object. POSIX rows bind the full transformed-PR bundle
+  and wrapper-source digests plus wrapper contract 2; require the exact root,
+  namespace, and exact-command final-`--help` argv and output digests while the
+  bound `atr` is non-executable; and record the hidden-command
+  `command_not_in_surface` and unknown-selector `invalid_invocation` faults with
+  zero source and processor attempts. Windows requires
+  `platform_not_supported`, empty view and fault lists, absent binding digests,
+  and zero attempts. Aggregate schema 2 is unchanged.
+- The four Linux/macOS optimizer targets must prove `optimized` and reachable
+  `preserved_before_processor`; Windows records no optimizer case and no
+  processor evidence. Installed evidence does not claim processor-launch
+  counts without an accepted external observer; controlled application and
+  infrastructure tests own that attempt truth. Each native journey locally
+  verifies the supplied RTK archive and extracted executable against the code-
+  pinned manifest; the processor archive is never uploaded as an Atsura
+  artifact. A dependent job pairs each document with the actual candidate
+  Atsura archive, validates the exact pinned processor identity recorded by
+  every applicable row, recomputes candidate hashes, strictly rejects missing,
+  extra, duplicate, symlinked, malformed, or cross-revision inputs, and emits a
+  path-free unattested digest index. No candidate rebuild or replay substitute
+  is admitted. The inherited schema-5 optimizer shape keeps the outer
+  `go_source` identity baseline and the nested `optimizer` bundle, plan,
+  rendered-wrapper digest, cases, and faults separate.
 - Architecture and public guards own dependency direction and secret-free
   repository state.
 
@@ -673,9 +699,9 @@ true on the same tree:
     fault, schema-2 review-envelope, and scoped-help contracts match the
     implementation; `wrapper run` publishes all three schema-12 result modes;
 11. deterministic binding/render tests cover portable command names, POSIX
-    quoting, exact bundle/runtime/source/processor closure, whole-surface
-    admission, hostile argv forwarding, and absence of coding-agent-host
-    fields;
+    quoting, contract-2 root/namespace/exact tailored help, exact
+    bundle/runtime/source/processor closure, whole-surface admission, hostile
+    argv forwarding, and absence of coding-agent-host fields;
 12. the production-composition recovery matrix is an exact bijection with every
     catalog-declared fault, covers each pre-start and post-start attempt phase,
     and leaks no raw or secret canary;
@@ -690,21 +716,21 @@ true on the same tree:
     processors, or coding-agent-host adaptation outside explicit migration and
     superseded-history contexts.
 
-Implementation completion is not yet a release-quality optimizer claim. That
-claim additionally requires all of the following for the exact candidate
-revision:
+Implementation completion is not yet a release-quality installed-artifact
+claim. That claim additionally requires all of the following for the exact
+candidate revision:
 
 1. `task release:check` replays the platform-native exact Atsura archive;
 2. CI provides native Linux amd64/arm64, Darwin amd64/arm64, and Windows amd64
    base rows, with the exact official RTK v0.43.0 artifact supplied only to the
    four optimizer-supported rows;
-3. evidence schema 5 records Go CLI
-   contract 2, processor-observation schema 1, exact RTK provenance and
-   identity, bundle/plan digests, exact execution-contract facts, optimized and
-   reachable pre-processor preservation cases, source-fixture attempt counts,
-   processor-inspection evidence, statuses, and bounded leak checks;
-4. Windows proves structured unsupported rendering without receiving a
-   processor artifact or claiming an optimizer;
+3. evidence schema 6 retains the schema-5 optimizer record and additionally
+   records the bounded contract-2 `tailored_help` binding, exact POSIX views,
+   runtime-non-executable condition, fallthrough fault codes, and zero source/
+   processor attempts;
+4. Windows proves structured unsupported rendering and an explicit empty
+   `tailored_help: platform_not_supported` record without receiving a
+   processor artifact or claiming POSIX activation or an optimizer;
 5. aggregation recomputes every candidate Atsura archive hash, validates each
    applicable row's recorded processor identity against the code-pinned
    manifest, rejects missing or extra evidence, and the release publish job

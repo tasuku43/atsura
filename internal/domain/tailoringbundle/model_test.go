@@ -146,6 +146,83 @@ func TestMembershipOptionsAndWrapperAreIndependent(t *testing.T) {
 	}
 }
 
+func TestOptionSurfaceIncludedOptionsProjectsExactCatalogOrderAndArity(t *testing.T) {
+	command := sourcecatalog.Command{Options: []sourcecatalog.Option{
+		{Name: "--format", TakesValue: true},
+		{Name: "--json", TakesValue: true},
+		{Name: "--verbose", TakesValue: false},
+	}}
+	tests := []struct {
+		name    string
+		surface OptionSurface
+		want    []sourcecatalog.Option
+	}{
+		{
+			name:    "inherit all",
+			surface: OptionSurface{Default: SurfaceDefaultInherit, Include: []string{}, Exclude: []string{}},
+			want:    command.Options,
+		},
+		{
+			name:    "inherit except exact exclusion",
+			surface: OptionSurface{Default: SurfaceDefaultInherit, Include: []string{}, Exclude: []string{"--json"}},
+			want:    []sourcecatalog.Option{{Name: "--format", TakesValue: true}, {Name: "--verbose", TakesValue: false}},
+		},
+		{
+			name:    "exclude except exact inclusions",
+			surface: OptionSurface{Default: SurfaceDefaultExclude, Include: []string{"--json", "--verbose"}, Exclude: []string{}},
+			want:    []sourcecatalog.Option{{Name: "--json", TakesValue: true}, {Name: "--verbose", TakesValue: false}},
+		},
+		{
+			name:    "exclude all",
+			surface: OptionSurface{Default: SurfaceDefaultExclude, Include: []string{}, Exclude: []string{}},
+			want:    []sourcecatalog.Option{},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := test.surface.IncludedOptions(command)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, test.want) {
+				t.Fatalf("IncludedOptions() = %+v, want %+v", got, test.want)
+			}
+			if got == nil {
+				t.Fatal("IncludedOptions returned a nil explicit set")
+			}
+			if len(got) > 0 {
+				got[0].Name = "--changed"
+				if command.Options[0].Name != "--format" {
+					t.Fatal("IncludedOptions aliased catalog options")
+				}
+			}
+		})
+	}
+}
+
+func TestOptionSurfaceIncludedOptionsRejectsInvalidSurfaceAndCommandEvidence(t *testing.T) {
+	validCommand := sourcecatalog.Command{Options: []sourcecatalog.Option{{Name: "--json", TakesValue: true}}}
+	validSurface := OptionSurface{Default: SurfaceDefaultInherit, Include: []string{}, Exclude: []string{}}
+	tests := []struct {
+		name    string
+		command sourcecatalog.Command
+		surface OptionSurface
+	}{
+		{name: "nil command options", command: sourcecatalog.Command{}, surface: validSurface},
+		{name: "invalid command option", command: sourcecatalog.Command{Options: []sourcecatalog.Option{{Name: "-json", TakesValue: true}}}, surface: validSurface},
+		{name: "unsorted command options", command: sourcecatalog.Command{Options: []sourcecatalog.Option{{Name: "--verbose"}, {Name: "--json", TakesValue: true}}}, surface: validSurface},
+		{name: "invalid surface default", command: validCommand, surface: OptionSurface{Default: "future", Include: []string{}, Exclude: []string{}}},
+		{name: "unknown included option", command: validCommand, surface: OptionSurface{Default: SurfaceDefaultExclude, Include: []string{"--unknown"}, Exclude: []string{}}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got, err := test.surface.IncludedOptions(test.command); got != nil || err == nil {
+				t.Fatalf("IncludedOptions() = %+v, %v", got, err)
+			}
+		})
+	}
+}
+
 func TestSpecificationRejectsInvalidMembershipOptionsAndWrappers(t *testing.T) {
 	valid := CommandEntry{Command: []string{"item", "list"}, Presence: PresenceInclude, Reason: "Needed.", Options: inheritedOptions(), Wrapper: identityWrapper()}
 	tests := []struct {

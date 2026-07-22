@@ -17,8 +17,9 @@ import (
 )
 
 const (
-	// ContractVersion is the first host-neutral wrapper binding contract.
-	ContractVersion = 1
+	// ContractVersion adds compiled ordinary tailored help to the host-neutral
+	// wrapper material while retaining the same runtime invocation closure.
+	ContractVersion = 2
 
 	MaxBundleLocatorBytes  = 4096
 	MaxCommandNameBytes    = 255
@@ -47,6 +48,7 @@ type Binding struct {
 	BundleLocator   string          `json:"bundle_locator"`
 	BundleDigest    string          `json:"bundle_digest"`
 	CommandName     string          `json:"command_name"`
+	Help            CompiledHelp    `json:"help"`
 	Runtime         RuntimeIdentity `json:"runtime"`
 }
 
@@ -114,11 +116,16 @@ func New(bundleLocator, bundleDigest string, bundle tailoringbundle.Bundle, runt
 	if err != nil || wantedDigest != bundleDigest {
 		return Binding{}, invalid("bundle digest does not match the supplied bundle")
 	}
+	help, err := CompileHelp(bundle)
+	if err != nil {
+		return Binding{}, invalid("compiled help: %v", err)
+	}
 	binding := Binding{
 		ContractVersion: ContractVersion,
 		BundleLocator:   bundleLocator,
 		BundleDigest:    bundleDigest,
 		CommandName:     bundle.Catalog.Source.RequestedExecutable,
+		Help:            help,
 		Runtime: RuntimeIdentity{
 			ResolvedPath: runtime.ResolvedPath,
 			SHA256:       runtime.SHA256,
@@ -142,6 +149,25 @@ func (b Binding) RuntimeInvocation() RuntimeInvocation {
 	}
 }
 
+// Clone detaches every generated-help slice before the binding crosses an
+// application or rendering boundary.
+func (b Binding) Clone() Binding {
+	result := b
+	result.Help = b.Help.Clone()
+	return result
+}
+
+// Equal compares the complete semantic binding, including compiled help,
+// without relying on Go comparability for slice-bearing domain values.
+func (b Binding) Equal(other Binding) bool {
+	return b.ContractVersion == other.ContractVersion &&
+		b.BundleLocator == other.BundleLocator &&
+		b.BundleDigest == other.BundleDigest &&
+		b.CommandName == other.CommandName &&
+		b.Runtime == other.Runtime &&
+		b.Help.Equal(other.Help)
+}
+
 // Validate rejects incomplete, ambiguous, unbounded, or structurally unsafe
 // wrapper facts without consulting the filesystem.
 func (b Binding) Validate() error {
@@ -150,6 +176,9 @@ func (b Binding) Validate() error {
 	}
 	if err := ValidateCommandName(b.CommandName); err != nil {
 		return invalid("command name: %v", err)
+	}
+	if err := b.Help.Validate(); err != nil {
+		return invalid("compiled help: %v", err)
 	}
 	return nil
 }
@@ -196,6 +225,10 @@ func (b Binding) ValidateAgainstBundle(bundle tailoringbundle.Bundle) error {
 	if b.CommandName != bundle.Catalog.Source.RequestedExecutable {
 		return invalid("command name does not match bundle requested_executable")
 	}
+	wantedHelp, err := CompileHelp(bundle)
+	if err != nil || !b.Help.Equal(wantedHelp) {
+		return invalid("compiled help does not match the supplied bundle")
+	}
 	return nil
 }
 
@@ -218,8 +251,8 @@ func (i RuntimeIdentity) SourceProcessIdentity() sourceprocess.Identity {
 }
 
 // ValidateCommandName enforces the portable POSIX Name grammar and excludes
-// shell reserved words and special built-ins. Invalid source spellings are
-// rejected rather than normalized from a locator or resolved source path.
+// reserved words, fixed utilities, and maintained-shell function conflicts.
+// Invalid spellings are rejected rather than normalized from a source path.
 func ValidateCommandName(value string) error {
 	if value == "" || len(value) > MaxCommandNameBytes || !utf8.ValidString(value) {
 		return fmt.Errorf("must be a non-empty bounded portable POSIX Name")
@@ -234,6 +267,9 @@ func ValidateCommandName(value string) error {
 	}
 	if _, special := specialBuiltins[value]; special {
 		return fmt.Errorf("must not be a POSIX shell special built-in")
+	}
+	if _, fixed := forbiddenWrapperFunctionNames[value]; fixed {
+		return fmt.Errorf("must not be a generated-wrapper function name")
 	}
 	return nil
 }
@@ -303,6 +339,19 @@ var specialBuiltins = map[string]struct{}{
 	"times":    {},
 	"trap":     {},
 	"unset":    {},
+}
+
+// Generated material must parse as a function in each maintained POSIX-shell
+// family. These implementation-reserved words are not all POSIX reserved
+// words, and `command` is also used by the fixed help branch.
+var forbiddenWrapperFunctionNames = map[string]struct{}{
+	"command":  {},
+	"coproc":   {},
+	"function": {},
+	"local":    {},
+	"select":   {},
+	"time":     {},
+	"unalias":  {},
 }
 
 func invalid(format string, args ...any) error {

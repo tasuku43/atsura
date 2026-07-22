@@ -226,11 +226,16 @@ type renderMaterialPort struct {
 	calls    int
 	binding  wrapperbinding.Binding
 	events   *[]string
+	mutate   bool
 }
 
 func (p *renderMaterialPort) Render(binding wrapperbinding.Binding) (wrapperbinding.RenderedMaterial, error) {
 	p.calls++
 	p.binding = binding
+	if p.mutate {
+		binding.Help.Commands[0].Path[0] = "mutated"
+		binding.Help.Commands[0].Options = append(binding.Help.Commands[0].Options, wrapperbinding.HelpOption{Name: "--unsafe"})
+	}
 	if p.events != nil {
 		*p.events = append(*p.events, "runtime_render")
 	}
@@ -362,12 +367,28 @@ func TestRenderProducesExactBindingAndDeterministicMaterialWithoutSourceAttempt(
 	if result.Binding.BundleLocator != fixture.bundlePath || result.Binding.BundleDigest != fixture.digest || result.Binding.CommandName != "gh" || result.Binding.Runtime.ResolvedPath != fixture.current.locator {
 		t.Fatalf("binding = %+v", result.Binding)
 	}
-	if fixture.renderer.binding != result.Binding || !reflect.DeepEqual(fixture.compatibility.bundle, fixture.bundle) {
+	if !fixture.renderer.binding.Equal(result.Binding) || !reflect.DeepEqual(fixture.compatibility.bundle, fixture.bundle) {
 		t.Fatal("renderer or compatibility port received different authority")
 	}
 	result.Material.Source[0] = 'x'
 	if fixture.renderer.material.Source[0] != 'g' {
 		t.Fatal("result shared the renderer's source buffer")
+	}
+}
+
+func TestRenderDetachesCompiledHelpAcrossTheRendererBoundary(t *testing.T) {
+	fixture := newRenderFixture(t, "gh")
+	fixture.renderer.mutate = true
+
+	result, err := fixture.service.Render(context.Background(), renderIntent(), fixture.bundlePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := result.Binding.Help.Commands[0].Path; !reflect.DeepEqual(got, []string{"pr", "list"}) {
+		t.Fatalf("returned help path = %v", got)
+	}
+	if got := result.Binding.Help.Commands[0].Options; !reflect.DeepEqual(got, []wrapperbinding.HelpOption{{Name: "--limit", TakesValue: true}}) {
+		t.Fatalf("returned help options = %+v", got)
 	}
 }
 

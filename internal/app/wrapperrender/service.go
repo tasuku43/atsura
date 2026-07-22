@@ -221,7 +221,10 @@ func (s *Service) Render(ctx context.Context, intent operation.Intent, bundleLoc
 			helpAction(),
 		)
 	}
-	material, err := s.renderer.Render(binding)
+	// The renderer is a controlled port but still receives a detached copy so
+	// slice-bearing compiled help cannot mutate the binding returned to the
+	// caller or weaken the bundle-derived closure.
+	material, err := s.renderer.Render(binding.Clone())
 	if err != nil {
 		return Result{}, fault.New(
 			fault.KindContract,
@@ -243,7 +246,7 @@ func (s *Service) Render(ctx context.Context, intent operation.Intent, bundleLoc
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
-	return Result{Binding: binding, Material: material.Clone(), SourceProcessAttempts: 0, ProcessorProcessAttempts: 0}, nil
+	return Result{Binding: binding.Clone(), Material: material.Clone(), SourceProcessAttempts: 0, ProcessorProcessAttempts: 0}, nil
 }
 
 func (s *Service) configured() bool {

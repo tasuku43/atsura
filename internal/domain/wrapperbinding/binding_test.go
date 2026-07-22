@@ -113,7 +113,7 @@ func TestNewDerivesExactCommandNameFromBundle(t *testing.T) {
 	if err := json.Unmarshal(encoded, &top); err != nil {
 		t.Fatal(err)
 	}
-	wantKeys := []string{"bundle_digest", "bundle_locator", "command_name", "contract_version", "runtime"}
+	wantKeys := []string{"bundle_digest", "bundle_locator", "command_name", "contract_version", "help", "runtime"}
 	gotKeys := make([]string, 0, len(top))
 	for key := range top {
 		gotKeys = append(gotKeys, key)
@@ -186,7 +186,8 @@ func TestRuntimeInvocationValidationRejectsInvalidClosure(t *testing.T) {
 		name   string
 		mutate func(*RuntimeInvocation)
 	}{
-		{name: "contract", mutate: func(value *RuntimeInvocation) { value.ContractVersion++ }},
+		{name: "retired contract one", mutate: func(value *RuntimeInvocation) { value.ContractVersion = 1 }},
+		{name: "future contract", mutate: func(value *RuntimeInvocation) { value.ContractVersion++ }},
 		{name: "bundle locator", mutate: func(value *RuntimeInvocation) { value.BundleLocator = "bundle.json" }},
 		{name: "bundle digest", mutate: func(value *RuntimeInvocation) { value.BundleDigest = strings.Repeat("A", 64) }},
 		{name: "runtime path", mutate: func(value *RuntimeInvocation) { value.Runtime.ResolvedPath = "atr" }},
@@ -272,13 +273,13 @@ func TestValidateAgainstBundleRejectsDigestAndCommandMismatch(t *testing.T) {
 }
 
 func TestValidateCommandNameRejectsReservedWordsAndSpecialBuiltins(t *testing.T) {
-	valid := []string{"gh", "git_2", "_tailored"}
+	valid := []string{"gh", "git_2", "_tailored", "printf"}
 	for _, value := range valid {
 		if err := ValidateCommandName(value); err != nil {
 			t.Errorf("ValidateCommandName(%q) = %v", value, err)
 		}
 	}
-	invalid := []string{"", "2gh", "gh-tool", "gh.tool", "\u30ae\u30c3\u30c8", "if", "done", "eval", "exec", "return", strings.Repeat("x", MaxCommandNameBytes+1)}
+	invalid := []string{"", "2gh", "gh-tool", "gh.tool", "\u30ae\u30c3\u30c8", "if", "done", "eval", "exec", "return", "command", "coproc", "function", "local", "select", "time", "unalias", strings.Repeat("x", MaxCommandNameBytes+1)}
 	for _, value := range invalid {
 		if err := ValidateCommandName(value); err == nil {
 			t.Errorf("ValidateCommandName(%q) succeeded", value)

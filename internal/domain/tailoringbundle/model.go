@@ -380,6 +380,48 @@ func (o OptionSurface) validate(command sourcecatalog.Command) error {
 	return nil
 }
 
+// IncludedOptions projects one validated option surface over the exact
+// catalog command that owns it. The result retains catalog order and is
+// detached from both inputs. Inclusion is a tailored-surface fact, not an
+// authorization decision.
+func (o OptionSurface) IncludedOptions(command sourcecatalog.Command) ([]sourcecatalog.Option, error) {
+	if command.Options == nil || len(command.Options) > sourcecatalog.MaxOptions {
+		return nil, fmt.Errorf("command options must be an explicit bounded list")
+	}
+	previous := ""
+	for _, option := range command.Options {
+		if !strings.HasPrefix(option.Name, "--") || !validStableName(strings.TrimPrefix(option.Name, "--")) {
+			return nil, fmt.Errorf("command option %q is invalid", option.Name)
+		}
+		if option.Name <= previous {
+			return nil, fmt.Errorf("command options must be sorted and unique")
+		}
+		previous = option.Name
+	}
+	if err := o.validate(command); err != nil {
+		return nil, err
+	}
+
+	included := make(map[string]bool, len(command.Options))
+	for _, option := range command.Options {
+		included[option.Name] = o.Default == SurfaceDefaultInherit
+	}
+	for _, name := range o.Include {
+		included[name] = true
+	}
+	for _, name := range o.Exclude {
+		included[name] = false
+	}
+
+	result := make([]sourcecatalog.Option, 0, len(command.Options))
+	for _, option := range command.Options {
+		if included[option.Name] {
+			result = append(result, option)
+		}
+	}
+	return result, nil
+}
+
 func (w Wrapper) validate(command sourcecatalog.Command) error {
 	if w.Before == nil || w.After == nil || w.Invoke.AppendArgs == nil {
 		return fmt.Errorf("wrapper before, invoke append_args, and after must be explicit lists")

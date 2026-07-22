@@ -34,7 +34,8 @@ func (*Renderer) Render(binding wrapperbinding.Binding) (wrapperbinding.Rendered
 	return Render(binding)
 }
 
-// Render emits exactly one function whose fixed body forwards argv to the
+// Render emits exactly one function whose fixed help branches describe the
+// compiled tailored surface and whose fallthrough forwards argv to the
 // host-neutral wrapper runtime. No configuration-authored shell body is an
 // input to this API.
 func Render(binding wrapperbinding.Binding) (Result, error) {
@@ -54,8 +55,20 @@ func Render(binding wrapperbinding.Binding) (Result, error) {
 	}
 
 	var source strings.Builder
+	source.WriteString("\\unalias ")
 	source.WriteString(binding.CommandName)
-	source.WriteString("() {\n  ")
+	source.WriteString(" 2>/dev/null || \\:\n")
+	source.WriteString(binding.CommandName)
+	// Run the fixed body in a subshell so removing caller-defined `command` and
+	// `return` functions cannot mutate the caller's shell. POSIX special-builtin
+	// lookup makes alias-safe `unset` authoritative; failure closes the wrapper
+	// before it can misclassify argv or start the bound runtime.
+	source.WriteString("() (\n")
+	source.WriteString("  \\unset -f command return 2>/dev/null || \\exit 125\n")
+	if err := renderHelpBranches(&source, binding); err != nil {
+		return Result{}, fmt.Errorf("%w: help: %v", ErrInvalidRender, err)
+	}
+	source.WriteString("  ")
 	source.WriteString(runtimePath)
 	source.WriteString(" --error-format=json wrapper run --contract-version=")
 	source.WriteString(strconv.Itoa(binding.ContractVersion))
@@ -69,7 +82,7 @@ func Render(binding wrapperbinding.Binding) (Result, error) {
 	source.WriteString(binding.Runtime.SHA256)
 	source.WriteString(" --runtime-size=")
 	source.WriteString(strconv.FormatInt(binding.Runtime.Size, 10))
-	source.WriteString(" -- \"$@\"\n}\n")
+	source.WriteString(" -- \"$@\"\n)\n")
 
 	encoded := []byte(source.String())
 	material, err := wrapperbinding.NewRenderedMaterial(encoded)
@@ -77,6 +90,72 @@ func Render(binding wrapperbinding.Binding) (Result, error) {
 		return Result{}, fmt.Errorf("%w: %v", ErrInvalidRender, err)
 	}
 	return material, nil
+}
+
+func renderHelpBranches(source *strings.Builder, binding wrapperbinding.Binding) error {
+	views, err := binding.Help.Views()
+	if err != nil {
+		return err
+	}
+	for _, view := range views {
+		source.WriteString("  if \\command test \"$#\" -eq ")
+		source.WriteString(strconv.Itoa(len(view.Selector) + 1))
+		for index, segment := range view.Selector {
+			quoted, err := SingleQuote(segment)
+			if err != nil {
+				return err
+			}
+			source.WriteString(" && \\command test \"${")
+			source.WriteString(strconv.Itoa(index + 1))
+			source.WriteString("}\" = ")
+			source.WriteString(quoted)
+		}
+		source.WriteString(" && \\command test \"${")
+		source.WriteString(strconv.Itoa(len(view.Selector) + 1))
+		source.WriteString("}\" = '--help'; then\n")
+		source.WriteString("    \\command printf '%s\\n'")
+		for _, line := range helpLines(binding.BundleDigest, view) {
+			quoted, err := SingleQuote(line)
+			if err != nil {
+				return err
+			}
+			source.WriteByte(' ')
+			source.WriteString(quoted)
+		}
+		source.WriteString("\n    \\return $?\n  fi\n")
+	}
+	return nil
+}
+
+func helpLines(bundleDigest string, view wrapperbinding.HelpView) []string {
+	lines := []string{
+		"Atsura tailored help",
+		"Bundle digest: " + bundleDigest,
+	}
+	if len(view.Descendants) > 0 {
+		lines = append(lines, "Commands:")
+		for _, command := range view.Descendants {
+			lines = append(lines, "  "+strings.Join(command, " "))
+		}
+	}
+	if view.Exact != nil {
+		lines = append(lines,
+			"Command: "+strings.Join(view.Exact.Path, " "),
+			"Source summary: "+view.Exact.Summary,
+			"Tailoring reason: "+view.Exact.Reason,
+		)
+		if len(view.Exact.Options) > 0 {
+			lines = append(lines, "Options:")
+			for _, option := range view.Exact.Options {
+				if option.TakesValue {
+					lines = append(lines, "  "+option.Name+"=<value> (value required)")
+				} else {
+					lines = append(lines, "  "+option.Name+" (no value)")
+				}
+			}
+		}
+	}
+	return lines
 }
 
 // SingleQuote encodes one bounded UTF-8 value as exactly one POSIX shell word.

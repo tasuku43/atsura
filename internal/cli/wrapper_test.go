@@ -92,6 +92,9 @@ func testWrapperRenderResult(t *testing.T) wrapperrender.Result {
 			BundleLocator:   filepath.Join(t.TempDir(), "purpose bundle.json"),
 			BundleDigest:    strings.Repeat("a", 64),
 			CommandName:     "gh",
+			Help: wrapperbinding.CompiledHelp{Commands: []wrapperbinding.HelpCommand{{
+				Path: []string{"pr", "list"}, Summary: "List pull requests", Reason: "Return one reviewed result.", Options: []wrapperbinding.HelpOption{},
+			}}},
 			Runtime: wrapperbinding.RuntimeIdentity{
 				ResolvedPath: filepath.Join(t.TempDir(), "atr"),
 				SHA256:       strings.Repeat("b", 64),
@@ -152,7 +155,7 @@ func testWrapperOptimizerResult(stdout, stderr []byte, status int, disposition p
 func wrapperRunInvocation(binding wrapperbinding.RuntimeInvocation, argv ...string) []string {
 	args := []string{
 		"wrapper", "run",
-		"--contract-version=1",
+		"--contract-version=" + strconv.Itoa(wrapperbinding.ContractVersion),
 		"--bundle=" + binding.BundleLocator,
 		"--bundle-digest=" + binding.BundleDigest,
 		"--runtime-path=" + binding.Runtime.ResolvedPath,
@@ -177,7 +180,8 @@ func TestWrapperCatalogPublishesExactHostNeutralContracts(t *testing.T) {
 		render.Agent.CapabilityID != "tailoring.wrapper.materialize" || run.Agent.CapabilityID != render.Agent.CapabilityID {
 		t.Fatalf("render/run contracts = %+v / %+v", render, run)
 	}
-	if render.Args != "--bundle <absolute-path> [--format text|json]" || run.Args != "--contract-version=1 --bundle=<absolute-path> --bundle-digest=<sha256> --runtime-path=<absolute-path> --runtime-sha256=<sha256> --runtime-size=<bytes> -- [argv]" {
+	wantRunArgs := "--contract-version=" + strconv.Itoa(wrapperbinding.ContractVersion) + " --bundle=<absolute-path> --bundle-digest=<sha256> --runtime-path=<absolute-path> --runtime-sha256=<sha256> --runtime-size=<bytes> -- [argv]"
+	if render.Args != "--bundle <absolute-path> [--format text|json]" || run.Args != wantRunArgs {
 		t.Fatalf("render/run grammar = %q / %q", render.Args, run.Args)
 	}
 	wantRenderFields := []string{"source", "source_sha256", "command", "contract", "bundle", "runtime", "source_process_attempts", "processor_process_attempts"}
@@ -593,6 +597,27 @@ func TestWrapperRunRequiresExplicitForwardingBoundary(t *testing.T) {
 		t.Fatalf("code=%d stdout=%q stderr=%q calls=%d", code, stdout.String(), stderr.String(), stub.calls)
 	}
 	if !strings.Contains(stderr.String(), "requires the explicit -- boundary") {
+		t.Fatalf("stderr=%q", stderr.String())
+	}
+}
+
+func TestWrapperRunRejectsRetiredContractOneBeforeTheApplicationPort(t *testing.T) {
+	binding := testWrapperRenderResult(t).Binding.RuntimeInvocation()
+	stub := &cliWrapperRunStub{result: testWrapperRunResult(tailoring.ResultShapeObject)}
+	var stdout, stderr bytes.Buffer
+	command := New(strings.NewReader(""), &stdout, &stderr)
+	command.wrapperRuns = stub
+	args := wrapperRunInvocation(binding, "pr", "list")
+	for index := range args {
+		if strings.HasPrefix(args[index], "--contract-version=") {
+			args[index] = "--contract-version=1"
+		}
+	}
+	args = append([]string{"--error-format=json"}, args...)
+	if code := command.RunContext(context.Background(), args); code != ExitUsage || stdout.Len() != 0 || stub.calls != 0 {
+		t.Fatalf("code=%d stdout=%q stderr=%q calls=%d", code, stdout.String(), stderr.String(), stub.calls)
+	}
+	if !strings.Contains(stderr.String(), `"code":"invalid_arguments"`) || !strings.Contains(stderr.String(), "value must be one of 2") {
 		t.Fatalf("stderr=%q", stderr.String())
 	}
 }
