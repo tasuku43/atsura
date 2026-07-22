@@ -14,8 +14,10 @@ finite application compatibility registry. ADR 0012 admits the first exact
 external output-processor tuple: strict pass-only `go test -json` through an
 explicitly inspected RTK v0.43.0 artifact. ADR 0014 makes the ordinary wrapper
 self-discoverable by compiling bounded tailored help from the exact bundle
-into fixed wrapper material. The vendor-neutral,
-compiled-bundle architecture remains authoritative.
+into fixed wrapper material. ADR 0015 admits a non-empty, complete GitHub
+contract-2 surface with one or both maintained commands while retaining
+all-or-nothing runtime admission. The vendor-neutral, compiled-bundle
+architecture remains authoritative.
 
 ## North star
 
@@ -364,13 +366,14 @@ or an included command returns that fixed projection without starting `atr`,
 the source, or a processor. Every other argv list invokes `wrapper run` with
 structured JSON errors and is forwarded unchanged without `eval`, `sh -c`, or
 specification-authored source. Rendering is
-allowed only when the complete included surface is one maintained runtime-
-admitted command and result mode. The finite first contracts cover one JSON-
-transforming GitHub CLI command, finite GitHub CLI identity or append-argv-only
-source-stream commands, the exact no-argument Go `test` identity wrapper, and
-the one processor-bound pass-only Go optimizer. Windows returns a structured
-unsupported fault for POSIX rendering and has no optimizer runtime claim; this
-contract makes no Windows activation claim.
+allowed only when the complete included surface is non-empty and every entry is
+admitted by the one registry-selected source contract before any bytes are
+rendered. GitHub CLI contract 2 permits one or both maintained `issue list` and
+`pr list` commands and permits those entries to use different existing result
+modes. Go CLI contract 2 remains exactly one no-argument `test` command, using
+either its identity wrapper or the one processor-bound pass-only optimizer.
+Windows returns a structured unsupported fault for POSIX rendering and has no
+optimizer runtime claim; this contract makes no Windows activation claim.
 
 Production Atsura has no coding-agent-host adapter. It never discovers,
 inspects, starts, signals, or calls a host process, executable, service,
@@ -468,6 +471,15 @@ a final `--help` to discover only the bundle's included commands and effective
 long options. The fixed help path names the exact bundle, starts no bound
 `atr`, source, or processor process, does not execute or embed source help, and
 leaves every non-help invocation on the existing fresh-plan path.**
+
+The complete-surface extension is:
+
+**A maintainer can render one same-source GitHub bundle containing one or both
+maintained contract-2 commands, including a surface whose commands use
+different existing result modes. Rendering succeeds only after every included
+command, option surface, wrapper, and result mode is admitted; one unsupported
+entry prevents all wrapper bytes rather than being omitted or deferred to
+invocation. Go remains the exact singleton `test` surface.**
 
 The bounded source-stream extension is:
 

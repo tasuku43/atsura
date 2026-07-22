@@ -269,8 +269,11 @@ the direct `bundle execute` result envelope. Tests must prove:
   rejects nil, typed-nil, empty, unknown, duplicate, or misconfigured entries
   as `adapter_contract` without dispatch;
 - the complete GitHub CLI adapter/version/command/surface/long-option grammar
-  is admitted before source start for one identity or append-argv-only wrapper,
-  without requiring a JSON selector;
+  is admitted for every included entry before wrapper rendering and source
+  start; one bundle may contain one or both maintained commands with independent
+  existing result modes, and each later invocation uses only the selected
+  command's plan without requiring a JSON selector for identity or append-argv-
+  only wrappers;
 - Go CLI contract 2 admits a recorded stable Go 1.26.x inspection observation
   and exact command `test`. Its identity branch permits one complete identity
   wrapper, `source_stream_passthrough`, no caller-visible option surface, and
@@ -466,12 +469,16 @@ The slice must prove:
 - the bundle's requested executable is used verbatim only when it is a portable
   POSIX Name outside the maintained reserved/fixed and implementation-specific
   function-name set; no basename or path normalization invents a command;
-- the complete included surface contains exactly one command and result mode
-  covered by its registry-selected verifier before bytes are rendered: GitHub
-  CLI contract 2 admits finite `issue list` / `pr list` transform, identity, or
-  append-only surfaces; Go CLI contract 2 admits either identity-wrapped `test`
-  or the exact RTK-bound `test -json` optimizer, each with no caller-visible
-  option surface;
+- the complete included surface is non-empty and every command, effective
+  option surface, wrapper, and result mode is covered by its registry-selected
+  verifier before bytes are rendered: GitHub CLI contract 2 admits one or both
+  of `issue list` and `pr list`, including different existing result modes per
+  command; Go CLI contract 2 remains exactly one identity-wrapped `test` or the
+  exact RTK-bound `test -json` optimizer, with no caller-visible option surface;
+- one unsupported GitHub entry rejects the complete render with zero wrapper
+  bytes and zero source and processor attempts rather than silently omitting
+  that entry; empty surfaces and an added Go command fail the same pre-render
+  boundary;
 - the wrapper binding contains only wrapper contract, bundle identity, runtime
   identity, source identity, ordinary command spelling, and the bounded help
   projection rederived from the included surface;
@@ -700,8 +707,10 @@ true on the same tree:
     implementation; `wrapper run` publishes all three schema-12 result modes;
 11. deterministic binding/render tests cover portable command names, POSIX
     quoting, contract-2 root/namespace/exact tailored help, exact
-    bundle/runtime/source/processor closure, whole-surface admission, hostile
-    argv forwarding, and absence of coding-agent-host fields;
+    bundle/runtime/source/processor closure, one- and two-command GitHub whole-
+    surface admission, mixed existing result modes, retained singleton Go
+    admission, hostile argv forwarding, and absence of coding-agent-host
+    fields;
 12. the production-composition recovery matrix is an exact bijection with every
     catalog-declared fault, covers each pre-start and post-start attempt phase,
     and leaks no raw or secret canary;

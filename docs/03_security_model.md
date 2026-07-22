@@ -226,11 +226,15 @@ returns a canonical plan digest, and reports `source_process_attempts: 0`.
 Runtime revalidates again and rebuilds the plan rather than using an old
 preview as authority.
 
-`wrapper render` additionally requires the complete included surface to be one
-maintained runtime-admitted command and result mode before exposing ordinary-
-command material. Its binding closes the exact bundle digest with the current
-`atr` path/hash/size, requested command spelling, and a rederived bounded help
-projection. `wrapper run` accepts only
+`wrapper render` additionally requires the complete included surface to be a
+non-empty same-source set whose every command, exposed option, wrapper, and
+result mode is admitted by the registry-selected source contract before
+exposing ordinary-command material. GitHub CLI contract 2 may admit one or both
+maintained commands with different existing result modes; Go CLI contract 2
+remains the exact singleton `test` surface. One invalid entry rejects the whole
+render rather than being hidden or deferred. Its binding closes the exact
+bundle digest with the current `atr` path/hash/size, requested command spelling,
+and a rederived bounded help projection. `wrapper run` accepts only
 that complete closure plus argv after the explicit `--` separator, derives the
 source spelling from the loaded bundle, and rebuilds the same plan. Success is
 one compact plan-declared JSON object or array plus LF, an explicitly adopted
@@ -244,6 +248,10 @@ complete-surface checks. It dispatches only by the exact namespaced adapter kind
 already present in validated evidence. Missing, unknown, duplicate, nil, or
 misconfigured verifiers fail as `adapter_contract`; the registry never probes,
 starts a source, selects another adapter, or falls back to a weaker result mode.
+Whole-surface iteration is pure validation over the already loaded canonical
+bundle. It adds no source or processor I/O, no ambient discovery, and no coding-
+agent-host boundary. Mixed result modes remain command-local plan facts and
+cannot authorize fallback or cross-command output substitution.
 
 ## Source process execution
 

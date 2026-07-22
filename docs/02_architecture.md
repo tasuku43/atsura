@@ -19,7 +19,9 @@ vendor field to shared artifacts. ADR 0012 advances Go to contract 2 and admits
 the exact `atsura.output.rtk_go_test_pass.v1` processor tuple behind a separate
 finite compatibility and process boundary. ADR 0014 adds bundle-derived static
 tailored help to generated wrapper material without adding a source-plan result
-or coding-agent-host adapter.
+or coding-agent-host adapter. ADR 0015 lets the same whole-surface verifier
+admit one or both maintained GitHub contract-2 commands, all-or-nothing, without
+changing schemas, wrapper contract 2, or process boundaries.
 
 The current runtime milestone extends strict schema-4 specification loading,
 schema-3 bundle compilation/adoption, and pure surface resolution through one
@@ -138,7 +140,9 @@ source read/create/write effect, or source-operation target and impact.
   They cannot broaden a surface or define core wrapper semantics.
 - One application-owned finite compatibility registry dispatches both fresh-
   plan and complete-surface proof by the exact adapter kind already present in
-  the canonical evidence. It performs no discovery, execution, or fallback.
+  the canonical evidence. Complete-surface proof rejects an empty surface and
+  validates every included entry before rendering; it performs no discovery,
+  execution, partial admission, or fallback.
 - A wrapper binding contains only the exact adopted purpose bundle, wrapper
   contract, runtime identity, command spelling, source identity, and bounded
   help projection rederived from the included surface. It contains no host
@@ -348,13 +352,16 @@ replacement. A generated shell function's digest is deterministic artifact
 evidence, not runtime attestation of the sourced function bytes.
 
 Rendering rejects Windows with a structured unsupported fault and requires the
-complete included surface to contain exactly one command and result mode
-admitted by the selected registry verifier, including every exposed option.
-GitHub CLI contract 2 covers its existing JSON transform plus identity and
-append-argv-only source streams for `issue list` and `pr list`. Go CLI contract
-2 covers identity-wrapped `test` and the exact wrapper-owned `test -json`
-optimizer surface, both with no caller-visible option grammar. Windows remains
-a regression target for existing commands but receives no POSIX activation or
+complete included surface to be non-empty and every command, exposed option,
+wrapper, and result mode to be admitted by the selected registry verifier
+before bytes are emitted. GitHub CLI contract 2 covers one or both of `issue
+list` and `pr list`; each entry may independently use its existing JSON
+transform, identity, or append-argv-only source-stream mode. Go CLI contract 2
+remains exactly one `test` command using either its identity wrapper or the
+exact wrapper-owned `test -json` optimizer, with no caller-visible option
+grammar. The verifier never renders an admitted subset of an invalid surface.
+It performs no I/O or process start and adds no host adapter. Windows remains a
+regression target for existing commands but receives no POSIX activation or
 optimizer claim.
 
 The repository conformance fixture owns only a generic caller environment. A
@@ -638,6 +645,7 @@ The host-neutral wrapper slice implemented around that runtime is:
 
 ```text
 exact adopted purpose bundle
+  -> whole-surface admission: non-empty and every included entry admitted
   -> `wrapper render`: deterministic POSIX function and binding
   -> caller-owned environment exposes ordinary source-command spelling
 
@@ -656,6 +664,13 @@ ordinary argv invocation
   -> original_preserving_optimizer: exact pre-processor preservation or
      independently validated processor output
 ```
+
+For GitHub CLI contract 2, the bundle may include one or both maintained
+commands and may assign them different existing result modes. The same bundle
+still binds one source identity and adapter contract, and each ordinary argv
+invocation selects one command and one fresh plan. Go contract 2 remains the
+singleton `test` surface. No schema, wrapper-contract, registry, or I/O boundary
+is added by complete-surface admission.
 
 The second-source path reuses that same flow:
 

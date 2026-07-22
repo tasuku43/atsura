@@ -12,8 +12,9 @@ application and whole-surface rendering. ADR 0012 advances the current Go
 source to contract 2 and admits the first exact external processor contract,
 `atsura.output.rtk_go_test_pass.v1`. ADR 0014 compiles the included surface
 into bounded ordinary-command help without turning help into a source
-execution plan. One canonical vendor-neutral bundle
-remains the authority.
+execution plan. ADR 0015 admits complete non-empty GitHub contract-2 surfaces
+containing one or both maintained commands without changing the bundle or
+wrapper contract. One canonical vendor-neutral bundle remains the authority.
 
 ## Product statement
 
@@ -439,15 +440,25 @@ a requested executable that is verbatim one portable POSIX Name outside the
 maintained reserved/fixed and implementation-specific function-name set.
 It does not derive a basename from a path. One finite application registry
 selects the whole-surface verifier by the bundle's exact adapter kind. The
-complete included surface must contain exactly one command admitted in full:
-GitHub CLI contract 2 permits `issue list` or `pr list` with its maintained
-transform, identity, or append-only grammar; Go CLI contract 2 permits the
-identity-wrapped `test` source-stream surface or the exact processor-bound
-`test -json` optimizer surface, with no caller-visible option grammar. Mixed,
-multi-command, partial, or otherwise unsupported surfaces
-produce no wrapper bytes. On Windows, POSIX rendering returns the structured
-`wrapper_platform_not_supported` fault; no Windows POSIX activation contract is
-claimed.
+complete included surface must be non-empty and every entry must be admitted in
+full before any bytes are rendered. GitHub CLI contract 2 permits one or both
+of `issue list` and `pr list`, each with its maintained transform, identity, or
+append-only grammar. Those entries may use different existing result modes.
+Go CLI contract 2 remains exactly one `test` command using either the identity-
+wrapped source-stream surface or the exact processor-bound `test -json`
+optimizer surface, with no caller-visible option grammar. Empty, partially
+admitted, or otherwise unsupported surfaces produce no wrapper bytes; Atsura
+never renders only the valid subset. On Windows, POSIX rendering returns the
+structured `wrapper_platform_not_supported` fault; no Windows POSIX activation
+contract is claimed.
+
+This is one same-source surface, not composition across adapters. The canonical
+bundle already binds one source identity and adapter contract. Whole-surface
+admission validates each included command, effective option surface, wrapper,
+and result mode through that exact registry-selected verifier. It performs no
+source or processor probe, starts no process, and does not add a host adapter or
+another I/O boundary. Each invocation still selects exactly one command and
+uses that command's fresh plan as its exclusive result authority.
 
 The fixed function invokes the exact absolute `atr` that rendered it:
 
@@ -836,12 +847,13 @@ conditions neither enter product schemas nor become Atsura support claims.
 The first wrapper renderer is intentionally platform- and surface-bounded. It
 produces fixed POSIX function source only on Linux and macOS, derives the
 ordinary command (`gh` or `go`) verbatim from the bundle's requested
-executable, and requires one complete runtime-admitted surface and result mode.
-The finite contracts cover the GitHub JSON-transform, identity, and append-
-argv-only source-stream surfaces plus the exact Go `test` identity source-
-stream surface and the exact Go pass optimizer surface. Windows supports the
-existing portable commands but not POSIX wrapper rendering, activation, or the
-optimizer.
+executable, and requires one non-empty complete runtime-admitted surface. The
+finite GitHub contract permits one or both maintained commands and their
+existing JSON-transform, identity, and append-argv-only source-stream modes,
+including different modes per command. The Go contract remains the exact
+singleton `test` identity source-stream surface or exact Go pass optimizer
+surface. Windows supports the existing portable commands but not POSIX wrapper
+rendering, activation, or the optimizer.
 
 The current preview grammar is intentionally narrower than arbitrary source
 CLI grammar. Catalog evidence does not yet model short options, root/global
