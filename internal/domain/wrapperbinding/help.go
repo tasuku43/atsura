@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/tasuku43/atsura/internal/domain/sourcecatalog"
+	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
 )
 
@@ -19,6 +21,9 @@ const (
 	// MaxCompiledHelpLines bounds the semantic lines emitted across all fixed
 	// help branches, including repeated root/namespace projections.
 	MaxCompiledHelpLines = 2048
+	// MaxCompiledHelpLineBytes covers the quoted display form of one maximum-
+	// sized argv default plus its fixed option-help framing.
+	MaxCompiledHelpLineBytes = 2*sourceprocess.MaxArgumentBytes + 256
 	// MaxCompiledHelpLiteralBytes bounds the aggregate bytes supplied as fixed
 	// printf arguments. The final generated source retains its separate 64 KiB
 	// wrapperbinding.RenderedMaterial bound.
@@ -27,10 +32,12 @@ const (
 
 var ErrInvalidCompiledHelp = errors.New("invalid compiled wrapper help")
 
-// HelpOption is one caller-visible long option and its observed value arity.
+// HelpOption is one caller-visible long option, its observed value arity, and
+// an optional detached wrapper-owned default disclosed by exact-command help.
 type HelpOption struct {
-	Name       string `json:"name"`
-	TakesValue bool   `json:"takes_value"`
+	Name         string  `json:"name"`
+	TakesValue   bool    `json:"takes_value"`
+	DefaultValue *string `json:"default_value,omitempty"`
 }
 
 // HelpCommand is one included exact command projected from a compiled bundle.
@@ -79,9 +86,21 @@ func CompileHelp(bundle tailoringbundle.Bundle) (CompiledHelp, error) {
 		if err != nil {
 			return CompiledHelp{}, invalidHelp("included command %q options: %v", strings.Join(entry.Command, " "), err)
 		}
+		defaults := make(map[string]string, len(entry.Wrapper.Invoke.OptionDefaults))
+		for _, optionDefault := range entry.Wrapper.Invoke.OptionDefaults {
+			defaults[optionDefault.Option] = optionDefault.Value
+		}
 		options := make([]HelpOption, len(included))
 		for index, option := range included {
 			options[index] = HelpOption{Name: option.Name, TakesValue: option.TakesValue}
+			if value, ok := defaults[option.Name]; ok {
+				value := value
+				options[index].DefaultValue = &value
+				delete(defaults, option.Name)
+			}
+		}
+		if len(defaults) != 0 {
+			return CompiledHelp{}, invalidHelp("included command %q has a default outside its effective option surface", strings.Join(entry.Command, " "))
 		}
 		help.Commands = append(help.Commands, HelpCommand{
 			Path:    cloneHelpStrings(entry.Command),
@@ -140,8 +159,8 @@ func (c HelpCommand) validate() error {
 	}
 	previous := ""
 	for _, option := range c.Options {
-		if !strings.HasPrefix(option.Name, "--") || !validHelpStableName(strings.TrimPrefix(option.Name, "--")) {
-			return fmt.Errorf("option %q is invalid", option.Name)
+		if err := option.validate(); err != nil {
+			return err
 		}
 		if option.Name <= previous {
 			return fmt.Errorf("options must be sorted and unique")
@@ -149,6 +168,39 @@ func (c HelpCommand) validate() error {
 		previous = option.Name
 	}
 	return nil
+}
+
+func (o HelpOption) validate() error {
+	if !strings.HasPrefix(o.Name, "--") || !validHelpStableName(strings.TrimPrefix(o.Name, "--")) {
+		return fmt.Errorf("option %q is invalid", o.Name)
+	}
+	if o.DefaultValue == nil {
+		return nil
+	}
+	if !o.TakesValue {
+		return fmt.Errorf("option %q cannot have a default because it takes no value", o.Name)
+	}
+	if err := validateHelpText(*o.DefaultValue, sourceprocess.MaxArgumentBytes); err != nil {
+		return fmt.Errorf("option %q default: %v", o.Name, err)
+	}
+	return nil
+}
+
+// FormatHelpOptionLine returns the one semantic line shared by help budgeting
+// and POSIX rendering. The quoted default is descriptive text, never shell
+// source or an invocation token reconstructed by the renderer.
+func FormatHelpOptionLine(option HelpOption) (string, error) {
+	if err := option.validate(); err != nil {
+		return "", invalidHelp("%v", err)
+	}
+	line := "  " + option.Name + " (no value)"
+	if option.TakesValue {
+		line = "  " + option.Name + "=<value> (value required)"
+		if option.DefaultValue != nil {
+			line = "  " + option.Name + "=<value> (value required; default when omitted: " + strconv.Quote(*option.DefaultValue) + ")"
+		}
+	}
+	return line, nil
 }
 
 // Views returns detached root and selector projections. Root is first; every
@@ -233,6 +285,9 @@ func validateHelpBudget(views []HelpView) error {
 	add := func(line string) error {
 		lines++
 		bytes += len(line)
+		if len(line) > MaxCompiledHelpLineBytes {
+			return invalidHelp("semantic line exceeds the %d-byte bound", MaxCompiledHelpLineBytes)
+		}
 		if lines > MaxCompiledHelpLines {
 			return invalidHelp("semantic lines exceed the %d-line bound", MaxCompiledHelpLines)
 		}
@@ -273,9 +328,9 @@ func validateHelpBudget(views []HelpView) error {
 					return err
 				}
 				for _, option := range view.Exact.Options {
-					line := "  " + option.Name + " (no value)"
-					if option.TakesValue {
-						line = "  " + option.Name + "=<value> (value required)"
+					line, err := FormatHelpOptionLine(option)
+					if err != nil {
+						return err
 					}
 					if err := add(line); err != nil {
 						return err
@@ -290,7 +345,10 @@ func validateHelpBudget(views []HelpView) error {
 func cloneHelpCommand(value HelpCommand) HelpCommand {
 	var options []HelpOption
 	if value.Options != nil {
-		options = append([]HelpOption{}, value.Options...)
+		options = make([]HelpOption, len(value.Options))
+		for index, option := range value.Options {
+			options[index] = cloneHelpOption(option)
+		}
 	}
 	return HelpCommand{
 		Path:    cloneHelpStrings(value.Path),
@@ -298,6 +356,15 @@ func cloneHelpCommand(value HelpCommand) HelpCommand {
 		Reason:  value.Reason,
 		Options: options,
 	}
+}
+
+func cloneHelpOption(value HelpOption) HelpOption {
+	result := value
+	if value.DefaultValue != nil {
+		defaultValue := *value.DefaultValue
+		result.DefaultValue = &defaultValue
+	}
+	return result
 }
 
 func cloneHelpViews(values []HelpView) []HelpView {

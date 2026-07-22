@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/tasuku43/atsura/internal/domain/sourcecatalog"
+	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
 )
 
@@ -41,8 +42,16 @@ func compiledHelpBundle(t *testing.T) (tailoringbundle.Bundle, string) {
 	identity := func() *tailoringbundle.Wrapper {
 		return &tailoringbundle.Wrapper{
 			Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{},
-			Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{},
+			Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{}}, After: []tailoringbundle.StageAction{},
 		}
+	}
+	defaulted := &tailoringbundle.Wrapper{
+		Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{},
+		Invoke: tailoringbundle.Invocation{
+			OptionDefaults: []tailoringbundle.OptionDefault{{Option: "--limit", Value: "30"}},
+			AppendArgs:     []string{},
+		},
+		After: []tailoringbundle.StageAction{},
 	}
 	specification := tailoringbundle.SortSpecification(tailoringbundle.Specification{
 		SchemaVersion: tailoringbundle.SpecificationSchemaVersion,
@@ -52,7 +61,7 @@ func compiledHelpBundle(t *testing.T) (tailoringbundle.Bundle, string) {
 			{Command: []string{"issue", "list"}, Presence: tailoringbundle.PresenceInclude, Reason: "Needed for issue triage.", Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultInherit, Include: []string{}, Exclude: []string{}}, Wrapper: identity()},
 			{Command: []string{"item"}, Presence: tailoringbundle.PresenceInclude, Reason: "Expose item navigation.", Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultInherit, Include: []string{}, Exclude: []string{"--verbose"}}, Wrapper: identity()},
 			{Command: []string{"item", "delete"}, Presence: tailoringbundle.PresenceExclude, Reason: "HIDDEN_REASON_CANARY"},
-			{Command: []string{"item", "list"}, Presence: tailoringbundle.PresenceInclude, Reason: "Use 'quoted' inventory; $(never execute).", Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultExclude, Include: []string{"--limit", "--web"}, Exclude: []string{}}, Wrapper: identity()},
+			{Command: []string{"item", "list"}, Presence: tailoringbundle.PresenceInclude, Reason: "Use 'quoted' inventory; $(never execute).", Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultExclude, Include: []string{"--limit", "--web"}, Exclude: []string{}}, Wrapper: defaulted},
 			{Command: []string{"item", "list", "recent"}, Presence: tailoringbundle.PresenceInclude, Reason: "Expose the recent subset.", Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultExclude, Include: []string{}, Exclude: []string{}}, Wrapper: identity()},
 		},
 	})
@@ -88,6 +97,9 @@ func TestCompileHelpDerivesRootNamespaceExactAndCombinedViews(t *testing.T) {
 			t.Fatalf("compiled help leaked %q: %s", hidden, encoded)
 		}
 	}
+	if strings.Count(string(encoded), `"default_value":"30"`) != 1 {
+		t.Fatalf("compiled help did not encode exactly one option default: %s", encoded)
+	}
 
 	views, err := help.Views()
 	if err != nil {
@@ -113,7 +125,7 @@ func TestCompileHelpDerivesRootNamespaceExactAndCombinedViews(t *testing.T) {
 		t.Fatalf("combined item view = %+v", item)
 	}
 	itemList := views[4]
-	if itemList.Exact == nil || !reflect.DeepEqual(itemList.Exact.Options, []HelpOption{{Name: "--limit", TakesValue: true}, {Name: "--web", TakesValue: false}}) ||
+	if itemList.Exact == nil || !reflect.DeepEqual(itemList.Exact.Options, []HelpOption{{Name: "--limit", TakesValue: true, DefaultValue: helpString("30")}, {Name: "--web", TakesValue: false}}) ||
 		!reflect.DeepEqual(joinHelpPaths(itemList.Descendants), []string{"item list recent"}) {
 		t.Fatalf("combined list view = %+v", itemList)
 	}
@@ -135,8 +147,12 @@ func TestCompiledHelpCloneViewsAndBindingAreDeeplyDetached(t *testing.T) {
 	}
 	clone.Commands[0].Path[0] = "changed"
 	clone.Commands[0].Options[0].Name = "--changed"
+	*clone.Commands[2].Options[0].DefaultValue = "changed"
 	if help.Commands[0].Path[0] != "issue" || help.Commands[0].Options[0].Name != "--state" {
 		t.Fatal("Clone shared nested help state")
+	}
+	if got := *help.Commands[2].Options[0].DefaultValue; got != "30" {
+		t.Fatalf("Clone shared default value state: %q", got)
 	}
 
 	views, err := help.Views()
@@ -146,11 +162,12 @@ func TestCompiledHelpCloneViewsAndBindingAreDeeplyDetached(t *testing.T) {
 	views[0].Selector = append(views[0].Selector, "changed")
 	views[0].Descendants[0][0] = "changed"
 	views[3].Exact.Path[0] = "changed"
+	*views[4].Exact.Options[0].DefaultValue = "changed"
 	again, err := help.Views()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(again[0].Selector) != 0 || again[0].Descendants[0][0] != "issue" || again[3].Exact.Path[0] != "item" {
+	if len(again[0].Selector) != 0 || again[0].Descendants[0][0] != "issue" || again[3].Exact.Path[0] != "item" || *again[4].Exact.Options[0].DefaultValue != "30" {
 		t.Fatal("Views returned aliased help state")
 	}
 
@@ -165,6 +182,11 @@ func TestCompiledHelpCloneViewsAndBindingAreDeeplyDetached(t *testing.T) {
 	bindingClone.Help.Commands[0].Path[0] = "changed"
 	if binding.Help.Commands[0].Path[0] != "issue" || binding.Equal(bindingClone) {
 		t.Fatal("Binding.Clone shared or ignored help state")
+	}
+	defaultDrift := binding.Clone()
+	*defaultDrift.Help.Commands[2].Options[0].DefaultValue = "31"
+	if *binding.Help.Commands[2].Options[0].DefaultValue != "30" || binding.Equal(defaultDrift) {
+		t.Fatal("Binding.Clone shared or equality ignored a default value")
 	}
 	if !(CompiledHelp{}).Equal((CompiledHelp{}).Clone()) {
 		t.Fatal("Clone changed a nil command list into a different representation")
@@ -193,6 +215,11 @@ func TestBindingValidationRecomputesCompiledHelpFromBundle(t *testing.T) {
 	if err := drifted.ValidateAgainstBundle(bundle); !errors.Is(err, ErrInvalidBinding) || !strings.Contains(err.Error(), "does not match") {
 		t.Fatalf("help drift error = %v", err)
 	}
+	defaultDrift := binding.Clone()
+	*defaultDrift.Help.Commands[2].Options[0].DefaultValue = "31"
+	if err := defaultDrift.ValidateAgainstBundle(bundle); !errors.Is(err, ErrInvalidBinding) || !strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("default drift error = %v", err)
+	}
 	unsafe := binding.Clone()
 	unsafe.Help.Commands[0].Reason = "unsafe\nline"
 	if err := unsafe.Validate(); !errors.Is(err, ErrInvalidBinding) || !strings.Contains(err.Error(), "compiled help") {
@@ -218,6 +245,12 @@ func TestCompiledHelpRejectsStructuralAndCanonicalDrift(t *testing.T) {
 		{name: "format reason", mutate: func(value *CompiledHelp) { value.Commands[0].Reason = "bidi\u202e" }},
 		{name: "nil options", mutate: func(value *CompiledHelp) { value.Commands[0].Options = nil }},
 		{name: "invalid option", mutate: func(value *CompiledHelp) { value.Commands[0].Options[0].Name = "-state" }},
+		{name: "default without value arity", mutate: func(value *CompiledHelp) { value.Commands[2].Options[0].TakesValue = false }},
+		{name: "empty default", mutate: func(value *CompiledHelp) { *value.Commands[2].Options[0].DefaultValue = "" }},
+		{name: "structural default", mutate: func(value *CompiledHelp) { *value.Commands[2].Options[0].DefaultValue = "line\nfeed" }},
+		{name: "unbounded default", mutate: func(value *CompiledHelp) {
+			*value.Commands[2].Options[0].DefaultValue = strings.Repeat("x", sourceprocess.MaxArgumentBytes+1)
+		}},
 		{name: "unsorted commands", mutate: func(value *CompiledHelp) { value.Commands[0], value.Commands[1] = value.Commands[1], value.Commands[0] }},
 	}
 	for _, test := range tests {
@@ -226,6 +259,29 @@ func TestCompiledHelpRejectsStructuralAndCanonicalDrift(t *testing.T) {
 			test.mutate(&candidate)
 			if err := candidate.Validate(); !errors.Is(err, ErrInvalidCompiledHelp) {
 				t.Fatalf("Validate() error = %v", err)
+			}
+		})
+	}
+}
+
+func TestFormatHelpOptionLinePreservesExistingFormsAndQuotesDefault(t *testing.T) {
+	tests := []struct {
+		name   string
+		option HelpOption
+		want   string
+	}{
+		{name: "boolean", option: HelpOption{Name: "--web"}, want: "  --web (no value)"},
+		{name: "required value", option: HelpOption{Name: "--limit", TakesValue: true}, want: "  --limit=<value> (value required)"},
+		{name: "default", option: HelpOption{Name: "--limit", TakesValue: true, DefaultValue: helpString(`30 "quoted" \\ exact`)}, want: `  --limit=<value> (value required; default when omitted: "30 \"quoted\" \\\\ exact")`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := FormatHelpOptionLine(test.option)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != test.want {
+				t.Fatalf("line = %q, want %q", got, test.want)
 			}
 		})
 	}
@@ -281,6 +337,8 @@ func TestCompiledHelpEnforcesViewLineAndLiteralBudgets(t *testing.T) {
 func boundedHelpCommand(path []string, options []HelpOption) HelpCommand {
 	return HelpCommand{Path: append([]string{}, path...), Summary: "Summary.", Reason: "Reason.", Options: append([]HelpOption{}, options...)}
 }
+
+func helpString(value string) *string { return &value }
 
 func joinHelpPaths(paths [][]string) []string {
 	result := make([]string, len(paths))

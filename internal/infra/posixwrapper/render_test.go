@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
 	"github.com/tasuku43/atsura/internal/domain/wrapperbinding"
 )
 
@@ -77,7 +78,7 @@ func TestRenderIsDeterministicFixedSource(t *testing.T) {
 			Path:    []string{"issue", "list"},
 			Summary: "List issues",
 			Reason:  "Keep issue inventory",
-			Options: []wrapperbinding.HelpOption{{Name: "--json", TakesValue: true}, {Name: "--web", TakesValue: false}},
+			Options: []wrapperbinding.HelpOption{{Name: "--json", TakesValue: true, DefaultValue: helpDefault("30")}, {Name: "--web", TakesValue: false}},
 		}}},
 	}
 
@@ -101,10 +102,10 @@ func TestRenderIsDeterministicFixedSource(t *testing.T) {
 		"    \\return $?\n" +
 		"  fi\n" +
 		"  if \\command test \"$#\" -eq 3 && \\command test \"${1}\" = 'issue' && \\command test \"${2}\" = 'list' && \\command test \"${3}\" = '--help'; then\n" +
-		"    \\command printf '%s\\n' 'Atsura tailored help' 'Bundle digest: " + strings.Repeat("a", 64) + "' 'Command: issue list' 'Source summary: List issues' 'Tailoring reason: Keep issue inventory' 'Options:' '  --json=<value> (value required)' '  --web (no value)'\n" +
+		"    \\command printf '%s\\n' 'Atsura tailored help' 'Bundle digest: " + strings.Repeat("a", 64) + "' 'Command: issue list' 'Source summary: List issues' 'Tailoring reason: Keep issue inventory' 'Options:' '  --json=<value> (value required; default when omitted: \"30\")' '  --web (no value)'\n" +
 		"    \\return $?\n" +
 		"  fi\n" +
-		"  '/opt/Atsura'\\''s runtime/bin/atr' --error-format=json wrapper run --contract-version=2" +
+		"  '/opt/Atsura'\\''s runtime/bin/atr' --error-format=json wrapper run --contract-version=3" +
 		" --bundle='/tmp/-purpose bundle;`literal`/$(still-literal)-\u96ea.json'" +
 		" --bundle-digest=" + strings.Repeat("a", 64) +
 		" --runtime-path='/opt/Atsura'\\''s runtime/bin/atr'" +
@@ -136,7 +137,7 @@ func TestRenderedFunctionPrintsExactRootNamespaceExactAndCombinedHelp(t *testing
 			Path:    []string{"issue", "list"},
 			Summary: "List issues",
 			Reason:  "Return a compact issue inventory",
-			Options: []wrapperbinding.HelpOption{{Name: "--json", TakesValue: true}, {Name: "--state", TakesValue: true}},
+			Options: []wrapperbinding.HelpOption{{Name: "--json", TakesValue: true}, {Name: "--state", TakesValue: true, DefaultValue: helpDefault("open")}},
 		},
 		{
 			Path:    []string{"pr", "list"},
@@ -173,7 +174,7 @@ func TestRenderedFunctionPrintsExactRootNamespaceExactAndCombinedHelp(t *testing
 			args: []string{"issue", "list", "--help"},
 			want: header + "Command: issue list\nSource summary: List issues\n" +
 				"Tailoring reason: Return a compact issue inventory\n" +
-				"Options:\n  --json=<value> (value required)\n  --state=<value> (value required)\n",
+				"Options:\n  --json=<value> (value required)\n  --state=<value> (value required; default when omitted: \"open\")\n",
 		},
 		{
 			name: "namespace",
@@ -205,7 +206,7 @@ func TestRenderedHelpKeepsHostilePrintableTextLiteralAndBypassesPrintfFunction(t
 		Path:    []string{"issue", "list"},
 		Summary: "Literal $(printf injected); `tick` %s 'quote' \\backslash \u96ea",
 		Reason:  "Preserve [brackets] * ? ! # & | < > (parentheses)",
-		Options: []wrapperbinding.HelpOption{{Name: "--json", TakesValue: true}},
+		Options: []wrapperbinding.HelpOption{{Name: "--json", TakesValue: true, DefaultValue: helpDefault("$(printf DEFAULT_EXECUTED); 'single' \u96ea")}},
 	}}}
 	binding := helpBinding(t, "fixture", help)
 	rendered, err := Render(binding)
@@ -222,7 +223,7 @@ func TestRenderedHelpKeepsHostilePrintableTextLiteralAndBypassesPrintfFunction(t
 		"Command: issue list\n" +
 		"Source summary: Literal $(printf injected); `tick` %s 'quote' \\backslash \u96ea\n" +
 		"Tailoring reason: Preserve [brackets] * ? ! # & | < > (parentheses)\n" +
-		"Options:\n  --json=<value> (value required)\n"
+		"Options:\n  --json=<value> (value required; default when omitted: \"$(printf DEFAULT_EXECUTED); 'single' \u96ea\")\n"
 	if string(output) != want {
 		t.Fatalf("help bytes:\n%q\nwant:\n%q", output, want)
 	}
@@ -241,6 +242,35 @@ func TestRenderedHelpKeepsHostilePrintableTextLiteralAndBypassesPrintfFunction(t
 	}
 	if string(output) != want {
 		t.Fatalf("wrapper named printf did not reach the shell utility through command: %q", output)
+	}
+}
+
+func TestRenderedHelpUsesTheSameMaximumDefaultLineAsBindingBudget(t *testing.T) {
+	defaultValue := strings.Repeat(`\`, sourceprocess.MaxArgumentBytes)
+	help := wrapperbinding.CompiledHelp{Commands: []wrapperbinding.HelpCommand{{
+		Path:    []string{"issue", "list"},
+		Summary: "List issues",
+		Reason:  "Exercise the exact default display bound",
+		Options: []wrapperbinding.HelpOption{{Name: "--limit", TakesValue: true, DefaultValue: &defaultValue}},
+	}}}
+	binding := helpBinding(t, "fixture", help)
+	rendered, err := Render(binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	line, err := wrapperbinding.FormatHelpOptionLine(help.Commands[0].Options[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := invokeRendered(rendered.Source, binding.CommandName, "", "issue", "list", "--help")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "Atsura tailored help\nBundle digest: " + binding.BundleDigest + "\n" +
+		"Command: issue list\nSource summary: List issues\n" +
+		"Tailoring reason: Exercise the exact default display bound\nOptions:\n" + line + "\n"
+	if string(output) != want {
+		t.Fatalf("maximum default help did not round-trip: got %d bytes, want %d", len(output), len(want))
 	}
 }
 
@@ -441,7 +471,7 @@ func TestRenderedFunctionForwardsExactNonHelpAndUnknownHelpArgv(t *testing.T) {
 			"--error-format=json",
 			"wrapper",
 			"run",
-			"--contract-version=2",
+			"--contract-version=3",
 			"--bundle=" + binding.BundleLocator,
 			"--bundle-digest=" + binding.BundleDigest,
 			"--runtime-path=" + runtimePath,
@@ -483,6 +513,12 @@ func TestRenderRejectsInvalidOrOversizedBindingWithoutPartialSource(t *testing.T
 	if result, err := Render(invalidHelp); len(result.Source) != 0 || !errors.Is(err, ErrInvalidRender) {
 		t.Fatalf("invalid help render = %+v, %v", result, err)
 	}
+	invalidDefault := valid
+	invalidDefault.Help = invalidDefault.Help.Clone()
+	invalidDefault.Help.Commands[0].Options = []wrapperbinding.HelpOption{{Name: "--web", DefaultValue: helpDefault("true")}}
+	if result, err := Render(invalidDefault); len(result.Source) != 0 || !errors.Is(err, ErrInvalidRender) {
+		t.Fatalf("invalid default render = %+v, %v", result, err)
+	}
 
 	commands := make([]wrapperbinding.HelpCommand, 240)
 	for index := range commands {
@@ -523,6 +559,8 @@ func helpBinding(t *testing.T, commandName string, help wrapperbinding.CompiledH
 	}
 	return binding
 }
+
+func helpDefault(value string) *string { return &value }
 
 func invokeRendered(source []byte, commandName, prefix string, argv ...string) ([]byte, error) {
 	script := prefix + string(source) + "\n" + commandName + " \"$@\"\n"

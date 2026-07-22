@@ -13,7 +13,9 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/wrapperbinding"
 )
 
-const MaxQuotedValueBytes = 8192
+// MaxQuotedValueBytes covers any one already-budgeted semantic help line,
+// including the escaped display form of a maximum-sized option default.
+const MaxQuotedValueBytes = wrapperbinding.MaxCompiledHelpLineBytes
 
 var (
 	ErrInvalidQuotedValue = errors.New("invalid POSIX quoted value")
@@ -114,7 +116,11 @@ func renderHelpBranches(source *strings.Builder, binding wrapperbinding.Binding)
 		source.WriteString(strconv.Itoa(len(view.Selector) + 1))
 		source.WriteString("}\" = '--help'; then\n")
 		source.WriteString("    \\command printf '%s\\n'")
-		for _, line := range helpLines(binding.BundleDigest, view) {
+		lines, err := helpLines(binding.BundleDigest, view)
+		if err != nil {
+			return err
+		}
+		for _, line := range lines {
 			quoted, err := SingleQuote(line)
 			if err != nil {
 				return err
@@ -127,7 +133,7 @@ func renderHelpBranches(source *strings.Builder, binding wrapperbinding.Binding)
 	return nil
 }
 
-func helpLines(bundleDigest string, view wrapperbinding.HelpView) []string {
+func helpLines(bundleDigest string, view wrapperbinding.HelpView) ([]string, error) {
 	lines := []string{
 		"Atsura tailored help",
 		"Bundle digest: " + bundleDigest,
@@ -147,15 +153,15 @@ func helpLines(bundleDigest string, view wrapperbinding.HelpView) []string {
 		if len(view.Exact.Options) > 0 {
 			lines = append(lines, "Options:")
 			for _, option := range view.Exact.Options {
-				if option.TakesValue {
-					lines = append(lines, "  "+option.Name+"=<value> (value required)")
-				} else {
-					lines = append(lines, "  "+option.Name+" (no value)")
+				line, err := wrapperbinding.FormatHelpOptionLine(option)
+				if err != nil {
+					return nil, err
 				}
+				lines = append(lines, line)
 			}
 		}
 	}
-	return lines
+	return lines, nil
 }
 
 // SingleQuote encodes one bounded UTF-8 value as exactly one POSIX shell word.

@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	// ContractVersion adds compiled ordinary tailored help to the host-neutral
-	// wrapper material while retaining the same runtime invocation closure.
-	ContractVersion = 2
+	// ContractVersion 3 discloses catalog-typed option defaults in exact-command
+	// tailored help while retaining the same runtime invocation closure.
+	ContractVersion = 3
 
 	MaxBundleLocatorBytes  = 4096
 	MaxCommandNameBytes    = 255

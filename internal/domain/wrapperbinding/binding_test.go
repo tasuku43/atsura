@@ -64,7 +64,7 @@ func testBundle(t *testing.T, requestedExecutable string) (tailoringbundle.Bundl
 			Wrapper: &tailoringbundle.Wrapper{
 				Kind:   tailoringbundle.WrapperIdentity,
 				Before: []tailoringbundle.StageAction{},
-				Invoke: tailoringbundle.Invocation{AppendArgs: []string{}},
+				Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{}},
 				After:  []tailoringbundle.StageAction{},
 			},
 		}},
@@ -187,6 +187,7 @@ func TestRuntimeInvocationValidationRejectsInvalidClosure(t *testing.T) {
 		mutate func(*RuntimeInvocation)
 	}{
 		{name: "retired contract one", mutate: func(value *RuntimeInvocation) { value.ContractVersion = 1 }},
+		{name: "retired contract two", mutate: func(value *RuntimeInvocation) { value.ContractVersion = 2 }},
 		{name: "future contract", mutate: func(value *RuntimeInvocation) { value.ContractVersion++ }},
 		{name: "bundle locator", mutate: func(value *RuntimeInvocation) { value.BundleLocator = "bundle.json" }},
 		{name: "bundle digest", mutate: func(value *RuntimeInvocation) { value.BundleDigest = strings.Repeat("A", 64) }},
