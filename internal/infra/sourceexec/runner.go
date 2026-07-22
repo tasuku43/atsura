@@ -18,8 +18,9 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
 )
 
-// Runner is the production direct-process adapter. Hooks exist only so
-// package tests can deterministically exercise identity and wait boundaries.
+// Runner is the production direct-process adapter. Its unexported test seams
+// only let package tests deterministically exercise identity and wait
+// boundaries; they are unrelated to coding-agent host hooks.
 type Runner struct {
 	beforeStart func(string)
 	afterStart  func(string)

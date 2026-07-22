@@ -28,7 +28,7 @@ source inspect -> spec init/validate -> bundle build -> bundle status/trust
 - `bundle trust` interactively records adoption of one exact bundle digest. It
   does not grant permission to run source operations.
 - `bundle preview --bundle <path> -- <source-executable> <argv>` returns one
-  deterministic schema-3 wrapper plan and digest with zero source-process
+  deterministic schema-4 wrapper plan and digest with zero source-process
   attempts.
 - `bundle execute` rebuilds that plan and, for a compatibility-admitted GitHub
   CLI `issue list` or `pr list` JSON transform, requires every observable
@@ -37,14 +37,16 @@ source inspect -> spec init/validate -> bundle build -> bundle status/trust
 - `wrapper render` emits deterministic POSIX function bytes on Linux and macOS,
   bound to one exact adopted bundle and the current absolute `atr` identity.
   The fixed function forwards ordinary argv to `wrapper run`, which applies the
-  same fresh plan and emits only its compact JSON object or array.
+  same fresh plan. A `transformed_json` plan emits one compact JSON object or
+  array; a `source_stream_passthrough` plan returns the conventionally completed
+  source stdout, stderr, and exit status without changing their bytes.
 - The retired authorization-oriented policy schemas, legacy `plan preview`,
   and `run` have migration diagnostics only. They are not current tailoring
   capabilities.
 
-Identity-wrapper execution, argv-only transforms, successful nonempty source
-stderr, source refresh, raw bypass, additional source/output adapter contracts,
-persistent wrapper installation or executable shims remain unimplemented.
+Direct `bundle execute` support for identity and argv-only plans, source
+refresh, raw bypass, additional source/output adapter contracts, persistent
+wrapper installation, and executable shims remain unimplemented.
 Coding-agent host adapters are outside the product boundary. Windows retains
 the existing command surface but returns a structured unsupported fault for
 POSIX wrapper rendering; no Windows POSIX activation support is claimed.
@@ -88,7 +90,8 @@ exact adopted bundle + current stable atr identity
   -> caller-owned activation as the ordinary source command
   -> wrapper run verifies the bundle/runtime closure
   -> same fresh plan and source boundary
-  -> one compact plan-declared JSON value
+     -> transformed_json: one compact plan-declared JSON value
+     -> source_stream_passthrough: exact bounded source streams + status
 ```
 
 An excluded command is absent from the tailored surface; it is not denied or
@@ -210,10 +213,13 @@ unset -f gh
 The fixed function invokes the absolute `atr` that rendered it, passes the
 complete bundle/runtime closure to `wrapper run`, inserts the required `--`, and
 forwards `"$@"` without `eval` or `sh -c`. Successful ordinary-command stdout
-is exactly one compact plan-declared JSON object or array plus LF; stderr is
-empty and there is no `bundle execute` evidence envelope. Windows returns the
-structured `wrapper_platform_not_supported` fault and does not claim POSIX
-activation.
+and status follow the fresh plan's required result mode. `transformed_json`
+emits exactly one compact object or array plus LF, empty stderr, and status
+zero. `source_stream_passthrough` emits the conventionally completed source
+stdout and stderr bytes exactly and returns its status; it adds no framing or
+projection and makes no timing or cross-stream interleaving claim. Neither mode
+adds a `bundle execute` evidence envelope. Windows returns the structured
+`wrapper_platform_not_supported` fault and does not claim POSIX activation.
 
 `bundle preview` requires the exact bundle digest to be adopted and the current
 source path, SHA-256, and size to match its catalog evidence. It selects the
@@ -240,12 +246,14 @@ again. The credential- and provider-network-free synthetic fixture is the
 canonical automated evidence.
 
 `wrapper render` additionally rejects a bundle unless its complete included
-surface contains exactly one transforming `issue list` or `pr list` command and
-every exposed option belongs to the maintained runtime grammar. It derives the
-function name verbatim from the bundle's requested executable, so an absolute
-source path or non-POSIX/reserved name is not normalized into a wrapper name.
-The rendered source digest is deterministic review evidence, not attestation
-after the caller sources or changes the function.
+surface contains exactly one runtime-admitted `issue list` or `pr list` command
+and every exposed option belongs to the maintained grammar. The admitted
+surface may use the existing typed JSON transform, an identity wrapper, or a
+finite append-argv-only transform. It derives the function name verbatim from
+the bundle's requested executable, so an absolute source path or
+non-POSIX/reserved name is not normalized into a wrapper name. The rendered
+source digest is deterministic review evidence, not attestation after the
+caller sources or changes the function.
 
 `wrapper run` derives the source spelling from the strictly loaded bundle and
 uses the same fresh-plan application service as direct execution. Its runtime
@@ -255,13 +263,11 @@ prevents that honest runtime from starting the source, but Atsura does not claim
 to sandbox malicious replacement code already executing at that path.
 
 Use `atr help <exact-command> --format agent` for the complete machine-readable
-contract. Agent help currently uses schema version 9; object outputs may publish
-a versioned nested JSON-pointer field inventory. Each output declares whether
-the catalog or a freshly rebuilt wrapper plan governs its interpretation and
-presentation. `wrapper run` points to the exact
-`bundle preview` plan schema; source JSON supplies the admitted object or array
-and value types, while that fresh plan governs selection, rename, and compact
-JSON rendering.
+contract. Agent help currently uses schema version 10; object outputs may
+publish a versioned nested JSON-pointer field inventory. Each output declares
+whether the catalog or a freshly rebuilt wrapper plan governs its result.
+`wrapper run` points to the exact `bundle preview` plan schema and publishes
+the finite `plan_result_modes` byte, framing, projection, and status contract.
 
 ## Current decisions and open work
 
@@ -275,8 +281,7 @@ The following remain later research or vertical-slice decisions:
 
 - additional source CLIs and adapter compatibility;
 - source refresh and command-discovery depth;
-- execution of identity wrappers, argv-only transforms, and nonempty successful
-  stderr;
+- direct `bundle execute` support for source-stream plans;
 - persistent wrapper installation, replacement, removal, executable/PATH shims,
   and multi-profile command selection;
 - raw tailoring bypass;
@@ -290,11 +295,14 @@ modeled. If a matched command has cataloged descendants, an unknown following
 non-dash token is ambiguous rather than assumed positional; use an inner `--`
 before positional data. `append_args` remain at the end even after an existing
 `--`, and option-looking values there are positional. Preview requires one
-active cataloged selector matching a planned structured input. Execute
-additionally requires the current adapter contract to admit the exact ordered
-selector and complete argv. Competing `--jq`, `--template`, and `--web` output
-modes plus unmodeled positional or option syntax fail before source start.
-These are compatibility limits, not inferred behavior.
+active cataloged selector matching a planned structured input only for a
+`transformed_json` plan. Direct `bundle execute` remains restricted to that
+path and additionally requires the exact ordered selector. The ordinary
+wrapper runtime separately admits the exact finite identity and append-only
+source-stream grammars without inventing an output selector. Competing `--jq`,
+`--template`, and `--web` output modes plus unmodeled positional or option
+syntax fail before source start. These are compatibility limits, not inferred
+behavior.
 
 See [Project Theses](docs/00_theses.md), [Product Contract](docs/01_product_contract.md),
 [Architecture](docs/02_architecture.md), and [Security Model](docs/03_security_model.md).
