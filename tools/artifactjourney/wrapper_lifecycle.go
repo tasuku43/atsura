@@ -350,6 +350,14 @@ func verifyPersistentWrapperLifecycle(
 		return wrapperLifecycleEvidence{}, nil, 0, fmt.Errorf("GitHub removal did not preserve the exact Go artifact")
 	}
 	boundaries = append(boundaries, afterGitHubOutput.stdout)
+	collisionFaults, collisionBoundaries, err := verifyCollisionFaults(
+		ctx, runner, help, storeRoot, workRoot, afterGitHub, processCounts,
+	)
+	if err != nil {
+		return wrapperLifecycleEvidence{}, nil, 0, err
+	}
+	faults = append(faults, collisionFaults...)
+	boundaries = append(boundaries, collisionBoundaries...)
 	goRemoveOutput, err := runner.success(ctx, "success", "wrapper", "remove", "--artifact", goStatus.Reference)
 	if err != nil {
 		return wrapperLifecycleEvidence{}, nil, 0, fmt.Errorf("exact Go wrapper removal failed")
@@ -372,13 +380,6 @@ func verifyPersistentWrapperLifecycle(
 	if err := processCounts(); err != nil {
 		return wrapperLifecycleEvidence{}, nil, 0, fmt.Errorf("wrapper removal started a source process")
 	}
-
-	collisionFaults, collisionBoundaries, err := verifyCollisionFaults(ctx, runner, help, storeRoot, workRoot, processCounts)
-	if err != nil {
-		return wrapperLifecycleEvidence{}, nil, 0, err
-	}
-	faults = append(faults, collisionFaults...)
-	boundaries = append(boundaries, collisionBoundaries...)
 
 	githubArtifact := lifecycleArtifactEvidence("gh_pr_list", "gh", githubStatus, githubCase, githubHelp, githubInvocation)
 	githubArtifact.RemoveReference = githubStatus.Reference
@@ -449,8 +450,12 @@ func verifyCollisionFaults(
 	runner journeyRunner,
 	help packagedHelpEvidence,
 	storeRoot, workRoot string,
+	expectedStatus []wrapperStatusArtifact,
 	processCounts func() error,
 ) ([]wrapperLifecycleFaultEvidence, [][]byte, error) {
+	if len(expectedStatus) == 0 {
+		return nil, nil, fmt.Errorf("collision evidence requires an owned artifact baseline")
+	}
 	binPath := filepath.Join(storeRoot, "bin")
 	commandPath := filepath.Join(binPath, "gh")
 	faults := make([]wrapperLifecycleFaultEvidence, 0, 3)
@@ -466,6 +471,13 @@ func verifyCollisionFaults(
 		if err != nil {
 			return err
 		}
+		for _, artifact := range expectedStatus {
+			for _, boundary := range result.boundaries {
+				if bytes.Contains(boundary, []byte(artifact.Reference)) {
+					return fmt.Errorf("%s exposed an owned artifact reference", name)
+				}
+			}
+		}
 		if verify != nil {
 			if err := verify(); err != nil {
 				return fmt.Errorf("%s external fixture changed", name)
@@ -474,17 +486,17 @@ func verifyCollisionFaults(
 		if err := os.Remove(commandPath); err != nil {
 			return fmt.Errorf("%s fixture cleanup failed", name)
 		}
-		emptyOutput, err := runner.success(ctx, "success", "wrapper", "status")
+		restoredOutput, err := runner.success(ctx, "success", "wrapper", "status")
 		if err != nil {
 			return fmt.Errorf("%s cleanup status failed", name)
 		}
-		empty, err := decodeWrapperStatus(emptyOutput.stdout)
-		if err != nil || len(empty) != 0 {
-			return fmt.Errorf("%s cleanup did not restore empty status", name)
+		restored, err := decodeWrapperStatus(restoredOutput.stdout)
+		if err != nil || !sameStatusArtifacts(expectedStatus, restored) {
+			return fmt.Errorf("%s cleanup did not restore the owned artifact baseline", name)
 		}
 		faults = append(faults, result.evidence)
 		boundaries = append(boundaries, result.boundaries...)
-		boundaries = append(boundaries, emptyOutput.stdout)
+		boundaries = append(boundaries, restoredOutput.stdout)
 		return nil
 	}
 	if err := run("foreign_collision_status", func() error {
