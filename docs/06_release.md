@@ -26,8 +26,10 @@ retains the optimizer-aware schema-5 record and adds bounded static tailored-
 help evidence for wrapper contract 2. They do not by themselves establish a
 release-quality optimizer, tailored-help, or platform claim: that claim belongs
 only to the workflow result for one exact revision after all five required
-native rows and their aggregate pass. This document does not claim that the
-schema-6 matrix has passed for the current revision.
+native rows and their aggregate pass. CI run 29910455312 supplied that evidence
+on 2026-07-22 for revision
+`01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. No release was created, and a
+later candidate must repeat the matrix.
 
 The current first-release packaging decisions are:
 
@@ -551,15 +553,13 @@ aggregate summaries use disjoint prefixes. This avoids immutable-name
 collisions on a rerun while strict revision, filename, target, and digest
 checks still fail closed on any absent or stale input.
 
-Current bounded observation: on 2026-07-22 the Darwin/arm64 exact packaged
-journey passed for revision `b4ade8c`, including ordinary-command wrapper
-activation. This is one implementation observation, not evidence for the later
-documentation commits, schema-5 source-stream or optimizer plans, the current
-Go contract, wrapper contract 2 static help, the current schema-6/aggregate-
-schema-2 evidence mechanism, the identity or append-argv-only GitHub cases, the
-Go inspection/wrapper case, the other four native rows, the aggregate,
-publication, or a release-quality matrix claim. The exact revision selected
-for any tag must replay all required rows again.
+Current bounded observation: on 2026-07-22 CI run 29910455312 passed the exact
+Linux amd64/arm64, Darwin amd64/arm64, and Windows amd64 schema-6 journeys,
+full/security/public gates, and aggregate schema 2 for revision
+`01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. This establishes the implemented
+optimizer, tailored-help, and platform contracts for that revision only. It is
+not publication, attestation, or evidence for another commit or tag; the exact
+revision selected for any release must replay all required rows again.
 
 No public release has yet made the wrapper claim. A future candidate that
 passes the complete gates may claim only the fixed Linux/macOS POSIX

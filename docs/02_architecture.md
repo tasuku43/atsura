@@ -599,11 +599,13 @@ external observer; controlled application and infrastructure tests own that
 attempt truth. The journey does not fabricate `preserved_after_processor` or
 arbitrary processor faults when the official artifact cannot reach them;
 controlled application and infrastructure truth tables own those branches.
-Until schema 6 and its native matrix pass on one revision, the implementation
-is not a release-quality platform claim. The inherited schema-5 optimizer
-shape keeps the identity case in the outer `go_source` wrapper fields and the
-optimizer's distinct bundle, plan, rendered-wrapper digest, cases, and faults
-only in the nested `optimizer` object.
+On 2026-07-22, CI run 29910455312 passed schema 6 and aggregate schema 2 for
+revision `01c05a45e8b00f09d63d3c6551d3a5df393c41b5` across the exact five
+target matrix. That is release-quality implementation evidence for this
+revision, not publication authorization or evidence for a later candidate.
+The inherited schema-5 optimizer shape keeps the identity case in the outer
+`go_source` wrapper fields and the optimizer's distinct bundle, plan, rendered-
+wrapper digest, cases, and faults only in the nested `optimizer` object.
 
 ## Current milestone boundary
 
@@ -640,7 +642,10 @@ exact adopted purpose bundle
   -> caller-owned environment exposes ordinary source-command spelling
 
 ordinary argv invocation
-  -> fixed absolute `atr` -> `wrapper run`
+  -> final compiled `--help`: fixed artifact-local projection, no bound
+     runtime/source/processor start
+     or
+  -> every other argv: fixed absolute `atr` -> `wrapper run`
   -> honest bundle/runtime/source/command binding revalidation
   -> fresh plan through the same application/domain constructor
   -> same shared plan application path
@@ -664,10 +669,10 @@ Go CLI contract 2 catalog (three probes, recorded Go 1.26.x observation)
   -> strict `test -json` admission and the isolated processor boundary
 ```
 
-This implementation does not itself establish release-quality evidence. The
-full gates and exact installed-artifact POSIX journey on every claimed Linux
-and macOS target remain the completion decision. Windows exercises existing
-commands and structured unsupported behavior only.
+The exact five-target evidence above establishes this milestone for revision
+`01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. Every later release candidate
+must repeat the full gates and installed-artifact journeys. Windows exercises
+existing commands and structured unsupported behavior only.
 
 Raw execution, source refresh, richer argv transformations, additional
 processor tuples, and coding-agent-host integration remain outside these

@@ -740,6 +740,11 @@ candidate revision:
    replay of one platform, or controlled synthetic processor tests cannot stand
    in for another platform's native evidence.
 
+Observed evidence: CI run 29910455312 passed all six conditions on 2026-07-22
+for revision `01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. This is bounded
+historical evidence for that tree; any later candidate must run the same gate
+again.
+
 Neither gate claims raw execution, richer argv transforms, persistent wrapper
 installation or executable shims, Windows POSIX activation, arbitrary
 transformer integration, support beyond an accepted source/processor contract,

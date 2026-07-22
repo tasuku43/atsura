@@ -585,6 +585,11 @@ valid document is not independently attested evidence: the workflow dependency
 and GitHub artifact provenance must still show that the matching native matrix
 job produced it.
 
+On 2026-07-22, CI run 29910455312 supplied that workflow provenance and passed
+all five schema-6 rows plus aggregate schema 2 for revision
+`01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. The observation does not attest
+the executables, authorize publication, or carry forward to another revision.
+
 ## Known limitations
 
 - Hiding commands and options does not prevent invocation outside Atsura.

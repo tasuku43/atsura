@@ -880,9 +880,11 @@ journey.
 
 This section defines the optimizer- and tailored-help-aware acceptance target.
 Evidence schema 6, unchanged aggregate schema 2, and the native workflow
-implement the mechanism, but have not yet passed the five-target matrix on one
-revision. The requirements below therefore do not assert a release-quality
-optimizer, tailored-help, or platform result for the current revision.
+implement the mechanism. CI run 29910455312 passed the five-target matrix and
+aggregate on 2026-07-22 for revision
+`01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. The requirements below therefore
+have one exact release-quality implementation observation; they do not
+authorize publication or carry that result to a later revision.
 
 ### Automated probe
 
