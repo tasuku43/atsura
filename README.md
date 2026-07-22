@@ -436,9 +436,12 @@ shared wrapper proves all five root/namespace/exact-command help views plus
 hidden `api --help` and unknown `unknown --help` faults with zero source and
 processor attempts. Windows retains empty wrapper/help inventories, zero
 wrapper attempts, and the structured unsupported result. Aggregate schema 2 is
-unchanged and does not project `caller_argv`. A release-quality claim still
-requires all five native schema-7 rows and that aggregate to pass for one exact
-revision; that has not yet been established for the current revision.
+unchanged and does not project `caller_argv`. On 2026-07-22, CI run
+[29914651542](https://github.com/tasuku43/atsura/actions/runs/29914651542)
+passed all five native schema-7 rows and aggregate schema 2 for revision
+`8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`. That is release-quality
+implementation evidence for this exact revision, not publication,
+independent executable attestation, or evidence for a later revision.
 
 Current plan parsing is deliberately bounded. Source short options,
 root/global options, and command-specific positional grammar are not completely

@@ -32,7 +32,12 @@ result for one exact revision after all five required native rows and their
 aggregate pass. CI run 29910455312 supplied the historical schema-6 evidence on
 2026-07-22 for revision
 `01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. No release was created, and a
-later schema-7 candidate must repeat the matrix.
+that historical run did not establish schema-7 behavior. CI run 29914651542
+then passed all five current schema-7 rows and aggregate schema 2 on 2026-07-22
+for revision
+`8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`. That is release-quality
+implementation evidence for this exact revision; no release was created, and
+every later candidate must repeat the matrix.
 
 The current first-release packaging decisions are:
 
@@ -574,6 +579,15 @@ full/security/public gates, and aggregate schema 2 for revision
 `01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. This establishes the implemented
 optimizer, one-command tailored-help, and platform contracts for that revision
 only. It is not schema-7 multi-command evidence, publication, attestation, or
+evidence for another commit or tag; the exact revision selected for any release
+must replay all required rows again.
+
+Current bounded observation: on 2026-07-22 CI run 29914651542 passed the exact
+Linux amd64/arm64, Darwin amd64/arm64, and Windows amd64 schema-7 journeys,
+full/security/public gates, and aggregate schema 2 for revision
+`8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`. This establishes the implemented
+optimizer, multi-command tailored-help, and platform contracts for that
+revision only. It is not publication, independent executable attestation, or
 evidence for another commit or tag; the exact revision selected for any release
 must replay all required rows again.
 

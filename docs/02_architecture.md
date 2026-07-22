@@ -619,6 +619,12 @@ schema 2 for revision `01c05a45e8b00f09d63d3c6551d3a5df393c41b5` across the
 exact five-target matrix. That is release-quality implementation evidence for
 this revision's one-command tailored-help contract, not schema-7 multi-command
 evidence, publication authorization, or evidence for a later candidate.
+CI run 29914651542 then passed current schema 7 and aggregate schema 2 on
+2026-07-22 for revision `8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`
+across the same exact matrix. That is release-quality implementation evidence
+for this revision's optimizer, multi-command tailored-help, and platform
+contracts, not publication authorization, independent executable attestation,
+or evidence for a later candidate.
 The inherited schema-5 optimizer shape keeps the identity case in the outer
 `go_source` wrapper fields and the optimizer's distinct bundle, plan, rendered-
 wrapper digest, cases, and faults only in the nested `optimizer` object.
@@ -693,12 +699,10 @@ Go CLI contract 2 catalog (three probes, recorded Go 1.26.x observation)
   -> strict `test -json` admission and the isolated processor boundary
 ```
 
-The exact five-target schema-6 evidence above establishes the predecessor
-one-command wrapper portion of this milestone for revision
-`01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. It does not establish the
-schema-7 multi-command portion. Every later release candidate must repeat the
-full gates and installed-artifact journeys. Windows exercises existing commands
-and structured unsupported behavior only.
+The exact five-target schema-7 evidence above establishes this milestone for
+revision `8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`. Every later release
+candidate must repeat the full gates and installed-artifact journeys. Windows
+exercises existing commands and structured unsupported behavior only.
 
 Raw execution, source refresh, richer argv transformations, additional
 processor tuples, and coding-agent-host integration remain outside these

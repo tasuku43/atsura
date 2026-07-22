@@ -604,6 +604,12 @@ all five historical schema-6 rows plus aggregate schema 2 for revision
 `01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. The observation does not attest
 the executables, authorize publication, prove schema-7 multi-command behavior,
 or carry forward to another revision.
+CI run 29914651542 then supplied the same workflow provenance and passed all
+five current schema-7 rows plus aggregate schema 2 on 2026-07-22 for revision
+`8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`. That observation establishes the
+bounded multi-command behavior for this revision; it does not independently
+attest the executables, authorize publication, or carry forward to another
+revision.
 
 ## Known limitations
 
@@ -692,8 +698,9 @@ plan-declared JSON value, exact bounded source streams and conventional status,
 or the declared optimizer result; failure never selects raw, another bundle,
 or original bytes after processor authority. This becomes a release-quality
 optimizer claim only after the required full/security/public/release gates and
-the optimizer-aware installed-artifact native evidence pass. Until then the
-implementation contract and its controlled-test evidence are real, but native
-release evidence remains pending. The claim does not include executable
-attestation, caller activation integrity, Windows POSIX or optimizer support,
-source authorization, sandboxing, or a persistent wrapper lifecycle.
+the optimizer-aware installed-artifact native evidence pass. They passed on
+2026-07-22 for exact revision
+`8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`; every later candidate must repeat
+them. The claim does not include executable attestation, caller activation
+integrity, Windows POSIX or optimizer support, source authorization,
+sandboxing, or a persistent wrapper lifecycle.

@@ -760,8 +760,13 @@ Historical predecessor evidence: a clean detached-worktree
 `task release:check` and CI run 29910455312 passed the corresponding schema-6
 six-condition set on 2026-07-22 for revision
 `01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. That run does not satisfy current
-schema-7 condition 3 or the current six-condition set. A schema-7 candidate must
-run both the local release gate and native workflow before making this claim.
+schema-7 condition 3 or the current six-condition set. The clean local gates
+(`task check`, `task security`, `task public:check`, and `task release:check`)
+plus CI run 29914651542 passed the current six-condition set on 2026-07-22 for
+revision `8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`. This establishes the
+release-quality implementation claim for that exact revision only. Publication
+remains separately authorized, and every later candidate must repeat both the
+local gates and native workflow.
 
 Neither gate claims raw execution, richer argv transforms, persistent wrapper
 installation or executable shims, Windows POSIX activation, arbitrary

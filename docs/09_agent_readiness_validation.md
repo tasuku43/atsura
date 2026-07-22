@@ -883,10 +883,16 @@ This section defines the optimizer-, multi-command-, and tailored-help-aware
 acceptance target. Evidence schema 7, unchanged aggregate schema 2, and the
 native workflow implement the current mechanism. CI run 29910455312 passed the
 historical schema-6 five-target matrix and aggregate on 2026-07-22 for revision
-`01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. The requirements below therefore
-have one exact release-quality observation for the predecessor one-command
-help contract; the schema-7 multi-command requirements do not yet inherit that
-observation, authorize publication, or carry it to a later revision.
+`01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. That historical run established
+only the predecessor one-command help contract; it did not establish the
+schema-7 multi-command requirements, authorize publication, or carry forward
+to a later revision.
+CI run 29914651542 then passed the current five-target schema-7 matrix and
+aggregate schema 2 on 2026-07-22 for revision
+`8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`. The current requirements therefore
+have one exact release-quality implementation observation. It does not
+authorize publication, independently attest the executables, or carry forward
+to a later revision.
 
 ### Automated probe
 
@@ -1011,7 +1017,7 @@ and `wrapper_source_process_attempts: 3`. Case names occur in the fixed order
 `wrapper_outcome: platform_not_supported`, an empty `wrapper_cases` inventory,
 and zero attempts.
 
-Its `go_source` object separately binds
+Historical schema 4's `go_source` object separately binds
 `atsura.source.go_cli` contract 1, a recorded stable `go1.26.x` observation, three source-
 inspection attempts, `commands_verified: ["test"]`, and exact catalog, bundle,
 and plan digests. Linux/macOS record one `go_test_identity` case with identity
@@ -1021,8 +1027,8 @@ Windows records
 `platform_not_supported`, an empty case list, one zero-attempt rejection, and
 zero Go wrapper source attempts. Together with the four GitHub inspection and
 two direct success attempts plus induced failures, the fixed GitHub fixture-
-attempt total remains 13 on Linux/macOS and 10 on Windows. These are acceptance
-requirements, not a claim here that a gate run has passed.
+attempt total remains 13 on Linux/macOS and 10 on Windows. These are historical
+schema-4 baseline facts, not the current schema-7 acceptance requirements.
 
 Evidence schema 4 does not support the current Go contract or the optimizer.
 Schema 5 retains the base journey facts and additionally binds Go CLI contract
@@ -1092,6 +1098,14 @@ plans, current Go contract 2, RTK inspection or execution, wrapper contract 2
 static help, the current schema-7/aggregate-schema-2 mechanism, the other
 native rows, publication, or the complete release matrix; the tagged revision
 must replay every required row.
+
+The current bounded observation is CI run 29914651542 on 2026-07-22. It passed
+the exact packaged journeys for Linux amd64/arm64, Darwin amd64/arm64, and
+Windows amd64 plus aggregate schema 2 for revision
+`8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`. It covers the current schema-7
+multi-command, optimizer, static-help, and platform acceptance mechanism for
+this revision only; it does not authorize publication, independently attest
+the executables, or carry forward to another revision.
 
 Exact scoped help is the public authoring contract: the source catalog exposes
 command paths, provenance, option grammar, structured output selector, and
