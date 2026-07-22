@@ -39,15 +39,17 @@ func TestRunAggregatesCanonicalNativeEvidence(t *testing.T) {
 	}
 	if strings.Contains(output.String(), directory) || strings.Contains(output.String(), archives) ||
 		strings.Contains(output.String(), "bundle_digest") || strings.Contains(output.String(), "plan_digest") ||
-		strings.Contains(output.String(), "commands_verified") || strings.Contains(output.String(), "caller_argv") {
+		strings.Contains(output.String(), "commands_verified") || strings.Contains(output.String(), "caller_argv") ||
+		strings.Contains(output.String(), "wrapper_lifecycle") || strings.Contains(output.String(), "bin_path_sha256") ||
+		strings.Contains(output.String(), "wsh1_") {
 		t.Fatalf("aggregate leaked non-contract evidence: %s", output.String())
 	}
 }
 
-func TestSchemaEightEvidenceRemainsWithinJourneyBound(t *testing.T) {
+func TestSchemaNineEvidenceRemainsWithinJourneyBound(t *testing.T) {
 	value := marshalEvidence(t, validEvidence("linux/amd64", targetContracts[0].archiveName(testTag), strings.Repeat("0", digestLength)))
 	if len(value)+1 > maxEvidenceFileBytes {
-		t.Fatalf("schema-8 evidence bytes=%d, limit=%d", len(value)+1, maxEvidenceFileBytes)
+		t.Fatalf("schema-9 evidence bytes=%d, limit=%d", len(value)+1, maxEvidenceFileBytes)
 	}
 }
 
@@ -224,7 +226,7 @@ func TestDecodeEvidenceRejectsUnknownDuplicateAndTrailingJSON(t *testing.T) {
 		unknown,
 		duplicate,
 		append(append([]byte{}, valid...), []byte(` {}`)...),
-		[]byte(`{"schema_version":8,"artifact_journey":`),
+		[]byte(`{"schema_version":9,"artifact_journey":`),
 	} {
 		if _, err := decodeEvidence(value); err == nil {
 			t.Fatalf("invalid JSON was accepted: %s", value)
@@ -239,7 +241,7 @@ func TestValidateEvidenceRejectsInvalidContracts(t *testing.T) {
 		name   string
 		mutate func(*evidenceDocument)
 	}{
-		{"schema 7", func(value *evidenceDocument) { value.SchemaVersion = 7 }},
+		{"predecessor schema 8", func(value *evidenceDocument) { value.SchemaVersion = 8 }},
 		{"target", func(value *evidenceDocument) { value.ArtifactJourney.Target = "linux/arm64" }},
 		{"observed host", func(value *evidenceDocument) { value.ArtifactJourney.ObservedHost = "linux/arm64" }},
 		{"archive name", func(value *evidenceDocument) { value.ArtifactJourney.ArchiveName = "other.tar.gz" }},
@@ -655,6 +657,203 @@ func TestExpectedTailoredHelpOutputDigestsAreExact(t *testing.T) {
 	}
 }
 
+func TestValidateEvidenceRejectsInvalidPOSIXWrapperLifecycle(t *testing.T) {
+	archiveName := targetContracts[0].archiveName(testTag)
+	base := validEvidence("linux/amd64", archiveName, strings.Repeat("0", digestLength))
+	tests := []struct {
+		name   string
+		mutate func(*wrapperLifecycleEvidence)
+	}{
+		{"outcome omitted", func(value *wrapperLifecycleEvidence) { value.Outcome = nil }},
+		{"outcome", func(value *wrapperLifecycleEvidence) { value.Outcome = pointer("other") }},
+		{"contract", func(value *wrapperLifecycleEvidence) { value.ContractVersion = pointer(2) }},
+		{"bin digest omitted", func(value *wrapperLifecycleEvidence) { value.BinPathSHA256 = nil }},
+		{"bin digest", func(value *wrapperLifecycleEvidence) { value.BinPathSHA256 = pointer("") }},
+		{"PATH precedence", func(value *wrapperLifecycleEvidence) { value.PathPrecedence = pointer("ambient") }},
+		{"PATH commands absent", func(value *wrapperLifecycleEvidence) { value.PathCommands = nil }},
+		{"PATH command order", func(value *wrapperLifecycleEvidence) { value.PathCommands = []string{"go", "gh"} }},
+		{"status absent", func(value *wrapperLifecycleEvidence) { value.StatusSnapshots = nil }},
+		{"status missing", func(value *wrapperLifecycleEvidence) { value.StatusSnapshots = value.StatusSnapshots[:3] }},
+		{"status name omitted", func(value *wrapperLifecycleEvidence) { value.StatusSnapshots[0].Name = nil }},
+		{"status references absent", func(value *wrapperLifecycleEvidence) { value.StatusSnapshots[0].References = nil }},
+		{"installed status order", func(value *wrapperLifecycleEvidence) {
+			value.StatusSnapshots[1].References[0], value.StatusSnapshots[1].References[1] =
+				value.StatusSnapshots[1].References[1], value.StatusSnapshots[1].References[0]
+		}},
+		{"removed status retains gh", func(value *wrapperLifecycleEvidence) {
+			value.StatusSnapshots[2].References = append([]string{}, value.StatusSnapshots[1].References...)
+		}},
+		{"final status not empty", func(value *wrapperLifecycleEvidence) {
+			value.StatusSnapshots[3].References = []string{*value.Artifacts[1].Reference}
+		}},
+		{"artifacts absent", func(value *wrapperLifecycleEvidence) { value.Artifacts = nil }},
+		{"artifact order", func(value *wrapperLifecycleEvidence) {
+			value.Artifacts[0], value.Artifacts[1] = value.Artifacts[1], value.Artifacts[0]
+		}},
+		{"artifact name omitted", func(value *wrapperLifecycleEvidence) { value.Artifacts[0].Name = nil }},
+		{"artifact name", func(value *wrapperLifecycleEvidence) { value.Artifacts[0].Name = pointer("other") }},
+		{"artifact command", func(value *wrapperLifecycleEvidence) { value.Artifacts[0].CommandName = pointer("go") }},
+		{"artifact reference syntax", func(value *wrapperLifecycleEvidence) { value.Artifacts[0].Reference = pointer("wsh1_bad") }},
+		{"artifact reference material binding", func(value *wrapperLifecycleEvidence) {
+			value.Artifacts[0].Reference = pointer("wsh1_" + strings.Repeat("f", digestLength))
+		}},
+		{"artifact material digest", func(value *wrapperLifecycleEvidence) { value.Artifacts[0].MaterialSHA256 = pointer("bad") }},
+		{"artifact status", func(value *wrapperLifecycleEvidence) { value.Artifacts[0].StatusState = pointer("owned_inactive") }},
+		{"artifact bundle transplant", func(value *wrapperLifecycleEvidence) {
+			value.Artifacts[0].BundleDigest = value.Artifacts[1].BundleDigest
+		}},
+		{"artifact plan transplant", func(value *wrapperLifecycleEvidence) { value.Artifacts[0].PlanDigest = value.Artifacts[1].PlanDigest }},
+		{"artifact execution case", func(value *wrapperLifecycleEvidence) {
+			value.Artifacts[0].ExecutionCase = pointer("default_overridden")
+		}},
+		{"artifact caller argv absent", func(value *wrapperLifecycleEvidence) { value.Artifacts[0].CallerArgv = nil }},
+		{"artifact source argv", func(value *wrapperLifecycleEvidence) { value.Artifacts[0].SourceArgv = []string{"pr", "list"} }},
+		{"artifact wrapper kind", func(value *wrapperLifecycleEvidence) { value.Artifacts[0].WrapperKind = pointer("identity") }},
+		{"artifact result mode", func(value *wrapperLifecycleEvidence) {
+			value.Artifacts[0].ResultMode = pointer("source_stream_passthrough")
+		}},
+		{"artifact help stdout", func(value *wrapperLifecycleEvidence) { value.Artifacts[0].HelpStdoutSHA256 = pointer(emptySHA256) }},
+		{"artifact help stderr", func(value *wrapperLifecycleEvidence) {
+			value.Artifacts[1].HelpStderrSHA256 = pointer(strings.Repeat("f", digestLength))
+		}},
+		{"artifact help source attempt", func(value *wrapperLifecycleEvidence) { value.Artifacts[0].HelpSourceProcessAttempts = pointer(1) }},
+		{"artifact help processor attempt", func(value *wrapperLifecycleEvidence) { value.Artifacts[0].HelpProcessorProcessAttempts = pointer(1) }},
+		{"artifact stdout", func(value *wrapperLifecycleEvidence) { value.Artifacts[0].StdoutSHA256 = pointer(emptySHA256) }},
+		{"Go artifact stdout", func(value *wrapperLifecycleEvidence) { value.Artifacts[1].StdoutSHA256 = pointer(emptySHA256) }},
+		{"artifact stderr", func(value *wrapperLifecycleEvidence) {
+			value.Artifacts[1].StderrSHA256 = pointer(strings.Repeat("f", digestLength))
+		}},
+		{"artifact exit", func(value *wrapperLifecycleEvidence) { value.Artifacts[0].SourceExitCode = pointer(1) }},
+		{"artifact source attempt", func(value *wrapperLifecycleEvidence) { value.Artifacts[0].SourceProcessAttempts = pointer(0) }},
+		{"artifact processor attempt", func(value *wrapperLifecycleEvidence) { value.Artifacts[0].ProcessorProcessAttempts = pointer(1) }},
+		{"artifact remove reference", func(value *wrapperLifecycleEvidence) {
+			value.Artifacts[0].RemoveReference = value.Artifacts[1].Reference
+		}},
+		{"artifact remove outcome", func(value *wrapperLifecycleEvidence) { value.Artifacts[0].RemovalOutcome = pointer("not_found") }},
+		{"duplicate artifact", func(value *wrapperLifecycleEvidence) {
+			value.Artifacts[1].Reference = pointer(*value.Artifacts[0].Reference)
+			value.Artifacts[1].MaterialSHA256 = pointer(*value.Artifacts[0].MaterialSHA256)
+		}},
+		{"faults absent", func(value *wrapperLifecycleEvidence) { value.Faults = nil }},
+		{"fault order", func(value *wrapperLifecycleEvidence) {
+			value.Faults[0], value.Faults[1] = value.Faults[1], value.Faults[0]
+		}},
+		{"fault code", func(value *wrapperLifecycleEvidence) { value.Faults[0].Code = pointer("wrapper_artifact_tampered") }},
+		{"fault filesystem assertion omitted", func(value *wrapperLifecycleEvidence) { value.Faults[0].FilesystemStateUnchanged = nil }},
+		{"fault filesystem changed", func(value *wrapperLifecycleEvidence) { value.Faults[0].FilesystemStateUnchanged = pointer(false) }},
+		{"fault source attempt", func(value *wrapperLifecycleEvidence) { value.Faults[0].SourceProcessAttempts = pointer(1) }},
+		{"fault processor attempt", func(value *wrapperLifecycleEvidence) { value.Faults[0].ProcessorProcessAttempts = pointer(1) }},
+		{"store attempts", func(value *wrapperLifecycleEvidence) { value.StoreMutationAttempts = pointer(3) }},
+		{"source attempts", func(value *wrapperLifecycleEvidence) { value.SourceProcessAttempts = pointer(1) }},
+		{"processor attempts", func(value *wrapperLifecycleEvidence) { value.ProcessorProcessAttempts = pointer(1) }},
+		{"management source attempts", func(value *wrapperLifecycleEvidence) { value.ManagementSourceProcessAttempts = pointer(1) }},
+		{"management processor attempts", func(value *wrapperLifecycleEvidence) { value.ManagementProcessorProcessAttempts = pointer(1) }},
+		{"rejections", func(value *wrapperLifecycleEvidence) { value.ZeroAttemptRejections = pointer(5) }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			value := cloneEvidence(t, base)
+			test.mutate(&value.ArtifactJourney.WrapperLifecycle)
+			if err := validateEvidence(value, "linux/amd64", archiveName, testVersion, testRevision); err == nil {
+				t.Fatal("invalid POSIX wrapper lifecycle evidence was accepted")
+			}
+		})
+	}
+}
+
+func TestValidateEvidenceRejectsOmittedWrapperLifecycleFields(t *testing.T) {
+	archiveName := targetContracts[0].archiveName(testTag)
+	base := validEvidence("linux/amd64", archiveName, strings.Repeat("0", digestLength))
+	fields := []string{
+		"outcome",
+		"contract_version",
+		"bin_path_sha256",
+		"path_precedence",
+		"path_commands",
+		"status_snapshots",
+		"artifacts",
+		"faults",
+		"store_mutation_attempts",
+		"source_process_attempts",
+		"processor_process_attempts",
+		"management_source_process_attempts",
+		"management_processor_process_attempts",
+		"zero_attempt_rejections",
+	}
+	for _, field := range fields {
+		t.Run(field, func(t *testing.T) {
+			encoded := marshalEvidence(t, base)
+			var raw map[string]any
+			if err := json.Unmarshal(encoded, &raw); err != nil {
+				t.Fatal(err)
+			}
+			journey := raw["artifact_journey"].(map[string]any)
+			lifecycle := journey["wrapper_lifecycle"].(map[string]any)
+			delete(lifecycle, field)
+			encoded, err := json.Marshal(raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			value, err := decodeEvidence(encoded)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := validateEvidence(value, "linux/amd64", archiveName, testVersion, testRevision); err == nil {
+				t.Fatal("omitted wrapper lifecycle field was accepted")
+			}
+		})
+	}
+}
+
+func TestValidateEvidenceRejectsInvalidWindowsWrapperLifecycle(t *testing.T) {
+	contract := targetContracts[len(targetContracts)-1]
+	archiveName := contract.archiveName(testTag)
+	base := validEvidence(contract.target, archiveName, strings.Repeat("0", digestLength))
+	tests := []struct {
+		name   string
+		mutate func(*wrapperLifecycleEvidence)
+	}{
+		{"outcome", func(value *wrapperLifecycleEvidence) { value.Outcome = pointer("installed_artifacts_verified") }},
+		{"contract", func(value *wrapperLifecycleEvidence) { value.ContractVersion = pointer(1) }},
+		{"bin digest", func(value *wrapperLifecycleEvidence) {
+			value.BinPathSHA256 = pointer(strings.Repeat("a", digestLength))
+		}},
+		{"PATH precedence", func(value *wrapperLifecycleEvidence) { value.PathPrecedence = pointer("reported_bin_first") }},
+		{"PATH commands absent", func(value *wrapperLifecycleEvidence) { value.PathCommands = nil }},
+		{"PATH command", func(value *wrapperLifecycleEvidence) { value.PathCommands = []string{"gh"} }},
+		{"status absent", func(value *wrapperLifecycleEvidence) { value.StatusSnapshots = nil }},
+		{"status present", func(value *wrapperLifecycleEvidence) {
+			value.StatusSnapshots = []wrapperStatusSnapshotEvidence{{Name: pointer("initial"), References: []string{}}}
+		}},
+		{"artifacts absent", func(value *wrapperLifecycleEvidence) { value.Artifacts = nil }},
+		{"artifact present", func(value *wrapperLifecycleEvidence) { value.Artifacts = []wrapperArtifactEvidence{{}} }},
+		{"faults absent", func(value *wrapperLifecycleEvidence) { value.Faults = nil }},
+		{"fault missing", func(value *wrapperLifecycleEvidence) { value.Faults = value.Faults[:2] }},
+		{"fault order", func(value *wrapperLifecycleEvidence) {
+			value.Faults[0], value.Faults[1] = value.Faults[1], value.Faults[0]
+		}},
+		{"fault code", func(value *wrapperLifecycleEvidence) { value.Faults[0].Code = pointer("wrapper_artifact_not_found") }},
+		{"fault filesystem assertion", func(value *wrapperLifecycleEvidence) { value.Faults[0].FilesystemStateUnchanged = pointer(false) }},
+		{"fault source attempt", func(value *wrapperLifecycleEvidence) { value.Faults[0].SourceProcessAttempts = pointer(1) }},
+		{"fault processor attempt", func(value *wrapperLifecycleEvidence) { value.Faults[0].ProcessorProcessAttempts = pointer(1) }},
+		{"store attempt", func(value *wrapperLifecycleEvidence) { value.StoreMutationAttempts = pointer(1) }},
+		{"source attempt", func(value *wrapperLifecycleEvidence) { value.SourceProcessAttempts = pointer(1) }},
+		{"processor attempt", func(value *wrapperLifecycleEvidence) { value.ProcessorProcessAttempts = pointer(1) }},
+		{"management source attempt", func(value *wrapperLifecycleEvidence) { value.ManagementSourceProcessAttempts = pointer(1) }},
+		{"management processor attempt", func(value *wrapperLifecycleEvidence) { value.ManagementProcessorProcessAttempts = pointer(1) }},
+		{"rejections", func(value *wrapperLifecycleEvidence) { value.ZeroAttemptRejections = pointer(2) }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			value := cloneEvidence(t, base)
+			test.mutate(&value.ArtifactJourney.WrapperLifecycle)
+			if err := validateEvidence(value, contract.target, archiveName, testVersion, testRevision); err == nil {
+				t.Fatal("invalid Windows wrapper lifecycle evidence was accepted")
+			}
+		})
+	}
+}
+
 func TestValidateEvidenceRequiresStructuredUnsupportedWindowsWrapperCases(t *testing.T) {
 	contract := targetContracts[len(targetContracts)-1]
 	archiveName := contract.archiveName(testTag)
@@ -754,7 +953,7 @@ func writeValidEvidenceSet(t *testing.T, directory, archives string) []string {
 
 func validEvidence(target, archiveName, archiveDigest string) evidenceDocument {
 	result := evidenceDocument{
-		SchemaVersion: 8,
+		SchemaVersion: 9,
 		ArtifactJourney: artifactJourneyEvidence{
 			Target: target, ObservedHost: target, ArchiveName: archiveName, ArchiveSHA256: archiveDigest,
 			Version: testVersion, Revision: testRevision,
@@ -865,7 +1064,92 @@ func validEvidence(target, archiveName, archiveDigest string) evidenceDocument {
 			SourceProcessAttempts: wantedGoPOSIXAttempts, ZeroAttemptRejections: 2,
 		}
 	}
+	result.ArtifactJourney.WrapperLifecycle = validWrapperLifecycleEvidence(result.ArtifactJourney, target)
 	return result
+}
+
+func validWrapperLifecycleEvidence(journey artifactJourneyEvidence, target string) wrapperLifecycleEvidence {
+	if target == "windows/amd64" {
+		return wrapperLifecycleEvidence{
+			Outcome: pointer("platform_not_supported"), ContractVersion: pointer(0), BinPathSHA256: pointer(""),
+			PathPrecedence: pointer("not_applicable"), PathCommands: []string{}, StatusSnapshots: []wrapperStatusSnapshotEvidence{},
+			Artifacts: []wrapperArtifactEvidence{},
+			Faults: []wrapperLifecycleFaultEvidence{
+				validWrapperLifecycleFault("install", "wrapper_artifact_platform_not_supported"),
+				validWrapperLifecycleFault("status", "wrapper_artifact_platform_not_supported"),
+				validWrapperLifecycleFault("remove", "wrapper_artifact_platform_not_supported"),
+			},
+			StoreMutationAttempts: pointer(0), SourceProcessAttempts: pointer(0), ProcessorProcessAttempts: pointer(0),
+			ManagementSourceProcessAttempts: pointer(0), ManagementProcessorProcessAttempts: pointer(0),
+			ZeroAttemptRejections: pointer(3),
+		}
+	}
+	ghMaterial := strings.Repeat("a", digestLength)
+	goMaterial := strings.Repeat("b", digestLength)
+	ghReference := "wsh1_" + ghMaterial
+	goReference := "wsh1_" + goMaterial
+	ghCase := journey.WrapperCases[0]
+	goCase := journey.GoSource.WrapperCases[0]
+	result := wrapperLifecycleEvidence{
+		Outcome: pointer("installed_artifacts_verified"), ContractVersion: pointer(1),
+		BinPathSHA256: pointer(strings.Repeat("c", digestLength)), PathPrecedence: pointer("reported_bin_first"),
+		PathCommands: []string{"gh", "go"},
+		StatusSnapshots: []wrapperStatusSnapshotEvidence{
+			{Name: pointer("initial"), References: []string{}},
+			{Name: pointer("installed"), References: []string{ghReference, goReference}},
+			{Name: pointer("after_gh_remove"), References: []string{goReference}},
+			{Name: pointer("final"), References: []string{}},
+		},
+		Artifacts: []wrapperArtifactEvidence{
+			validWrapperLifecycleArtifact("gh_pr_list", "gh", ghReference, ghMaterial, "default_applied", ghCase, journey.TailoredHelp.Views[0].StdoutSHA256),
+			validWrapperLifecycleArtifact("go_test", "go", goReference, goMaterial, "go_test_identity", goCase, digestEvidenceBytes(expectedGoRootTailoredHelpOutput(journey.GoSource.BundleDigest))),
+		},
+		Faults: []wrapperLifecycleFaultEvidence{
+			validWrapperLifecycleFault("unknown_reference_remove", "wrapper_artifact_not_found"),
+			validWrapperLifecycleFault("tampered_status", "wrapper_artifact_tampered"),
+			validWrapperLifecycleFault("tampered_remove", "wrapper_artifact_tampered"),
+			validWrapperLifecycleFault("foreign_collision_status", "wrapper_artifact_collision"),
+			validWrapperLifecycleFault("symlink_collision_status", "wrapper_artifact_collision"),
+			validWrapperLifecycleFault("special_collision_status", "wrapper_artifact_collision"),
+		},
+		StoreMutationAttempts: pointer(4), SourceProcessAttempts: pointer(2), ProcessorProcessAttempts: pointer(0),
+		ManagementSourceProcessAttempts: pointer(0), ManagementProcessorProcessAttempts: pointer(0),
+		ZeroAttemptRejections: pointer(6),
+	}
+	// Consecutive `go test` runs may report different elapsed times while still
+	// satisfying the same identity plan, argv, conventional status, and result
+	// semantics. The native producer validates that bounded semantic pattern.
+	result.Artifacts[1].StdoutSHA256 = pointer(strings.Repeat("d", digestLength))
+	return result
+}
+
+func validWrapperLifecycleArtifact(
+	name, command, reference, material, executionCase string,
+	bound wrapperCaseEvidence,
+	helpStdoutSHA256 string,
+) wrapperArtifactEvidence {
+	return wrapperArtifactEvidence{
+		Name: pointer(name), CommandName: pointer(command), Reference: pointer(reference), MaterialSHA256: pointer(material),
+		StatusState: pointer("owned_active"), BundleDigest: pointer(bound.BundleDigest), PlanDigest: pointer(bound.PlanDigest),
+		ExecutionCase: pointer(executionCase), CallerArgv: append([]string{}, bound.CallerArgv...),
+		SourceArgv: append([]string{}, bound.SourceArgv...), WrapperKind: pointer(bound.WrapperKind), ResultMode: pointer(bound.ResultMode),
+		HelpStdoutSHA256: pointer(helpStdoutSHA256), HelpStderrSHA256: pointer(emptySHA256),
+		HelpSourceProcessAttempts: pointer(0), HelpProcessorProcessAttempts: pointer(0),
+		StdoutSHA256: pointer(bound.StdoutSHA256), StderrSHA256: pointer(bound.StderrSHA256),
+		SourceExitCode: pointer(bound.SourceExitCode), SourceProcessAttempts: pointer(1), ProcessorProcessAttempts: pointer(0),
+		RemoveReference: pointer(reference), RemovalOutcome: pointer("removed"),
+	}
+}
+
+func validWrapperLifecycleFault(name, code string) wrapperLifecycleFaultEvidence {
+	return wrapperLifecycleFaultEvidence{
+		Name: pointer(name), Code: pointer(code), FilesystemStateUnchanged: pointer(true),
+		SourceProcessAttempts: pointer(0), ProcessorProcessAttempts: pointer(0),
+	}
+}
+
+func pointer[T any](value T) *T {
+	return &value
 }
 
 func validTailoredHelpEvidence(journey artifactJourneyEvidence) tailoredHelpEvidence {

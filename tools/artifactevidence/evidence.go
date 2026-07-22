@@ -17,6 +17,7 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
 	"github.com/tasuku43/atsura/internal/domain/wrapperbinding"
+	"github.com/tasuku43/atsura/internal/domain/wrappershim"
 	"github.com/tasuku43/atsura/tools/internal/processormanifest"
 )
 
@@ -26,11 +27,11 @@ const (
 	maxEvidenceFileBytes  = 16 * 1024
 	maxArchiveBytes       = int64(256 * 1024 * 1024)
 	maxAggregateBytes     = 4 * 1024
-	wantedHelpContracts   = 12
+	wantedHelpContracts   = 15
 	wantedInspections     = 4
 	wantedGoInspections   = 3
 	wantedRejections      = 8
-	wantedPOSIXAttempts   = 14
+	wantedPOSIXAttempts   = 15
 	wantedWindowsAttempts = 10
 	wantedPOSIXWrappers   = 4
 	wantedGoPOSIXWrappers = 1
@@ -116,29 +117,89 @@ type evidenceDocument struct {
 }
 
 type artifactJourneyEvidence struct {
-	Target                      string                `json:"target"`
-	ObservedHost                string                `json:"observed_host"`
-	ArchiveName                 string                `json:"archive_name"`
-	ArchiveSHA256               string                `json:"archive_sha256"`
-	Version                     string                `json:"version"`
-	Revision                    string                `json:"revision"`
-	HelpContractsVerified       int                   `json:"help_contracts_verified"`
-	CommandsVerified            []string              `json:"commands_verified"`
-	BundleDigest                string                `json:"bundle_digest"`
-	PlanDigest                  string                `json:"plan_digest"`
-	IssueBundleDigest           string                `json:"issue_bundle_digest"`
-	IssuePlanDigest             string                `json:"issue_plan_digest"`
-	WrapperOutcome              string                `json:"wrapper_outcome"`
-	WrapperCases                []wrapperCaseEvidence `json:"wrapper_cases"`
-	WrapperSourceAttempts       int                   `json:"wrapper_source_process_attempts"`
-	SourceInspectionAttempts    int                   `json:"source_inspection_attempts"`
-	ZeroAttemptRejections       int                   `json:"zero_attempt_rejections"`
-	PostStartFaults             []string              `json:"post_start_faults"`
-	FixtureAttempts             int                   `json:"fixture_attempts"`
-	CredentialEnvironmentAbsent bool                  `json:"credential_environment_absent"`
-	SecretCanariesAbsent        bool                  `json:"secret_canaries_absent"`
-	TailoredHelp                tailoredHelpEvidence  `json:"tailored_help"`
-	GoSource                    goSourceEvidence      `json:"go_source"`
+	Target                      string                   `json:"target"`
+	ObservedHost                string                   `json:"observed_host"`
+	ArchiveName                 string                   `json:"archive_name"`
+	ArchiveSHA256               string                   `json:"archive_sha256"`
+	Version                     string                   `json:"version"`
+	Revision                    string                   `json:"revision"`
+	HelpContractsVerified       int                      `json:"help_contracts_verified"`
+	CommandsVerified            []string                 `json:"commands_verified"`
+	BundleDigest                string                   `json:"bundle_digest"`
+	PlanDigest                  string                   `json:"plan_digest"`
+	IssueBundleDigest           string                   `json:"issue_bundle_digest"`
+	IssuePlanDigest             string                   `json:"issue_plan_digest"`
+	WrapperOutcome              string                   `json:"wrapper_outcome"`
+	WrapperCases                []wrapperCaseEvidence    `json:"wrapper_cases"`
+	WrapperSourceAttempts       int                      `json:"wrapper_source_process_attempts"`
+	SourceInspectionAttempts    int                      `json:"source_inspection_attempts"`
+	ZeroAttemptRejections       int                      `json:"zero_attempt_rejections"`
+	PostStartFaults             []string                 `json:"post_start_faults"`
+	FixtureAttempts             int                      `json:"fixture_attempts"`
+	CredentialEnvironmentAbsent bool                     `json:"credential_environment_absent"`
+	SecretCanariesAbsent        bool                     `json:"secret_canaries_absent"`
+	TailoredHelp                tailoredHelpEvidence     `json:"tailored_help"`
+	GoSource                    goSourceEvidence         `json:"go_source"`
+	WrapperLifecycle            wrapperLifecycleEvidence `json:"wrapper_lifecycle"`
+}
+
+// The lifecycle successor uses pointers for scalar values so a required JSON
+// zero, false, or empty string cannot be confused with an omitted claim.
+// Slice fields are separately required to be non-nil by validation.
+type wrapperLifecycleEvidence struct {
+	Outcome                            *string                         `json:"outcome"`
+	ContractVersion                    *int                            `json:"contract_version"`
+	BinPathSHA256                      *string                         `json:"bin_path_sha256"`
+	PathPrecedence                     *string                         `json:"path_precedence"`
+	PathCommands                       []string                        `json:"path_commands"`
+	StatusSnapshots                    []wrapperStatusSnapshotEvidence `json:"status_snapshots"`
+	Artifacts                          []wrapperArtifactEvidence       `json:"artifacts"`
+	Faults                             []wrapperLifecycleFaultEvidence `json:"faults"`
+	StoreMutationAttempts              *int                            `json:"store_mutation_attempts"`
+	SourceProcessAttempts              *int                            `json:"source_process_attempts"`
+	ProcessorProcessAttempts           *int                            `json:"processor_process_attempts"`
+	ManagementSourceProcessAttempts    *int                            `json:"management_source_process_attempts"`
+	ManagementProcessorProcessAttempts *int                            `json:"management_processor_process_attempts"`
+	ZeroAttemptRejections              *int                            `json:"zero_attempt_rejections"`
+}
+
+type wrapperStatusSnapshotEvidence struct {
+	Name       *string  `json:"name"`
+	References []string `json:"references"`
+}
+
+type wrapperArtifactEvidence struct {
+	Name                         *string  `json:"name"`
+	CommandName                  *string  `json:"command_name"`
+	Reference                    *string  `json:"reference"`
+	MaterialSHA256               *string  `json:"material_sha256"`
+	StatusState                  *string  `json:"status_state"`
+	BundleDigest                 *string  `json:"bundle_digest"`
+	PlanDigest                   *string  `json:"plan_digest"`
+	ExecutionCase                *string  `json:"execution_case"`
+	CallerArgv                   []string `json:"caller_argv"`
+	SourceArgv                   []string `json:"source_argv"`
+	WrapperKind                  *string  `json:"wrapper_kind"`
+	ResultMode                   *string  `json:"result_mode"`
+	HelpStdoutSHA256             *string  `json:"help_stdout_sha256"`
+	HelpStderrSHA256             *string  `json:"help_stderr_sha256"`
+	HelpSourceProcessAttempts    *int     `json:"help_source_process_attempts"`
+	HelpProcessorProcessAttempts *int     `json:"help_processor_process_attempts"`
+	StdoutSHA256                 *string  `json:"stdout_sha256"`
+	StderrSHA256                 *string  `json:"stderr_sha256"`
+	SourceExitCode               *int     `json:"source_exit_code"`
+	SourceProcessAttempts        *int     `json:"source_process_attempts"`
+	ProcessorProcessAttempts     *int     `json:"processor_process_attempts"`
+	RemoveReference              *string  `json:"remove_reference"`
+	RemovalOutcome               *string  `json:"removal_outcome"`
+}
+
+type wrapperLifecycleFaultEvidence struct {
+	Name                     *string `json:"name"`
+	Code                     *string `json:"code"`
+	FilesystemStateUnchanged *bool   `json:"filesystem_state_unchanged"`
+	SourceProcessAttempts    *int    `json:"source_process_attempts"`
+	ProcessorProcessAttempts *int    `json:"processor_process_attempts"`
 }
 
 type tailoredHelpEvidence struct {
@@ -542,7 +603,7 @@ func requireJSONEOF(decoder *json.Decoder) error {
 
 func validateEvidence(document evidenceDocument, target, archiveName, version, revision string) error {
 	journey := document.ArtifactJourney
-	if document.SchemaVersion != 8 {
+	if document.SchemaVersion != 9 {
 		return fmt.Errorf("evidence schema version is invalid")
 	}
 	if journey.Target != target || journey.ObservedHost != target || journey.ArchiveName != archiveName || journey.Version != version || journey.Revision != revision {
@@ -591,7 +652,195 @@ func validateEvidence(document evidenceDocument, target, archiveName, version, r
 	if err := validateGoSourceEvidence(journey.GoSource, target); err != nil {
 		return err
 	}
+	if err := validateWrapperLifecycleEvidence(journey.WrapperLifecycle, journey, target); err != nil {
+		return err
+	}
 	return nil
+}
+
+func validateWrapperLifecycleEvidence(evidence wrapperLifecycleEvidence, journey artifactJourneyEvidence, target string) error {
+	if evidence.Outcome == nil || evidence.ContractVersion == nil || evidence.BinPathSHA256 == nil ||
+		evidence.PathPrecedence == nil || evidence.PathCommands == nil || evidence.StatusSnapshots == nil ||
+		evidence.Artifacts == nil || evidence.Faults == nil || evidence.StoreMutationAttempts == nil ||
+		evidence.SourceProcessAttempts == nil || evidence.ProcessorProcessAttempts == nil ||
+		evidence.ManagementSourceProcessAttempts == nil || evidence.ManagementProcessorProcessAttempts == nil ||
+		evidence.ZeroAttemptRejections == nil {
+		return fmt.Errorf("wrapper lifecycle evidence has an omitted field")
+	}
+	if target == "windows/amd64" {
+		return validateWindowsWrapperLifecycleEvidence(evidence)
+	}
+	return validatePOSIXWrapperLifecycleEvidence(evidence, journey)
+}
+
+func validatePOSIXWrapperLifecycleEvidence(evidence wrapperLifecycleEvidence, journey artifactJourneyEvidence) error {
+	if *evidence.Outcome != "installed_artifacts_verified" || *evidence.ContractVersion != wrappershim.ContractVersion ||
+		!lowercaseHex(*evidence.BinPathSHA256, digestLength) || *evidence.BinPathSHA256 == emptySHA256 ||
+		*evidence.PathPrecedence != "reported_bin_first" || !equalStrings(evidence.PathCommands, []string{"gh", "go"}) ||
+		*evidence.StoreMutationAttempts != 4 || *evidence.SourceProcessAttempts != 2 ||
+		*evidence.ProcessorProcessAttempts != 0 || *evidence.ManagementSourceProcessAttempts != 0 ||
+		*evidence.ManagementProcessorProcessAttempts != 0 || *evidence.ZeroAttemptRejections != 6 {
+		return fmt.Errorf("POSIX wrapper lifecycle summary is invalid")
+	}
+	if len(journey.WrapperCases) == 0 || len(journey.GoSource.WrapperCases) == 0 || len(journey.TailoredHelp.Views) == 0 ||
+		len(evidence.Artifacts) != 2 {
+		return fmt.Errorf("POSIX wrapper lifecycle binding inventory is invalid")
+	}
+	gh := evidence.Artifacts[0]
+	goArtifact := evidence.Artifacts[1]
+	if err := validateWrapperLifecycleArtifact(
+		gh,
+		"gh_pr_list",
+		"gh",
+		"default_applied",
+		journey.WrapperCases[0],
+		journey.TailoredHelp.Views[0].StdoutSHA256,
+		true,
+	); err != nil {
+		return fmt.Errorf("POSIX gh wrapper lifecycle artifact is invalid: %w", err)
+	}
+	goHelp := digestEvidenceBytes(expectedGoRootTailoredHelpOutput(journey.GoSource.BundleDigest))
+	if err := validateWrapperLifecycleArtifact(
+		goArtifact,
+		"go_test",
+		"go",
+		"go_test_identity",
+		journey.GoSource.WrapperCases[0],
+		goHelp,
+		false,
+	); err != nil {
+		return fmt.Errorf("POSIX Go wrapper lifecycle artifact is invalid: %w", err)
+	}
+	if *gh.Reference == *goArtifact.Reference || *gh.MaterialSHA256 == *goArtifact.MaterialSHA256 {
+		return fmt.Errorf("POSIX wrapper lifecycle artifacts are not distinct")
+	}
+	if err := validateWrapperLifecycleSnapshots(evidence.StatusSnapshots, *gh.Reference, *goArtifact.Reference); err != nil {
+		return err
+	}
+	return validatePOSIXWrapperLifecycleFaults(evidence.Faults)
+}
+
+func validateWrapperLifecycleArtifact(
+	artifact wrapperArtifactEvidence,
+	name, command, executionCase string,
+	bound wrapperCaseEvidence,
+	helpStdoutSHA256 string,
+	requireExactStdout bool,
+) error {
+	if artifact.Name == nil || artifact.CommandName == nil || artifact.Reference == nil || artifact.MaterialSHA256 == nil ||
+		artifact.StatusState == nil || artifact.BundleDigest == nil || artifact.PlanDigest == nil || artifact.ExecutionCase == nil ||
+		artifact.CallerArgv == nil || artifact.SourceArgv == nil || artifact.WrapperKind == nil || artifact.ResultMode == nil ||
+		artifact.HelpStdoutSHA256 == nil || artifact.HelpStderrSHA256 == nil || artifact.HelpSourceProcessAttempts == nil ||
+		artifact.HelpProcessorProcessAttempts == nil || artifact.StdoutSHA256 == nil || artifact.StderrSHA256 == nil ||
+		artifact.SourceExitCode == nil || artifact.SourceProcessAttempts == nil || artifact.ProcessorProcessAttempts == nil ||
+		artifact.RemoveReference == nil || artifact.RemovalOutcome == nil {
+		return fmt.Errorf("artifact has an omitted field")
+	}
+	reference, err := wrappershim.ParseReference(*artifact.Reference)
+	if err != nil {
+		return fmt.Errorf("artifact reference is invalid")
+	}
+	referenceDigest, err := reference.Digest()
+	if err != nil || referenceDigest != *artifact.MaterialSHA256 || !lowercaseHex(*artifact.MaterialSHA256, digestLength) {
+		return fmt.Errorf("artifact reference does not bind its material")
+	}
+	if *artifact.Name != name || *artifact.CommandName != command || *artifact.StatusState != "owned_active" ||
+		*artifact.ExecutionCase != executionCase || *artifact.BundleDigest != bound.BundleDigest ||
+		*artifact.PlanDigest != bound.PlanDigest || !equalStrings(artifact.CallerArgv, bound.CallerArgv) ||
+		!equalStrings(artifact.SourceArgv, bound.SourceArgv) || *artifact.WrapperKind != bound.WrapperKind ||
+		*artifact.ResultMode != bound.ResultMode || *artifact.HelpStdoutSHA256 != helpStdoutSHA256 ||
+		*artifact.HelpStderrSHA256 != emptySHA256 || *artifact.HelpSourceProcessAttempts != 0 ||
+		*artifact.HelpProcessorProcessAttempts != 0 || !lowercaseHex(*artifact.StdoutSHA256, digestLength) ||
+		*artifact.StdoutSHA256 == emptySHA256 || (requireExactStdout && *artifact.StdoutSHA256 != bound.StdoutSHA256) ||
+		*artifact.StderrSHA256 != bound.StderrSHA256 || *artifact.SourceExitCode != bound.SourceExitCode ||
+		*artifact.SourceProcessAttempts != 1 || *artifact.SourceProcessAttempts != bound.SourceProcessAttempts ||
+		*artifact.ProcessorProcessAttempts != 0 || *artifact.RemoveReference != *artifact.Reference ||
+		*artifact.RemovalOutcome != "removed" {
+		return fmt.Errorf("artifact does not match its execution and removal contract")
+	}
+	return nil
+}
+
+func validateWrapperLifecycleSnapshots(snapshots []wrapperStatusSnapshotEvidence, ghReference, goReference string) error {
+	wanted := []struct {
+		name       string
+		references []string
+	}{
+		{name: "initial", references: []string{}},
+		{name: "installed", references: []string{ghReference, goReference}},
+		{name: "after_gh_remove", references: []string{goReference}},
+		{name: "final", references: []string{}},
+	}
+	if len(snapshots) != len(wanted) {
+		return fmt.Errorf("POSIX wrapper lifecycle status inventory is invalid")
+	}
+	for index, expected := range wanted {
+		actual := snapshots[index]
+		if actual.Name == nil || actual.References == nil || *actual.Name != expected.name ||
+			!equalStrings(actual.References, expected.references) {
+			return fmt.Errorf("POSIX wrapper lifecycle status snapshot %d is invalid", index)
+		}
+	}
+	return nil
+}
+
+func validatePOSIXWrapperLifecycleFaults(faults []wrapperLifecycleFaultEvidence) error {
+	wanted := []struct {
+		name, code string
+	}{
+		{name: "unknown_reference_remove", code: "wrapper_artifact_not_found"},
+		{name: "tampered_status", code: "wrapper_artifact_tampered"},
+		{name: "tampered_remove", code: "wrapper_artifact_tampered"},
+		{name: "foreign_collision_status", code: "wrapper_artifact_collision"},
+		{name: "symlink_collision_status", code: "wrapper_artifact_collision"},
+		{name: "special_collision_status", code: "wrapper_artifact_collision"},
+	}
+	if len(faults) != len(wanted) {
+		return fmt.Errorf("POSIX wrapper lifecycle fault inventory is invalid")
+	}
+	for index, expected := range wanted {
+		actual := faults[index]
+		if actual.Name == nil || actual.Code == nil || actual.FilesystemStateUnchanged == nil ||
+			actual.SourceProcessAttempts == nil || actual.ProcessorProcessAttempts == nil ||
+			*actual.Name != expected.name || *actual.Code != expected.code || !*actual.FilesystemStateUnchanged ||
+			*actual.SourceProcessAttempts != 0 || *actual.ProcessorProcessAttempts != 0 {
+			return fmt.Errorf("POSIX wrapper lifecycle fault %d is invalid", index)
+		}
+	}
+	return nil
+}
+
+func validateWindowsWrapperLifecycleEvidence(evidence wrapperLifecycleEvidence) error {
+	if *evidence.Outcome != "platform_not_supported" || *evidence.ContractVersion != 0 || *evidence.BinPathSHA256 != "" ||
+		*evidence.PathPrecedence != "not_applicable" || len(evidence.PathCommands) != 0 || len(evidence.StatusSnapshots) != 0 ||
+		len(evidence.Artifacts) != 0 || *evidence.StoreMutationAttempts != 0 || *evidence.SourceProcessAttempts != 0 ||
+		*evidence.ProcessorProcessAttempts != 0 || *evidence.ManagementSourceProcessAttempts != 0 ||
+		*evidence.ManagementProcessorProcessAttempts != 0 || *evidence.ZeroAttemptRejections != 3 {
+		return fmt.Errorf("Windows wrapper lifecycle summary is invalid")
+	}
+	wanted := []string{"install", "status", "remove"}
+	if len(evidence.Faults) != len(wanted) {
+		return fmt.Errorf("Windows wrapper lifecycle fault inventory is invalid")
+	}
+	for index, name := range wanted {
+		actual := evidence.Faults[index]
+		if actual.Name == nil || actual.Code == nil || actual.FilesystemStateUnchanged == nil ||
+			actual.SourceProcessAttempts == nil || actual.ProcessorProcessAttempts == nil || *actual.Name != name ||
+			*actual.Code != "wrapper_artifact_platform_not_supported" || !*actual.FilesystemStateUnchanged ||
+			*actual.SourceProcessAttempts != 0 || *actual.ProcessorProcessAttempts != 0 {
+			return fmt.Errorf("Windows wrapper lifecycle fault %d is invalid", index)
+		}
+	}
+	return nil
+}
+
+func expectedGoRootTailoredHelpOutput(bundleDigest string) []byte {
+	return []byte(strings.Join([]string{
+		"Atsura tailored help",
+		"Bundle digest: " + bundleDigest,
+		"Commands:",
+		"  test",
+	}, "\n") + "\n")
 }
 
 func validateTailoredHelp(evidence tailoredHelpEvidence, journey artifactJourneyEvidence, target string) error {
