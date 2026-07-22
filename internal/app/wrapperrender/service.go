@@ -115,111 +115,9 @@ func (s *Service) Render(ctx context.Context, intent operation.Intent, bundleLoc
 	if !s.configured() {
 		return Result{}, fmt.Errorf("wrapper render adapters are not configured")
 	}
-	if err := wrapperbinding.ValidateBundleLocator(bundleLocator); err != nil {
-		return Result{}, fault.New(
-			fault.KindInvalidInput,
-			"invalid_wrapper_binding",
-			"The wrapper bundle locator must be one exact absolute clean path.",
-			false,
-			helpAction(),
-		)
-	}
-	if s.platform != "linux" && s.platform != "darwin" {
-		return Result{}, fault.New(
-			fault.KindUnsupported,
-			"wrapper_platform_not_supported",
-			"POSIX wrapper rendering is supported only on Linux and macOS in this release.",
-			false,
-			helpAction(),
-		)
-	}
-
-	bundle, bundleDigest, err := s.bundles.Load(ctx, bundleLocator)
+	binding, err := s.Materialize(ctx, bundleLocator)
 	if err != nil {
-		return Result{}, preserveLoad(err)
-	}
-	switch state := s.adoption.Inspect(ctx, bundleDigest); state {
-	case bundletrust.StateAdopted:
-	case bundletrust.StateInvalid:
-		return Result{}, fault.New(fault.KindRejected, "invalid_bundle_trust_store", "The user-local bundle adoption store is invalid.", false, statusAction())
-	case bundletrust.StateNotAdopted:
-		return Result{}, fault.New(fault.KindRejected, "bundle_not_adopted", "The exact bundle digest has not been adopted by this user.", false, trustAction())
-	default:
-		return Result{}, fault.New(fault.KindRejected, "invalid_bundle_trust_store", "The user-local bundle adoption store returned an unknown state.", false, statusAction())
-	}
-	if err := ctx.Err(); err != nil {
 		return Result{}, err
-	}
-
-	currentSource, err := s.identity.Identify(ctx, bundle.Catalog.Source.ResolvedPath)
-	if err != nil {
-		return Result{}, classifySourceIdentity(err)
-	}
-	wantedSource := sourceprocess.Identity{
-		ResolvedPath: bundle.Catalog.Source.ResolvedPath,
-		SHA256:       bundle.Catalog.Source.SHA256,
-		Size:         bundle.Catalog.Source.Size,
-	}
-	if currentSource != wantedSource {
-		return Result{}, fault.New(fault.KindRejected, "bundle_source_drift", "The bundle source identity is no longer current.", false, statusAction())
-	}
-	if err := ctx.Err(); err != nil {
-		return Result{}, err
-	}
-	if err := s.compatibility.VerifySurface(bundle); err != nil {
-		return Result{}, fault.New(
-			fault.KindUnsupported,
-			"wrapper_runtime_not_supported",
-			"The complete tailored surface is not admitted by one maintained wrapper runtime contract.",
-			false,
-			helpAction(),
-		)
-	}
-	if len(bundle.Processors) > 0 {
-		if portcheck.IsNil(s.processors.Identity) || portcheck.IsNil(s.processors.Compatibility) {
-			return Result{}, fault.New(fault.KindUnsupported, "wrapper_runtime_not_supported", "This runtime has no complete external processor compatibility boundary.", false, helpAction())
-		}
-		for _, binding := range bundle.Processors {
-			identity, err := s.processors.Identity.Identify(ctx, binding.Observation.Identity.ResolvedPath)
-			if err != nil {
-				return Result{}, classifyProcessorIdentity(err)
-			}
-			if identity != binding.Observation.Identity {
-				return Result{}, fault.New(fault.KindRejected, "bundle_processor_drift", "A bundle processor identity is no longer current.", false, statusAction())
-			}
-		}
-		if err := s.processors.Compatibility.VerifySurface(bundle); err != nil {
-			return Result{}, fault.New(fault.KindUnsupported, "wrapper_runtime_not_supported", "The external processor tuple is not admitted by this wrapper runtime.", false, helpAction())
-		}
-	}
-
-	runtimeLocator, err := s.current.CurrentExecutable(ctx)
-	if err != nil {
-		return Result{}, classifyRuntimeIdentity(err)
-	}
-	if err := ctx.Err(); err != nil {
-		return Result{}, err
-	}
-	runtimeIdentity, err := s.identity.Identify(ctx, runtimeLocator)
-	if err != nil {
-		return Result{}, classifyRuntimeIdentity(err)
-	}
-	if err := runtimeIdentity.Validate(); err != nil {
-		return Result{}, runtimeUnavailable()
-	}
-	if err := ctx.Err(); err != nil {
-		return Result{}, err
-	}
-
-	binding, err := wrapperbinding.New(bundleLocator, bundleDigest, bundle, runtimeIdentity)
-	if err != nil {
-		return Result{}, fault.New(
-			fault.KindInvalidInput,
-			"invalid_wrapper_binding",
-			"The adopted bundle cannot produce a complete portable wrapper binding.",
-			false,
-			helpAction(),
-		)
 	}
 	// The renderer is a controlled port but still receives a detached copy so
 	// slice-bearing compiled help cannot mutate the binding returned to the
@@ -249,14 +147,141 @@ func (s *Service) Render(ctx context.Context, intent operation.Intent, bundleLoc
 	return Result{Binding: binding.Clone(), Material: material.Clone(), SourceProcessAttempts: 0, ProcessorProcessAttempts: 0}, nil
 }
 
+// Materialize resolves the exact adopted-bundle, source, processor, runtime,
+// and complete-surface closure shared by every fixed wrapper material form.
+// It performs no rendering, filesystem mutation, source start, or processor
+// start. Public commands remain responsible for validating their own exact
+// operation intent before calling this application-owned authority.
+func (s *Service) Materialize(ctx context.Context, bundleLocator string) (wrapperbinding.Binding, error) {
+	if ctx == nil {
+		return wrapperbinding.Binding{}, fmt.Errorf("wrapper materialization context is nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return wrapperbinding.Binding{}, err
+	}
+	if !s.materializerConfigured() {
+		return wrapperbinding.Binding{}, fmt.Errorf("wrapper materialization adapters are not configured")
+	}
+	if err := wrapperbinding.ValidateBundleLocator(bundleLocator); err != nil {
+		return wrapperbinding.Binding{}, fault.New(
+			fault.KindInvalidInput,
+			"invalid_wrapper_binding",
+			"The wrapper bundle locator must be one exact absolute clean path.",
+			false,
+			helpAction(),
+		)
+	}
+	if s.platform != "linux" && s.platform != "darwin" {
+		return wrapperbinding.Binding{}, fault.New(
+			fault.KindUnsupported,
+			"wrapper_platform_not_supported",
+			"POSIX wrapper rendering is supported only on Linux and macOS in this release.",
+			false,
+			helpAction(),
+		)
+	}
+
+	bundle, bundleDigest, err := s.bundles.Load(ctx, bundleLocator)
+	if err != nil {
+		return wrapperbinding.Binding{}, preserveLoad(err)
+	}
+	switch state := s.adoption.Inspect(ctx, bundleDigest); state {
+	case bundletrust.StateAdopted:
+	case bundletrust.StateInvalid:
+		return wrapperbinding.Binding{}, fault.New(fault.KindRejected, "invalid_bundle_trust_store", "The user-local bundle adoption store is invalid.", false, statusAction())
+	case bundletrust.StateNotAdopted:
+		return wrapperbinding.Binding{}, fault.New(fault.KindRejected, "bundle_not_adopted", "The exact bundle digest has not been adopted by this user.", false, trustAction())
+	default:
+		return wrapperbinding.Binding{}, fault.New(fault.KindRejected, "invalid_bundle_trust_store", "The user-local bundle adoption store returned an unknown state.", false, statusAction())
+	}
+	if err := ctx.Err(); err != nil {
+		return wrapperbinding.Binding{}, err
+	}
+
+	currentSource, err := s.identity.Identify(ctx, bundle.Catalog.Source.ResolvedPath)
+	if err != nil {
+		return wrapperbinding.Binding{}, classifySourceIdentity(err)
+	}
+	wantedSource := sourceprocess.Identity{
+		ResolvedPath: bundle.Catalog.Source.ResolvedPath,
+		SHA256:       bundle.Catalog.Source.SHA256,
+		Size:         bundle.Catalog.Source.Size,
+	}
+	if currentSource != wantedSource {
+		return wrapperbinding.Binding{}, fault.New(fault.KindRejected, "bundle_source_drift", "The bundle source identity is no longer current.", false, statusAction())
+	}
+	if err := ctx.Err(); err != nil {
+		return wrapperbinding.Binding{}, err
+	}
+	if err := s.compatibility.VerifySurface(bundle); err != nil {
+		return wrapperbinding.Binding{}, fault.New(
+			fault.KindUnsupported,
+			"wrapper_runtime_not_supported",
+			"The complete tailored surface is not admitted by one maintained wrapper runtime contract.",
+			false,
+			helpAction(),
+		)
+	}
+	if len(bundle.Processors) > 0 {
+		if portcheck.IsNil(s.processors.Identity) || portcheck.IsNil(s.processors.Compatibility) {
+			return wrapperbinding.Binding{}, fault.New(fault.KindUnsupported, "wrapper_runtime_not_supported", "This runtime has no complete external processor compatibility boundary.", false, helpAction())
+		}
+		for _, binding := range bundle.Processors {
+			identity, err := s.processors.Identity.Identify(ctx, binding.Observation.Identity.ResolvedPath)
+			if err != nil {
+				return wrapperbinding.Binding{}, classifyProcessorIdentity(err)
+			}
+			if identity != binding.Observation.Identity {
+				return wrapperbinding.Binding{}, fault.New(fault.KindRejected, "bundle_processor_drift", "A bundle processor identity is no longer current.", false, statusAction())
+			}
+		}
+		if err := s.processors.Compatibility.VerifySurface(bundle); err != nil {
+			return wrapperbinding.Binding{}, fault.New(fault.KindUnsupported, "wrapper_runtime_not_supported", "The external processor tuple is not admitted by this wrapper runtime.", false, helpAction())
+		}
+	}
+
+	runtimeLocator, err := s.current.CurrentExecutable(ctx)
+	if err != nil {
+		return wrapperbinding.Binding{}, classifyRuntimeIdentity(err)
+	}
+	if err := ctx.Err(); err != nil {
+		return wrapperbinding.Binding{}, err
+	}
+	runtimeIdentity, err := s.identity.Identify(ctx, runtimeLocator)
+	if err != nil {
+		return wrapperbinding.Binding{}, classifyRuntimeIdentity(err)
+	}
+	if err := runtimeIdentity.Validate(); err != nil {
+		return wrapperbinding.Binding{}, runtimeUnavailable()
+	}
+	if err := ctx.Err(); err != nil {
+		return wrapperbinding.Binding{}, err
+	}
+
+	binding, err := wrapperbinding.New(bundleLocator, bundleDigest, bundle, runtimeIdentity)
+	if err != nil {
+		return wrapperbinding.Binding{}, fault.New(
+			fault.KindInvalidInput,
+			"invalid_wrapper_binding",
+			"The adopted bundle cannot produce a complete portable wrapper binding.",
+			false,
+			helpAction(),
+		)
+	}
+	return binding.Clone(), nil
+}
+
 func (s *Service) configured() bool {
+	return s.materializerConfigured() && !portcheck.IsNil(s.renderer)
+}
+
+func (s *Service) materializerConfigured() bool {
 	return s != nil && !s.invalid &&
 		!portcheck.IsNil(s.bundles) &&
 		!portcheck.IsNil(s.adoption) &&
 		!portcheck.IsNil(s.identity) &&
 		!portcheck.IsNil(s.current) &&
-		!portcheck.IsNil(s.compatibility) &&
-		!portcheck.IsNil(s.renderer)
+		!portcheck.IsNil(s.compatibility)
 }
 
 func classifyProcessorIdentity(err error) error {
