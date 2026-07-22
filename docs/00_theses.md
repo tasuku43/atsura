@@ -254,7 +254,11 @@ original-output allowance, and reason. Atsura still executes the source itself;
 RTK is never the source executor, a runtime-selected fallback, or a permission
 mechanism. RTK's advertised support list is evidence to investigate, not the
 compatibility registry itself. This direction is accepted, but no RTK stage is
-implemented by the current schema or runtime.
+implemented by the current schema or runtime. ADR 0009 rejects the previously
+proposed `git log` / `git-log` first tuple: RTK `v0.43.0` accepts a valid commit
+message containing its literal block delimiter and can return exit zero with a
+misleading association. A future tuple must prove semantic relationships with
+hostile fixtures, not merely identity, exit status, and shorter output.
 
 ## Thesis 7: Agents propose and invoke; the deterministic core compiles
 
@@ -410,9 +414,9 @@ exact-artifact evidence and the required gates pass on the claimed targets.
   without giving repository content authority?
 - What stronger executable identity mechanism can close the remaining
   check-to-exec race on each supported platform?
-- Which exact RTK versions, pipe filters, source commands, and platforms satisfy
-  the first no-state optimizer compatibility contract, and how quickly can that
-  proven matrix expand?
+- After rejection of the ambiguous `git-log` tuple, which exact RTK version,
+  pipe filter, source command, and platform can satisfy the first no-state,
+  semantic-association-safe optimizer compatibility contract?
 - When, if ever, should jq, other external transformers, plugins, or scripts be
   admitted through a similarly finite contract?
 - How, if at all, should usage evidence be collected without storing secrets or

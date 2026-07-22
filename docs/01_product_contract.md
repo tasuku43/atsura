@@ -223,7 +223,11 @@ registry proves an exact source adapter/version/command and RTK version/filter
 contract. The generated specification contains that choice explicitly before
 review; a user or proposing agent may replace it explicitly before compilation.
 RTK never selects or starts the source CLI in this boundary. The current schema
-and runtime do not implement this concept.
+and runtime do not implement this concept. No first RTK tuple is currently
+accepted. ADR 0009 rejects the `v0.43.0` `git-log` candidate because a valid
+commit message can collide with its literal block delimiter and produce a
+successful but misleading association. Exact identity, exit zero, and empty
+stderr do not by themselves establish semantic compatibility.
 
 ### Materialized authoring default
 

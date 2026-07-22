@@ -139,6 +139,13 @@ race as a limitation rather than claiming sandboxing. Any processor failure
 after source start is non-retryable and exposes neither intermediate
 input/output nor processor stderr.
 
+Treat processor exit zero and size reduction as transport facts, not semantic
+proof. Before registering a tuple, use hostile valid source data to exercise
+every literal delimiter, grouping key, truncation boundary, and association
+rule on which the filter relies. Reject a processor whose output can silently
+reassign task-owned relationships. ADR 0009 records why RTK `v0.43.0`
+`git-log` is not an accepted first tuple.
+
 Do not require or infer allow/confirm/deny, read/create/write, target, or impact
 for the downstream source operation. Coding-agent host permissions and
 rewrites are outside the product boundary and do not enter the core

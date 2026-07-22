@@ -236,9 +236,10 @@ public source-runtime boundary. Tests must prove:
 
 `tailoring.output.optimize` remains deferred. Schema 3 and the current runtime
 continue to reject RTK and arbitrary external-processor actions. ADR 0007
-selects a future contract; neither the current transform-runtime milestone nor
-its passing gates claim an optimizer, an RTK authoring default, or RTK runtime
-compatibility.
+selects a future contract, while ADR 0009 rejects the ambiguous `v0.43.0`
+`git-log` candidate and leaves the first tuple unselected. Neither the current
+transform-runtime milestone nor its passing gates claim an optimizer, an RTK
+authoring default, or RTK runtime compatibility.
 
 An implementing slice may change that ledger state only after tests prove:
 
@@ -274,6 +275,9 @@ An implementing slice may change that ledger state only after tests prove:
   processor check-to-exec race as a stated limitation; and
 - every claimed platform replays an exact native RTK artifact and records
   Apache-2.0 provenance, license, notice, dependency, and SBOM evidence.
+- each filter fixture covers its literal delimiters, grouping keys, truncation
+  boundaries, and association rules with hostile valid source data; exit zero,
+  empty stderr, and smaller output never substitute for semantic validation.
 
 ### Source execution effect and process boundary
 

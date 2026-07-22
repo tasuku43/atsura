@@ -303,6 +303,12 @@ compatibility evidence, not an OS or network sandbox; portable processor
 identity checks retain a check-to-exec race. A wrapper consumes the already
 compiled stage and never selects RTK at invocation time.
 
+No concrete processor tuple currently occupies that registry. ADR 0009 rejects
+the proposed RTK `v0.43.0` `git-log` tuple because its literal block delimiter
+collides with valid Git commit text. A future adapter must validate every
+semantic delimiter, grouping key, and association precondition through hostile
+fixtures before an exit-zero processor result can become plan output.
+
 ### CLI
 
 `internal/cli/` is the composition and presentation boundary. It owns:
@@ -508,8 +514,9 @@ integration remain outside these milestones.
   replacement, and recursion guard close a persistent wrapper lifecycle.
 - How multiple purpose profiles select wrappers for one ordinary command
   without ambient or coding-agent-host state.
-- Which exact Git/RTK `git log` source, format, filter, version, and platform
-  contract should prove the first original-preserving optimizer.
+- Which source/RTK tuple should replace the rejected ambiguous `git-log`
+  candidate and prove the first original-preserving optimizer without an
+  unvalidated delimiter or association rule.
 - Which explicit processor-observation input and storage boundary should bind an
   exact RTK artifact at bundle build without consulting ambient `PATH`.
 - Whether jq, plugins, scripts, or other external processors ever justify a

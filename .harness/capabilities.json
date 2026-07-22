@@ -37,7 +37,7 @@
   {
     "id": "tailoring.output.optimize",
     "status": "deferred",
-    "reason": "ADR 0007 accepts a materialized RTK-preferred optimizer default only for exact maintained compatibility contracts; the optimizer schema, external-processor runtime, and native compatibility evidence are not implemented."
+    "reason": "ADR 0007 accepts a materialized RTK-preferred optimizer default only for exact maintained compatibility contracts, while ADR 0009 rejects the ambiguous git-log candidate; no replacement tuple, optimizer schema, external-processor runtime, or complete native compatibility evidence is implemented."
   },
   {
     "id": "tailoring.catalog.inspect",

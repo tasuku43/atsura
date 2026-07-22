@@ -8,7 +8,9 @@
 - Extends: docs/decisions/0005-purpose-specific-surface-and-wrapper.md and
   docs/decisions/0006-adapter-proven-transform-runtime.md
 - Supersedes: None
-- Superseded by: None
+- Superseded in part by:
+  `docs/decisions/0009-reject-ambiguous-rtk-git-log-tuple.md`, for the proposed
+  first Git `log` / `git-log` compatibility tuple only
 
 ## Context
 
@@ -135,17 +137,18 @@ paths do not consistently honor one global tracking disable. This evidence is
 not an OS or network sandbox, and the portable processor identity checks retain
 a check-to-exec race between the last observation and process open.
 
-### First compatibility proof
+### Historical first compatibility proposal
 
-The recommended first RTK slice is a second source adapter for Git with one
-exact `git log` invocation contract and `rtk pipe --filter=git-log`. The source
-argv fixes the locale, format markers, order, and finite record limit expected
-by that filter. Git starts once and RTK starts once.
+This ADR originally recommended a second source adapter for Git with one exact
+`git log` invocation contract and `rtk pipe --filter=git-log`. ADR 0009 rejects
+that tuple after a hostile valid commit body demonstrated an ambiguous literal
+delimiter and a successful but misleading association. The broader controlled
+processor and explicit-default decisions remain accepted.
 
-This is a bounded hypothesis, not an accepted public capability in this ADR.
-`git diff` is deferred because its current filter may emit an RTK-specific
-recovery hint, and `git status` is deferred because RTK's complete status path
-performs additional source observations that `rtk pipe` alone does not own.
+No replacement first tuple is accepted. `git diff` remains deferred because its
+current filter may emit an RTK-specific recovery hint, and `git status` remains
+deferred because RTK's complete status path performs additional source
+observations that `rtk pipe` alone does not own.
 
 ## Alternatives considered
 

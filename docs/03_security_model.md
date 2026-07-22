@@ -285,6 +285,14 @@ race. A source failure starts no processor. A processor failure after source
 start is non-retryable and exposes neither processor stderr nor failed
 intermediate output.
 
+Successful processor status is not semantic validation. ADR 0009 records that
+RTK `v0.43.0` `git-log` can split a valid commit message on a literal delimiter
+and return exit zero with empty stderr while changing apparent commit
+association. Atsura therefore admits no RTK tuple yet. Future compatibility
+fixtures must exercise hostile delimiters, grouping keys, truncation boundaries,
+and association rules, and must reject results whose task-owned relationships
+cannot be validated independently of presentation.
+
 Recovery conformance covers every exact scoped-help declaration rather than a
 selected sample. Preview has 27 zero-attempt cases. Execute has 28 pre-start
 and 15 post-start phase cases spanning its 41 public codes, with zero/one
