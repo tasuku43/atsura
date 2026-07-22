@@ -110,9 +110,11 @@ Each tag publishes:
 - prerelease metadata when the tag contains a prerelease suffix.
 
 Every archive contains the intended binary and the repository `LICENSE` bytes.
-When a reviewed root `THIRD_PARTY_NOTICES` file exists, every archive contains
-those exact bytes as well; absence means there is no notice entry, not an empty
-placeholder. No other member is allowed. `scripts/package-release.sh` builds,
+The reviewed root `THIRD_PARTY_NOTICES` contains the license and NOTICE material
+for the exact `go.yaml.in/yaml/v3 v3.0.4` linked dependency, and every archive
+contains those exact bytes. The release gate binds that notice review to the
+exact module version and required upstream copyright/license lines. No other
+member is allowed. `scripts/package-release.sh` builds,
 reopens, and verifies each artifact; `task release:check` validates the same
 packaging contract over the full matrix.
 

@@ -61,6 +61,48 @@ if [[ -n $local_module_replacements ]]; then
   printf '%s\n' "$local_module_replacements" >&2
   exit 1
 fi
+yaml_module=$(awk '$1 == "require" && $2 == "go.yaml.in/yaml/v3" { print $2 " " $3 }' go.mod)
+if [[ $yaml_module != "go.yaml.in/yaml/v3 v3.0.4" ]]; then
+  echo "release notice review requires the exact go.yaml.in/yaml/v3 v3.0.4 dependency" >&2
+  exit 1
+fi
+if [[ ! -f THIRD_PARTY_NOTICES || -L THIRD_PARTY_NOTICES ]]; then
+  echo "release archives require a regular THIRD_PARTY_NOTICES for go.yaml.in/yaml/v3" >&2
+  exit 1
+fi
+yaml_module_dir=$(go list -m -f '{{.Dir}}' go.yaml.in/yaml/v3)
+if [[ ! -f $yaml_module_dir/LICENSE || -L $yaml_module_dir/LICENSE ||
+      ! -f $yaml_module_dir/NOTICE || -L $yaml_module_dir/NOTICE ]]; then
+  echo "verified yaml dependency license or NOTICE is unavailable" >&2
+  exit 1
+fi
+notice_check_root=$(mktemp -d "${TMPDIR:-/tmp}/atsura-notice-check.XXXXXXXX")
+cleanup_notice_check() { rm -rf -- "$notice_check_root"; }
+trap cleanup_notice_check EXIT
+{
+  printf '%s\n' \
+    'Third-Party Notices' \
+    '===================' \
+    '' \
+    'This distribution includes the following third-party software.' \
+    '' \
+    'go.yaml.in/yaml/v3 v3.0.4' \
+    '--------------------------' \
+    '' \
+    'Source: https://go.yaml.in/yaml/v3' \
+    'License: MIT and Apache-2.0' \
+    '' \
+    'Upstream LICENSE:'
+  cat "$yaml_module_dir/LICENSE"
+  printf '\nUpstream NOTICE:\n\n'
+  cat "$yaml_module_dir/NOTICE"
+} >"$notice_check_root/expected"
+if ! cmp -s -- "$notice_check_root/expected" THIRD_PARTY_NOTICES; then
+  echo "THIRD_PARTY_NOTICES does not exactly preserve the reviewed yaml dependency license and NOTICE" >&2
+  exit 1
+fi
+cleanup_notice_check
+trap - EXIT
 binary=$(go run ./tools/projectmeta --field binary_name)
 module=$(go run ./tools/projectmeta --field go_module)
 formula_class=$(go run ./tools/projectmeta --field formula_class)
