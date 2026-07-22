@@ -186,6 +186,35 @@ evidence belongs to downstream integrations, not Atsura fixtures. Prove that
 production code, public help, capabilities, bundle, binding, plan, result, and
 release archives contain no coding-agent-host field or dependency.
 
+When a wrapper returns source bytes without an Atsura-owned transform, require
+the fresh plan to declare `source_stream_passthrough`. This is an adopted result
+mode, not raw execution or fallback: surface, option, argv transformation,
+source identity, compatibility admission, fresh-plan, bounds, and zero/one
+attempt checks still apply. Keep the first admission finite to exact source-
+adapter/version/command/argv contracts rather than making every cataloged
+identity wrapper executable.
+
+Buffer stdout and stderr independently within declared bounds and expose them
+only after a validated conventional completion. Preserve exact bytes, including
+successful nonempty stderr, and preserve the conventional source status,
+including nonzero. Add no framing, UTF-8 decoding, visible projection,
+redaction, or semantic interpretation, and make no timing or cross-stream-
+interleaving claim. Treat timeout, cancellation, signal/abnormal termination,
+overflow, wait uncertainty, identity uncertainty, or inconsistent port
+evidence as non-retryable; suppress both captured streams and never recommend
+replay.
+
+At the CLI boundary, complete-write stdout once, complete-write stderr once,
+then return source status. The writes are not atomic. A short or failed write
+uses non-retryable `execute_output_write_failed`, does not return source status,
+does not expose remaining bytes in the fault, and warns that partial caller-
+visible output may already exist. Never persist source-stream bytes or copy
+them into faults, receipts, evidence documents, logs, or transcripts. Add an
+explicit trust-summary count and conditional warning before adoption. Test
+binary streams, conventional nonzero status, each uncertain outcome, both
+writer failures, transformed-output regression, and exact native ordinary-
+wrapper artifacts.
+
 For every Atsura-owned create/write action, specify:
 
 - target, scope, and all generic impact dimensions (cardinality, notification, access change, destructive);

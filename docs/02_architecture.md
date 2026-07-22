@@ -11,13 +11,16 @@ RTK-backed optimizer defaults as a future finite processor contract without
 delegating source execution to RTK. ADR 0008 keeps coding-agent hosts outside
 Atsura: they consume an already generated host-neutral wrapper rather than
 enter through a host protocol adapter.
+ADR 0010 extends the same host-neutral wrapper with an explicit source-stream
+result for finite identity and argv-only plans; it does not add a raw route.
 
 The current runtime milestone extends strict schema-3 specification loading,
 schema-2 bundle compilation/adoption, and pure surface resolution through one
-complete bundle-backed wrapper plan into one compatibility-admitted JSON
-transform execution. It also exposes that same path through a deterministic
-Linux/macOS POSIX function rendered from an exact bundle/runtime closure.
-Identity/raw execution and persistent wrapper installation remain unimplemented.
+complete bundle-backed schema-4 wrapper plan into one compatibility-admitted
+JSON transform or source-stream result. It exposes that same application path
+through a deterministic Linux/macOS POSIX function rendered from an exact
+bundle/runtime closure. Raw execution and persistent wrapper installation
+remain unimplemented.
 
 ## Dependency direction
 
@@ -55,13 +58,14 @@ adopted bundle + attempted invocation
   -> fail closed on child-versus-positional ambiguity unless `--` is explicit
   -> pure surface and option resolution
        -> absent command: command_not_in_surface, no wrapper plan
-       -> included command: one complete schema-3 wrapper plan and digest
+       -> included command: one complete schema-4 wrapper plan and digest
   -> preview: zero source-process attempts
      or
-  -> compatibility-admitted transform runtime
+  -> compatibility-admitted runtime
        -> plan-derived expected path/hash/size and exact argv
        -> one no-shell source attempt
-       -> bounded JSON parse -> pure select/rename -> fixed result envelope
+       -> transformed_json: bounded JSON parse -> pure select/rename
+       -> source_stream_passthrough: bounded exact stdout/stderr + source status
 
 adopted bundle + explicit purpose binding
   -> `wrapper render`: deterministic POSIX function + review digest
@@ -69,7 +73,7 @@ adopted bundle + explicit purpose binding
   -> fixed function invokes the bound absolute `atr` and forwards exact argv
   -> `wrapper run`: revalidate bundle/runtime/source binding
   -> same fresh plan constructor and compatibility-admitted execution path
-  -> one compact plan-authoritative JSON value, not a maintainer envelope
+  -> one plan-authoritative result, not a maintainer envelope
 ```
 
 Surface membership and wrapper behavior are independent inputs to compilation.
@@ -90,8 +94,8 @@ typed before stages
 The previewed plan binds bundle/catalog/specification digests, exact source and
 adapter identity, the matched command, explicit or inherited surface origin,
 the exact specification entry or `null`, original and transformed argv,
-ordered stages, and finite process bounds. Its canonical bytes determine the
-plan digest. It contains no universal allow/confirm/deny decision, inferred
+ordered stages, one result mode, and finite process bounds. Its canonical bytes
+determine the plan digest. It contains no universal allow/confirm/deny decision, inferred
 source read/create/write effect, or source-operation target and impact.
 
 ## Architectural principles
@@ -141,7 +145,8 @@ source read/create/write effect, or source-operation target and impact.
 - deterministic invocation and typed output transformations;
 - canonical schema-2 bundles, digests, and drift validation;
 - pure surface resolution and `command_not_in_surface`;
-- ordered schema-3 wrapper execution plans and canonical plan digests;
+- ordered schema-4 wrapper execution plans, explicit result modes, and
+  canonical plan digests;
 - a host-neutral wrapper binding containing an exact adopted purpose
   bundle, wrapper contract, runtime identity, source identity, and ordinary
   command spelling;
@@ -181,9 +186,9 @@ coding-agent-host protocol.
   material through a narrow pure renderer port, and apply the render-produced
   runtime closure through the same fresh-plan application service as direct
   execution;
-- apply a supported transform plan through an identity-bound source-process
-  port, a vendor-neutral compatibility port, strict source-format parser, and
-  pure transformer;
+- apply a supported fresh plan through one identity-bound source-process port
+  and vendor-neutral compatibility port, then return either a strict parsed
+  and transformed JSON result or a validated conventional source-stream result;
 - for a future optimizer, require exact external-processor identity and
   compatibility before source start, then coordinate at most one processor
   attempt only after an admitted successful source result.
@@ -196,6 +201,12 @@ A source launch declares `EffectExecute`. The application binds exact source
 identity and argv, requires finite attempts/time/bytes, and treats every
 unknown post-start outcome as non-retryable. It attaches no Atsura mutation
 target or impact to the downstream source operation.
+
+The application owns one typed result union. A conventional source completion
+may carry zero or nonzero status and nonempty stderr when the plan declares
+`source_stream_passthrough`; the same process facts remain a transform failure
+when `transformed_json` requires status zero and empty stderr. Unknown or
+inconsistent process outcomes never become source-stream success.
 
 ### Infrastructure
 
@@ -212,6 +223,8 @@ target or impact to the downstream source operation.
 - admit only command and argv combinations covered by the exact source-adapter
   compatibility contract before a source attempt;
 - parse declared source formats through bounded decoders;
+- capture source stdout and stderr independently under the plan's limits while
+  preserving arbitrary bytes for an admitted source-stream result;
 - run a future exact output processor with bounded stdin/stdout/stderr, an
   isolated environment and working directory, no shell, and separately counted
   attempts without giving it source-execution authority; and
@@ -258,17 +271,21 @@ outside that lifecycle.
 At invocation, honest `wrapper run` code revalidates its exact runtime identity,
 the expected bundle digest and adoption, source identity, and command spelling
 before fresh plan construction. Failure starts no source process. Success uses
-the existing compatibility admission, no-shell source process, typed transform,
-and a plan-authoritative compact JSON renderer. It cannot select raw mode or
-another bundle as fallback. The shell necessarily starts the bound `atr` path
+the existing compatibility admission and no-shell source process, then follows
+the plan's JSON-transform or source-stream result mode. The CLI owns complete
+buffered final writes: stdout once, stderr once, then source status. This does
+not preserve timing or cross-stream interleaving, and the two writes are not
+atomic. It cannot select raw mode or another bundle as fallback. The shell necessarily starts the bound `atr` path
 before that program can fingerprint itself, so this is cooperative drift
 detection rather than attestation or containment against malicious executable
 replacement. A generated shell function's digest is deterministic artifact
 evidence, not runtime attestation of the sourced function bytes.
 
 Rendering rejects Windows with a structured unsupported fault and requires the
-complete included surface to contain exactly one runtime-admitted transforming
-GitHub CLI list command, including every exposed option. Windows remains a
+complete included surface to contain exactly one runtime-admitted GitHub CLI
+list command and result mode, including every exposed option. The finite
+surface proof covers the existing JSON transform plus identity and append-argv-
+only source streams. Windows remains a
 regression target for existing commands but receives no POSIX activation claim.
 
 The repository conformance fixture owns only a generic caller environment. A
@@ -317,9 +334,10 @@ fixtures before an exit-zero processor result can become plan output.
 - specification validation and bundle-build presentation;
 - adoption and drift status presentation;
 - host-neutral `wrapper render` and `wrapper run` presentation, including the
-  static review envelope and fresh-plan-authoritative tailored value;
+  static review envelope and fresh-plan-authoritative result union;
 - stable migration diagnostics for retired policy and bundle schemas;
-- schema-3 wrapper-plan and schema-2 tailored-result rendering; and
+- schema-4 wrapper-plan, schema-2 tailored-result, and exact source-stream
+  final delivery; and
 - composition of application tasks with source and output infrastructure
   adapters.
 
@@ -343,8 +361,9 @@ production identity reader, while the process runner's own tests induce native
 start, wait, limit, cancellation, timeout, and pre/post identity races. No
 fixture mode or test branch exists in the shipped composition.
 
-The wrapper entry point does not add identity/raw execution or a persisted
-installation lifecycle. ADR 0008 keeps caller activation outside Atsura.
+The wrapper entry point adds finite identity and argv-only execution but no raw
+execution or persisted installation lifecycle. ADR 0008 keeps caller
+activation outside Atsura.
 Retired authorization command paths remain only as
 catalog-declared migration diagnostics and start zero source processes.
 
@@ -455,7 +474,7 @@ strict schema-3 specification
   -> current source path/hash/size observation
   -> longest full-catalog command match
   -> included/absent command and option resolution
-  -> complete schema-3 wrapper plan + digest
+  -> complete schema-4 wrapper plan + digest
   -> preview: source_process_attempts: 0
      or
   -> exact adapter compatibility admission
@@ -480,8 +499,10 @@ ordinary argv invocation
   -> fixed absolute `atr` -> `wrapper run`
   -> honest bundle/runtime/source/command binding revalidation
   -> fresh plan through the same application/domain constructor
-  -> same bundle execution path
-  -> compact plan-declared JSON object or array
+  -> same shared plan application path
+  -> transformed_json: compact plan-declared JSON object or array
+     or
+  -> source_stream_passthrough: exact bounded source stdout/stderr and status
 ```
 
 This implementation does not itself establish release-quality evidence. The
@@ -489,9 +510,9 @@ full gates and exact installed-artifact POSIX journey on every claimed Linux
 and macOS target remain the completion decision. Windows exercises existing
 commands and structured unsupported behavior only.
 
-Identity/argv-only plan application, original-preserving optimizers, external
-processor execution, raw execution, source refresh, and coding-agent-host
-integration remain outside these milestones.
+Original-preserving optimizers, external processor execution, raw execution,
+source refresh, richer argv transformations, and coding-agent-host integration
+remain outside these milestones.
 
 ## Unresolved architecture decisions
 

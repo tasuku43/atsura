@@ -7,8 +7,9 @@ but they govern implementation until evidence justifies another revision. ADR
 ADR 0007 prefers explicit RTK-backed optimizer defaults where Atsura maintains
 an exact compatibility contract. ADR 0008 corrects the agent-host boundary:
 coding-agent hosts consume an already generated host-neutral wrapper and are
-not Atsura adapters. The vendor-neutral, compiled-bundle architecture remains
-authoritative.
+not Atsura adapters. ADR 0010 admits plan-declared source-stream results for
+finite identity and argv-only ordinary wrappers. The vendor-neutral,
+compiled-bundle architecture remains authoritative.
 
 ## North star
 
@@ -36,8 +37,10 @@ adopted bundle + attempted source invocation
   -> compile one wrapper execution plan
   -> preview the plan and its digest without starting the source
      or
-  -> when the adapter admits the runtime contract, apply one typed JSON-output
-     stage around one identity-bound source invocation
+  -> when the adapter admits the runtime contract, apply one identity-bound
+     source invocation and its plan-declared result mode
+       -> transformed_json: typed projection
+       -> source_stream_passthrough: bounded exact source streams and status
 
 adopted bundle + explicit purpose binding
   -> `wrapper render` produces a deterministic host-neutral POSIX function
@@ -164,6 +167,7 @@ A complete plan identifies at least:
   entry was inherited, plus its reason;
 - before actions;
 - the exact source invocation;
+- the exact result mode;
 - declared source-output input format;
 - output transformation;
 - after actions; and
@@ -191,9 +195,10 @@ attempt declared by the current wrapper contract. `wrapper run` reaches that
 same constructor and process boundary after validating the render-produced
 bundle digest and exact current `atr` path/hash/size. It derives the ordinary
 source spelling from the strictly loaded bundle instead of accepting a second
-caller-controlled spelling. Its successful stdout is the plan-declared compact
-JSON object or array itself, not the maintainer evidence envelope returned by
-`bundle execute`.
+caller-controlled spelling. Its success is the fresh plan's exact result
+variant: either the compact JSON object or array, or the bounded source stdout,
+stderr, and conventional status. Neither variant is the maintainer evidence
+envelope returned by `bundle execute`.
 
 ## Thesis 5: The source CLI owns source-operation meaning and authorization
 
@@ -245,6 +250,17 @@ must satisfy the bounded JSON parser and typed transform.
 Projection failure never changes argv, retries the source process, selects raw
 mode, or silently exposes unreviewed raw output.
 
+An identity or argv-only wrapper may instead declare
+`source_stream_passthrough`. After one conventionally completed, identity-bound
+source attempt, Atsura returns bounded stdout and stderr bytes without framing,
+projection, UTF-8 interpretation, terminal-safety claim, or semantic-safety
+claim, and returns the conventional source status only after both final writes
+complete. This is explicit adopted wrapper behavior, not raw execution or
+fallback: surface and option resolution, argv transformation, source identity,
+compatibility admission, and fresh-plan validation still apply. Timing and
+stdout/stderr interleaving are not preserved. Uncertain post-start outcomes
+suppress both captured streams and never make replay safe.
+
 Where Atsura proves an exact source/version/command and RTK filter contract, the
 authoring workflow materializes an explicit RTK-backed optimizer as the default
 wrapper choice. A user or proposing agent may explicitly choose another
@@ -278,8 +294,10 @@ on Linux and macOS. It embeds the absolute current `atr` identity and exact
 bundle digest, invokes `wrapper run` with structured JSON errors, and forwards
 `"$@"` without `eval`, `sh -c`, or specification-authored source. Rendering is
 allowed only when the complete included surface is one maintained runtime-
-admitted transforming command. Windows returns a structured unsupported fault
-for POSIX rendering; this contract makes no Windows activation claim.
+admitted command and result mode. The finite first contracts cover one JSON-
+transforming command and identity or append-argv-only source-stream commands.
+Windows returns a structured unsupported fault for POSIX rendering; this
+contract makes no Windows activation claim.
 
 Production Atsura has no coding-agent-host adapter. It never discovers,
 inspects, starts, signals, or calls a host process, executable, service,
@@ -319,8 +337,11 @@ purpose-specific CLI, not a grant of permission to source operations.
 
 A trust summary therefore describes included and excluded surface entries,
 option changes, identity and transforming wrappers, argv changes, processing
-stages, output transformations, source identity, and bundle digest. It does not
-count source permissions, decisions, or inferred effects.
+stages, output transformations, source-stream result visibility, source
+identity, and bundle digest. When source streams may be returned unprojected,
+the controlling review warns that they may contain secrets, controls, malformed
+text, or prompt-like content. It stores none of those bytes. The summary does
+not count source permissions, decisions, or inferred effects.
 
 Raw execution is a separate, explicit tailoring bypass. It revalidates the
 bundle-bound source identity but applies no surface selection, argv transform,
@@ -362,6 +383,14 @@ spelling to reach the same fresh plan and transform runtime as the direct
 gateway. A missing, drifted, or mismatched bundle, runtime, source, surface, or
 invocation starts no source process.**
 
+The bounded source-stream extension is:
+
+**For one fully adapter-admitted identity or append-argv-only surface, that
+ordinary wrapper applies the same fresh plan once and returns the conventionally
+completed source stdout and stderr bytes unchanged, followed by the source
+status only after complete final delivery. It never selects this visibility as
+fallback, and uncertain execution exposes neither captured stream.**
+
 The release-quality proof uses a generic caller-owned activation fixture and
 the exact installed `atr` artifact. It verifies the wrapper bytes, binding,
 argv, plan, attempt, and tailored result without importing a coding-agent host
@@ -382,8 +411,9 @@ exact-artifact evidence and the required gates pass on the claimed targets.
 - Unplanned or implicit raw/intact-output fallback. An adopted optimizer's
   declared byte-identical `preserved` result is not fallback.
 - Requiring a language model for routine execution.
-- Executing identity wrappers, argv-only transforms, nonempty successful
-  stderr, or typed before/after actions in the initial transform runtime.
+- Typed before/after actions in the initial runtime. `bundle execute` remains
+  the direct JSON-transform evidence command; source-stream results belong to
+  the finite ordinary-wrapper path in this slice.
 - Source refresh or raw execution.
 - Persisting, installing, replacing, selecting, or removing wrapper artifacts;
   executable/PATH shims and multi-profile activation remain later lifecycle

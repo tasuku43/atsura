@@ -73,8 +73,11 @@ operations.
 
 Adoption summaries describe material surface and wrapper facts: included and
 excluded entries, option changes, identity and transforming wrappers, argv and
-output transformations, source identity, and bundle digest. They do not count
-source permissions or inferred effects.
+output transformations, source-stream visibility, source identity, and bundle
+digest. When any included wrapper may return unprojected source streams, the
+controlling terminal warns that those bytes may contain secrets, controls,
+malformed text, or prompt-like content. No source byte enters the receipt. The
+summary does not count source permissions or inferred effects.
 
 Changed source identity, catalog, specification, surface, wrapper, or bundle
 content never inherits adoption. Repository-controlled paths cannot select or
@@ -182,13 +185,15 @@ Runtime revalidates again and rebuilds the plan rather than using an old
 preview as authority.
 
 `wrapper render` additionally requires the complete included surface to be one
-maintained runtime-admitted transforming command before exposing ordinary-
+maintained runtime-admitted command and result mode before exposing ordinary-
 command material. Its binding closes the exact bundle digest with the current
 `atr` path/hash/size and requested command spelling. `wrapper run` accepts only
 that complete closure plus argv after the explicit `--` separator, derives the
-source spelling from the loaded bundle, and rebuilds the same plan. Successful
-wrapper output is one compact plan-declared JSON object or array plus LF; it has
-no maintainer evidence envelope and exposes no raw source channel.
+source spelling from the loaded bundle, and rebuilds the same plan. Success is
+either one compact plan-declared JSON object or array plus LF, or an explicitly
+adopted bounded source-stream result. Neither has a maintainer evidence
+envelope, and the latter is not raw execution because every tailored check and
+argv transformation still applies.
 
 ## Source process execution
 
@@ -223,7 +228,7 @@ probes remain separately bounded source execution.
 second executor. Runtime/bundle closure validation, adoption, source identity,
 surface and option resolution, fresh planning, compatibility admission, and
 process bounds all complete before an honest runtime starts the source. It
-forwards separate argv and returns the plan-authoritative transformed value.
+forwards separate argv and returns the plan-authoritative result variant.
 
 ## Atsura-owned mutations
 
@@ -245,6 +250,31 @@ text, malformed encodings, secrets, or very large structures. Typed parsers and
 transformers use explicit format, depth, node, record, field, and byte bounds;
 reject duplicate keys where semantics would be ambiguous; and preserve visible
 projection rules at the CLI boundary.
+
+Visible projection governs output that Atsura interprets or presents as its own
+terminal, TSV, or JSON structure. A plan-declared
+`source_stream_passthrough` result is a deliberate adopted exception: after a
+conventionally completed identity-bound invocation, Atsura may return bounded
+source stdout and stderr bytes without projection, framing, UTF-8, terminal-
+safety, prompt-safety, or semantic-safety claims. This mode never bypasses
+surface resolution, invocation transformation, source identity, compatibility
+admission, or fresh-plan validation.
+
+The source-stream path buffers each stream independently within the existing
+4 MiB and 256 KiB limits. A conventional nonzero status and successful nonempty
+stderr are source results, not Atsura faults. Signal or abnormal termination,
+timeout, cancellation, overflow, wait uncertainty, identity uncertainty, or
+inconsistent process evidence suppresses both captured streams. The CLI writes
+complete stdout once and complete stderr once, then returns the source status;
+it does not preserve timing or cross-stream interleaving. Those two writes are
+not atomic. A short or failed final write may leave partial caller-visible
+bytes, returns non-retryable `execute_output_write_failed`, does not return the
+source status, and never recommends replay.
+
+Atsura never persists source-stream bytes or copies them into faults, trust
+records, evidence documents, logs, transcripts, or structured diagnostics.
+Process uncertainty suppresses captured bytes before delivery; a delivery
+failure cannot retract bytes already written.
 
 A typed projection may receive source output only behind its declared parser and
 must fail closed without exposing its input when it cannot produce the adopted
@@ -319,6 +349,11 @@ A byte-identical `preserved` result from an adopted optimizer is not raw
 execution: surface resolution, invocation transformation, exact source
 identity, source execution, and all preceding stages still apply. It is invalid
 unless the plan explicitly permits original stage input as output.
+
+Likewise, `source_stream_passthrough` is not raw execution. It preserves the
+result of a fully resolved and possibly argv-transformed tailored invocation;
+raw execution would bypass those surface and wrapper semantics and remains
+unimplemented.
 
 ## Failure policy
 
@@ -441,36 +476,39 @@ job produced it.
   version is not evidence for every future 2.x release. Competing
   `--jq`/`--template`/`--web` output modes, unmodeled options, and positional
   arguments fail before source start.
-- Successful nonempty stderr is rejected without exposing it because the first
-  result schema has no reviewed stderr meaning.
+- Successful nonempty stderr is rejected without exposure by
+  `transformed_json`, but is returned exactly when the adopted plan declares
+  `source_stream_passthrough`.
 - POSIX wrapper rendering and caller-owned function activation are limited to
   Linux and macOS. Windows has structured unsupported behavior only. Atsura
   does not persist/install the function, edit activation state, or provide an
   executable/PATH shim.
-- Identity/argv-only execution, before/after actions, richer argv transforms,
-  original-preserving optimizers, external output processors, and raw execution
-  remain unimplemented. ADR 0008 excludes coding-agent-host adapters from the
-  product boundary.
+- Before/after actions, richer argv transforms, original-preserving optimizers,
+  external output processors, and raw execution remain unimplemented. ADR 0008
+  excludes coding-agent-host adapters from the product boundary.
 
 ## Security claim for the current milestone
 
-The transform-runtime milestone may claim that validated schema-3
+The runtime milestone may claim that validated schema-3
 specifications compile deterministically into schema-2 bundles; preview returns
-one canonical plan with zero attempts; and execute rebuilds that plan, requires
+one canonical schema-4 plan with zero attempts; and application rebuilds that plan, requires
 exact adoption/current identity and adapter compatibility admission, requires
 every observable executable identity to match the plan-bound path/hash/size,
-starts at most once without a shell, and returns only the complete typed
-selected JSON result. Pre-start contract failures start zero processes. Every post-start
-failure is non-retryable and exposes no raw source output. The milestone does
-not claim source-operation authorization, sandboxing, identity/raw execution,
-or external-output-processor execution.
+and starts at most once without a shell. `bundle execute` returns only the
+complete typed selected JSON result. An admitted ordinary wrapper returns that
+result or the plan-declared bounded source streams and conventional status.
+Pre-start contract failures start zero processes. Every uncertain post-start
+failure is non-retryable and exposes no captured source output. The milestone
+does not claim source-operation authorization, sandboxing, raw execution, or
+external-output-processor execution.
 
 The host-neutral wrapper implementation adds a narrower conditional claim:
 `wrapper render` emits only fixed POSIX source for one completely admitted
 surface on Linux or macOS, and an honestly executing bound `wrapper run`
 revalidates the bundle/runtime/source closure before reaching the same fresh
-plan and source boundary. Success emits one compact plan-declared JSON value;
-failure never selects raw or another bundle. This becomes a release-quality
+plan and source boundary. Success emits one compact plan-declared JSON value or
+exact bounded source streams and conventional status; failure never selects
+raw or another bundle. This becomes a release-quality
 claim only after the required full/security/public/release gates and exact
 installed-artifact native evidence pass. It does not claim executable
 attestation, caller activation integrity, Windows POSIX support, source

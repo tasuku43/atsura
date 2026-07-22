@@ -5,7 +5,9 @@ boundaries. ADR 0005 supersedes the authorization-centered source-wrapper
 semantics of ADR 0004; ADR 0006 adds the first compatibility-admitted runtime;
 ADR 0007 prefers explicit RTK-backed optimizer defaults for exact maintained
 compatibility contracts; and ADR 0008 keeps coding-agent hosts outside Atsura's
-wrapper boundary. One canonical vendor-neutral bundle remains the authority.
+wrapper boundary. ADR 0010 adds plan-declared source-stream results for finite
+identity and argv-only ordinary wrappers. One canonical vendor-neutral bundle
+remains the authority.
 
 ## Product statement
 
@@ -70,14 +72,14 @@ generated function -> `atr wrapper run` -> same fresh plan and execution path
 `bundle preview` implements the zero-execution branch of this flow. `bundle
 execute` implements the first transform-only runtime branch. Both require the
 exact schema-2 bundle to be user-adopted, revalidate current source path,
-SHA-256, and size, and rebuild the same deterministic schema-3 plan. Execute
+SHA-256, and size, and rebuild the same deterministic schema-4 plan. Execute
 additionally requires an accepted adapter JSON selector contract and starts the
 identity-checked resolved path at most once. `wrapper render` closes the exact
 bundle digest with the current absolute `atr` path/hash/size in deterministic
 function bytes. `wrapper run` verifies that closure once the bound `atr` starts,
 derives the source command spelling from the strictly loaded bundle, and
-applies the same fresh plan while returning only its plan-declared compact JSON
-value.
+applies the same fresh plan while returning exactly its declared result mode:
+either a compact JSON value or bounded source streams and conventional status.
 
 ## Working vocabulary
 
@@ -188,8 +190,9 @@ have; those remain catalog evidence and future specification work.
 
 An included command whose source invocation and output are preserved by the
 tailoring specification. Source identity validation and generic bounded
-process framing still apply. Identity-wrapper execution is not implemented by
-the initial transform-only runtime.
+process framing still apply. The finite ordinary-wrapper runtime executes this
+form through `source_stream_passthrough`; the direct `bundle execute` evidence
+command remains transform-only.
 
 ### Transforming wrapper
 
@@ -204,6 +207,22 @@ An output stage that promises one declared agent-facing shape. The current JSON
 select/rename/compact stage is a projection. If its parser, input, selected
 fields, or renderer cannot satisfy the declared contract, execution fails and
 does not expose the projection input.
+
+### Source-stream passthrough
+
+A plan-declared result mode for an identity or append-argv-only wrapper whose
+finite source-adapter contract is fully admitted. It returns the conventionally
+completed source stdout and stderr bytes unchanged within the 4 MiB and 256 KiB
+limits, adds no framing or projection, and returns the source status after both
+final writes complete. It makes no UTF-8, terminal-safety, semantic-safety,
+timing, or cross-stream-interleaving claim.
+
+This is not raw execution: the tailored surface, option grammar, argv
+transformation, exact adoption, source identity, compatibility proof, and fresh
+plan all remain in force. It is never selected as fallback. Timeout,
+cancellation, signal termination, overflow, wait uncertainty, identity
+uncertainty, or inconsistent process evidence suppresses both captured streams
+and produces a non-retryable Atsura fault.
 
 ### Original-preserving output optimizer
 
@@ -249,6 +268,8 @@ starting the source. It contains:
 - exact source identity and source-adapter kind/contract version;
 - original and transformed argv;
 - wrapper kind and ordered before/invoke/output/after stages;
+- exactly one result mode, `transformed_json` or
+  `source_stream_passthrough`;
 - the exact applied specification entry, or JSON `null` for an inherited
   surface entry, and the effective reason;
 - tailored mode; and
@@ -263,7 +284,7 @@ The plan does not contain a universal permission decision, source effect,
 authorization target/impact, or confirmation requirement. A command absent
 from the surface produces no plan. The preview envelope is schema version 2 and
 contains `plan_digest`, `plan`, and `source_process_attempts`; the last field is
-always zero. Exact schema-9 agent help publishes the `wrapper-plan` schema
+always zero. Exact schema-10 agent help publishes the `wrapper-plan` schema
 version and a typed JSON-pointer inventory for every nested plan field.
 
 Resolution first chooses the longest matching command path from the complete
@@ -314,7 +335,9 @@ The controlling-terminal summary identifies:
 - included and explicitly excluded command counts;
 - identity and transforming wrapper counts;
 - option override, argv transformation, before/after action, and output
-  transformation counts.
+  transformation counts; and
+- the count of included wrappers whose conventional source streams may be
+  returned without projection, with a conditional control/secret warning.
 
 It contains no source read/create/write or allow/confirm/deny counts. The
 user-local receipt stores only the exact bundle digest. Repository content and
@@ -430,21 +453,23 @@ dependent exception: its catalog fields describe the root index while scoped
 help projects the selected catalog contract. `wrapper render` is catalog-
 authoritative; its text bytes and JSON review envelope describe the same
 binding. `wrapper run` is the first public command with fresh-plan authority.
-Agent help schema 9 publishes that discriminator without reinterpreting an
+Agent help schema 10 publishes that discriminator without reinterpreting an
 older machine contract.
 
 `wrapper run` uses the exclusive
-`fresh_wrapper_plan` authority. That variant is JSON-only, complete, and has no
-catalog-static fields, result envelope, or result schema version. Source JSON
-supplies the admitted object or array and its value types; the freshly rebuilt
-plan governs selection, rename, and compact JSON rendering. The agent contract's
-`plan_schema` points to the exact `plan` field on `bundle preview`, including the
-`wrapper-plan` schema ID and version. It describes the governing transformation
-plan, not a schema that wrapper stdout itself must match, and avoids copying a
-second plan registry. Whole-catalog validation resolves that reference and
-rejects drift. The runtime must rebuild and validate the plan for the current
-invocation before applying it; an old preview document is never input or
-authority.
+`fresh_wrapper_plan` authority. It is a finite union with no catalog-static
+result fields or maintainer envelope. `transformed_json` emits one admitted
+compact object or array plus LF on stdout, empty stderr, and status zero.
+`source_stream_passthrough` emits exact bounded source stdout and stderr bytes
+without framing and returns the conventional source status. Its complete
+buffered delivery does not preserve timing or cross-stream order. The agent
+contract's typed `plan_result_modes` publishes those alternatives, and
+`plan_schema` points to the exact `plan` field on `bundle preview`, including
+the `wrapper-plan` schema ID and version. It describes the governing plan, not
+a schema that either dynamic result must match, and avoids a second plan
+registry. Whole-catalog validation resolves that reference and rejects drift.
+Runtime rebuilds and validates the plan for the current invocation; an old
+preview document is never input or authority.
 
 ### External activation and coding-agent consumers
 
@@ -493,10 +518,11 @@ atr wrapper run --contract-version=1 --bundle=<absolute-bundle.json> \
 verified command with inherited options and an identity wrapper. It does not
 infer source safety or create adoption. Validation and build are read-only;
 redirection of stdout is caller-selected filesystem behavior. The identity
-draft is an authoring baseline, not an executable transform. For the current
-runtime, the user deliberately changes its wrapper to the finite schema-3 JSON
-transform, selecting only fields observed together in the inspected command's
-structured-output evidence and declaring any collision-free rename. Exact
+draft is an executable ordinary-wrapper baseline only when its complete surface
+and invocation fit the finite source-stream compatibility contract. A user may
+instead deliberately change it to the finite schema-3 JSON transform, selecting
+only fields observed together in the inspected command's structured-output
+evidence and declaring any collision-free rename. Exact
 `source inspect`, `spec init`, and `spec validate` agent help publish the
 versioned nested catalog and specification inventories needed to make that
 edit without repository-source inspection.
@@ -508,7 +534,7 @@ source. `bundle trust` is the only Atsura-owned mutation in this workflow.
 `bundle preview` is a read-only, JSON-only utility. It admits only the exact
 requested executable spelling or resolved path recorded in an adopted current
 bundle, resolves one cataloged attempted invocation, and returns the complete
-schema-3 tailored plan inside a schema-2 preview envelope plus its canonical
+schema-4 tailored plan inside a schema-2 preview envelope plus its canonical
 SHA-256 plan digest. It reads current
 source identity but reports `source_process_attempts: 0` and performs no output
 transformation.
@@ -524,18 +550,20 @@ Success is schema-2 JSON containing bundle/plan identity,
 matched command, transform result, source exit code, and attempts=1. Raw source
 stdout/stderr and unselected fields are absent. Identity wrappers, argv-only
 transforms, nonempty successful stderr, source refresh, and raw execution are
-not implemented by this runtime slice.
+not implemented by this direct evidence command.
 
 `wrapper render` is the zero-source-attempt producer of the complete function
 and binding. Its fixed function forwards `"$@"` to `wrapper run` with root
 structured JSON errors. `wrapper run` first validates the closure against the
 honestly executing current `atr` identity and expected bundle digest, then
-reuses the direct runtime's fresh-plan application boundary. Successful stdout
-is one plan-declared compact JSON object or array followed by LF, with empty
-stderr and no maintainer envelope. Pre-start failures start zero source
-processes; post-start and final-output failures are non-retryable. The generated
-function never selects raw execution, another bundle, an ambient source
-executable, or a runtime-discovered processor.
+reuses the shared fresh-plan application boundary. Success follows one of the
+two plan result modes: compact JSON plus LF and empty stderr, or exact bounded
+source stdout/stderr and the conventional source status after both final writes.
+A conventional nonzero status in the second mode is a source result, not an
+Atsura fault. Pre-start failures start zero source processes; uncertain post-
+start and final-output failures are non-retryable and expose no captured source
+bytes through a fault. The generated function never selects raw execution,
+another bundle, an ambient source executable, or a runtime-discovered processor.
 
 The current compatibility admission is also available in exact `bundle
 execute` help: GitHub CLI adapter contract 2 and major 2, `issue list` or `pr
@@ -552,7 +580,9 @@ ADR 0008 fixes this product slice without broadening the direct runtime's source
 compatibility. A maintainer renders one exact adopted purpose bundle as a host-
 neutral POSIX function, explicitly exposes that function through a caller-owned
 command-resolution mechanism, and invokes the ordinary source-command spelling
-to reach the same fresh plan and execution path as `bundle execute`.
+to reach the shared fresh plan and execution path. The JSON-transform variant
+matches `bundle execute`; the source-stream variant is currently exposed only
+through the ordinary-wrapper path.
 
 The wrapper contract fails before source start on missing adoption,
 bundle or source drift, runtime or binding mismatch, or unsupported invocation.
@@ -595,6 +625,16 @@ output only as an adopted success disposition, never as recovery from another
 stage. Processor failure remains non-retryable after source start and exposes
 neither processor stderr nor failed intermediate output.
 
+For `source_stream_passthrough`, one bounded conventional completion is itself
+the declared result. Zero or nonzero source status and successful nonempty
+stderr are preserved. Abnormal termination, timeout, cancellation, overflow,
+wait or identity uncertainty, and inconsistent process evidence suppress both
+captured streams. The CLI completes stdout once and stderr once, in that order,
+then returns the source status. Those writes are not atomic; a short or failed
+write returns non-retryable `execute_output_write_failed`, may leave partial
+caller-visible bytes, does not return the source status, and never recommends
+replay.
+
 The no-shell process adapter compares the plan-bound path/hash/size before
 start, immediately before start, and after wait. A portable race remains
 between the final check and the operating system opening the executable.
@@ -629,8 +669,10 @@ enter product schemas nor become Atsura support claims.
 The first wrapper renderer is intentionally platform- and surface-bounded. It
 produces fixed POSIX function source only on Linux and macOS, derives `gh`
 verbatim from the bundle's requested executable, and requires one complete
-runtime-admitted transform surface. Windows supports the existing portable
-commands but not POSIX wrapper rendering or activation.
+runtime-admitted surface and result mode. The finite contracts cover the
+existing JSON-transform surface plus identity and append-argv-only source-
+stream surfaces. Windows supports the existing portable commands but not POSIX
+wrapper rendering or activation.
 
 The current preview grammar is intentionally narrower than arbitrary source
 CLI grammar. Catalog evidence does not yet model short options, root/global
@@ -651,7 +693,6 @@ ordering differences, or selectors after `--` fail before source start.
 ## Deliberately unsupported now
 
 - Source refresh and catalog persistence.
-- Identity-wrapper and argv-only-transform execution.
 - Raw execution.
 - Persistent wrapper installation, replacement, removal, executable/PATH shims,
   and multi-profile wrapper selection.
@@ -663,7 +704,8 @@ ordering differences, or selectors after `--` fail before source start.
   an exact external-processor compatibility slice.
 - Arbitrary shell, jq programs, scripts, plugins, RTK programs/argv, or
   unregistered external transformers.
-- Non-JSON, streaming, aggregate, filter, map, sort, or multi-source transforms.
+- Streaming, aggregate, filter, map, sort, or multi-source transforms. Plan-
+  declared source streams are result delivery, not a text transformation.
 - Usage-history collection or agent-generated automatic activation.
 - Direct external APIs.
 - Public release or package-manager distribution.

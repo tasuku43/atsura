@@ -168,7 +168,7 @@ zero-execution plan boundary. Tests must prove:
 - the plan binds bundle/catalog/specification digests, source and adapter
   identity, matched command and surface origin, wrapper kind, reason, option
   surface, original/transformed argv, and ordered before/invoke/output/after
-  stages;
+  stages plus exactly one schema-4 result mode;
 - the invocation stage declares closed stdin plus inherited working directory
   and environment modes without serializing ambient values;
 - the invoke stage declares exactly one maximum attempt plus finite timeout,
@@ -177,11 +177,14 @@ zero-execution plan boundary. Tests must prove:
 - an output transform requires exactly one active cataloged selector matching
   its input format before `--`; missing, duplicate, conflicting, or positional
   selectors fail plan construction;
+- an output stage derives `transformed_json`; a complete identity or append-
+  argv-only wrapper without an output stage derives
+  `source_stream_passthrough`; a missing, unknown, or contradictory mode fails;
 - identical validated inputs produce identical canonical plan bytes and
   `plan_digest` values;
 - the schema-2 preview envelope contains exactly `plan_digest`, `plan`, and
   `source_process_attempts`, with the attempt count always zero;
-- exact schema-9 agent help publishes the versioned `wrapper-plan` inventory,
+- exact schema-10 agent help publishes the versioned `wrapper-plan` inventory,
   including nested JSON-pointer paths, scalar/object/array types, array element
   types, requiredness, and nullable object states; and
 - wrapper stages contain no allow/confirm/deny or source
@@ -231,6 +234,39 @@ public source-runtime boundary. Tests must prove:
   types, and visible projection of structural external text remain distinct;
 - secret-shaped canaries in unselected fields and source stderr do not appear
   in success output, faults, persisted bundles, receipts, or diagnostics.
+
+### Source-stream ordinary-wrapper runtime contract
+
+`wrapper run` extends the shared plan application service without broadening
+the direct `bundle execute` result envelope. Tests must prove:
+
+- the complete GitHub CLI adapter/version/command/surface/long-option grammar
+  is admitted before source start for one identity or append-argv-only wrapper,
+  without requiring a JSON selector;
+- preview and wrapper application rebuild byte-identical schema-4 plans and
+  plan digests for `source_stream_passthrough`;
+- source stdout and stderr are returned byte-for-byte within 4 MiB and 256 KiB,
+  including empty streams, NUL, non-UTF-8, control-looking, and prompt-like
+  bytes, with no projection, redaction, envelope, or added LF;
+- status zero with nonempty stderr and conventional nonzero status with both
+  streams are valid source results; nonzero status is returned unchanged and
+  receives no Atsura retry advice;
+- signal or abnormal termination, timeout, cancellation, stdout/stderr
+  overflow, wait uncertainty, identity uncertainty, and inconsistent result
+  evidence remain one-attempt non-retryable faults and suppress both streams;
+- stdout and stderr final writers are tested separately for short/error writes;
+  `execute_output_write_failed` does not return source status or recommend
+  replay and documents that already-written caller output cannot be retracted;
+- successful final delivery performs one complete stdout write, then one
+  complete stderr write, then returns source status; tests and help make no
+  timing or cross-stream-interleaving claim;
+- empty argv elements, spaces, Unicode, dash-prefixed values, `--`, repeated
+  options, literal shell metacharacters, and order survive the admitted argv
+  grammar without shell reconstruction;
+- no source-stream byte appears in a fault, bundle, trust receipt, evidence
+  document, log, or transcript; evidence stores only fixed digests; and
+- trust-summary derivation counts source-stream-result wrappers and the
+  controlling terminal emits a conditional warning without persisting bytes.
 
 ### Deferred original-preserving optimizer contract
 
@@ -323,11 +359,13 @@ Catalog tests must prove:
   authoritative, while `wrapper render` and other current commands retain
   their catalog-static field, envelope, and schema-version contracts, with
   help's tested root-index/scoped-contract variants kept explicit;
-- `fresh_wrapper_plan` authority is accepted only for JSON-only complete
-  object-or-array compact output with no static fields, envelope, or result
-  schema version; source JSON supplies admitted container/value types, while
-  whole-catalog validation resolves the exact `bundle preview`
-  `plan`/`wrapper-plan` transformation-plan schema reference;
+- `fresh_wrapper_plan` authority has no static result fields or maintainer
+  envelope and publishes an exact typed `plan_result_modes` union. One variant
+  is compact object-or-array JSON plus LF/empty stderr/status zero; the other is
+  exact bounded source stdout/stderr, no framing, buffered delivery, and
+  conventional source status with no timing/interleaving claim. Whole-catalog
+  validation resolves the exact `bundle preview` `plan`/`wrapper-plan`
+  schema-4 reference and rejects an incomplete or unknown result variant;
 - retired `policy` vocabulary appears only in migration diagnostics or
   historical superseded documents;
 - exact output schemas reject undeclared fields and preserve absent versus
@@ -355,9 +393,9 @@ The slice must prove:
   no POSIX activation claim;
 - the bundle's requested executable is used verbatim only when it is a portable
   non-reserved POSIX Name; no basename or path normalization invents a command;
-- the complete included surface contains exactly one transforming GitHub CLI
-  `issue list` or `pr list` command and every exposed option is admitted by the
-  maintained runtime contract before bytes are rendered;
+- the complete included surface contains exactly one GitHub CLI `issue list`
+  or `pr list` command, one admitted result mode, and only options covered by
+  the maintained runtime contract before bytes are rendered;
 - the wrapper binding contains only wrapper contract, bundle identity, runtime
   identity, source identity, and ordinary command spelling;
 - no bundle, binding, plan, result, help, or capability field names a
@@ -387,10 +425,9 @@ The slice must prove:
   typed stages, emits only the plan-declared result, and never selects raw or
   another bundle as fallback;
 - wrapper success uses the exclusive `fresh_wrapper_plan` interpretation and
-  presentation authority and emits no maintainer evidence envelope; source
-  JSON supplies the admitted container/value types, while exact scoped schema-9
-  help points to the `bundle preview` wrapper-plan schema governing selection,
-  rename, and rendering;
+  presentation authority and emits no maintainer evidence envelope; exact
+  scoped schema-10 help publishes both typed result modes and points to the
+  `bundle preview` wrapper-plan schema governing the selected variant;
 - the current renderer persists nothing and edits no activation configuration;
   any future persisted artifact lifecycle uses exact ownership, bounded
   regular-file paths, symlink/special-file rejection, atomic replacement,
@@ -417,6 +454,11 @@ terminal and JSON/TSV framing without filtering printable meaning. Persistent
 fixtures must assert that credentials, raw stdout/stderr, environment
 snapshots, transcripts, and agent reasoning are absent.
 
+For an adopted `source_stream_passthrough` result, hostile byte fixtures instead
+prove exact unprojected delivery after conventional completion and suppression
+after uncertainty. They must not decode the streams as text or place their raw
+bytes in persisted or structured evidence.
+
 ## Test ownership
 
 - Domain tests own specification, surface, wrapper, bundle, digest, effect,
@@ -425,13 +467,15 @@ snapshots, transcripts, and agent reasoning are absent.
 - Application tests own ordering, port calls, adoption assessment, current
   source/runtime identity assessment, whole-surface runtime admission, mutation
   invocation, wrapper/direct fresh-plan parity, zero-attempt rejection,
-  one-attempt execution, and post-start fault classification.
+  one-attempt execution, conventional-completion classification, and uncertain
+  post-start fault suppression.
 - Infrastructure tests own bounded strict codecs, executable identity, process
   limits, safe local persistence, source/output adapter mechanics, fixed POSIX
   quoting and rendering, and bounded argv forwarding.
 - CLI tests own catalog registration, typed argv, help, output schemas,
   migration recovery, stdout/stderr routing, and any generic wrapper lifecycle,
-  invocation, output-authority, and mutation contracts.
+  invocation, output-authority, complete dual-stream writes, source-status
+  propagation, and mutation contracts.
 - CLI integration fixtures own clean-state specification through bundle status,
   adoption and preview, plus one synthetic GitHub-compatible transform that
   runs through the production compatibility verifier, identity-bound process
@@ -453,7 +497,7 @@ snapshots, transcripts, and agent reasoning are absent.
 - Artifact-journey fixtures own execution of the exact `atr` file extracted
   from a release archive. They use a native credential- and provider-network-
   free source fixture, an isolated user-config root, and an append-only attempt
-  log. Before source inspection they verify schema-9 root help and seven exact
+  log. Before source inspection they verify schema-10 root help and seven exact
   scoped authoring/runtime contracts, including complete nested field
   inventories and the complete ordered 27-fault preview and 41-fault execute
   recovery signatures. The non-shipped harness may seed an exact
@@ -462,18 +506,22 @@ snapshots, transcripts, and agent reasoning are absent.
   full-digest confirmation remains separate required production-adapter
   evidence. The journey verifies eight help documents: the root index plus
   seven exact scoped public contracts. Linux and macOS activate deterministic
-  `wrapper render` bytes and invoke the ordinary command through the extracted
-  runtime; Windows verifies the exact structured unsupported-render result
-  without sourcing bytes.
+  `wrapper render` bytes and invoke transformed-JSON, identity, and append-argv-
+  only ordinary commands through the extracted runtime. The raw-byte cases
+  prove exact stream digests, conventional status, hostile argv, and three
+  total wrapper source attempts. Windows verifies the exact structured
+  unsupported-render result without sourcing bytes.
 - Each native CI artifact row runs the full production source-runner and
   trust-store tests, the exact bundle-file fault mapping, and the complete CLI
   recovery matrix before packaging and replay. The release linter pins that
   exact step as well as the five runner/target tuples.
 - Artifact-evidence aggregation owns the exact five-target set. Evidence schema
-  2 distinguishes `ordinary_command_verified` on Linux/macOS from
-  `platform_not_supported` on Windows through `wrapper_outcome`, binds the
-  rendered source digest only where applicable, and records wrapper source
-  attempts. Each native job uploads one bounded document containing target and
+  3 distinguishes `ordinary_command_verified` on Linux/macOS from
+  `platform_not_supported` on Windows and binds an ordered `wrapper_cases`
+  inventory. Each POSIX case records wrapper kind, result mode, bundle and plan
+  digests, rendered-source digest, stdout/stderr digests, source status, and one
+  source attempt; Windows records an empty case list and zero attempts. Each
+  native job uploads one bounded document containing target and
   observed host,
   revision, archive, command, bundle, and command-specific plan identities,
   fixed attempt/fault counts, and leak booleans. A dependent job pairs those
@@ -487,7 +535,7 @@ snapshots, transcripts, and agent reasoning are absent.
 - Architecture and public guards own dependency direction and secret-free
   repository state.
 
-## Host-neutral wrapper milestone gate
+## Host-neutral wrapper and source-stream milestone gate
 
 This milestone is complete only when all of the following are true on the same
 tree:
@@ -497,21 +545,24 @@ tree:
 3. surface/wrapper truth-table and `EffectExecute` negative tests pass;
 4. adopted/current bundle preview covers identity and transforming wrappers,
    explicit and inherited surface entries, longest-prefix matching, option
-   absence, stable plan digests, and exactly zero source attempts;
+   absence, exact schema-4 result modes, stable plan digests, and exactly zero
+   source attempts;
 5. compatibility-admitted GitHub CLI `issue list` and `pr list` transformation execution
    covers exact selector encoding, preview/execute plan-digest equality,
    selected/renamed typed JSON, no raw-output leak, and exactly one source
    attempt per command;
 6. `wrapper render` and `wrapper run` catalog, typed-argv, output-authority,
    fault, and scoped-help contracts match the implementation; `wrapper run`
-   requires the explicit `--` separator and emits one compact JSON value plus
-   LF on success;
+   requires the explicit `--` separator and publishes the exact transformed-
+   JSON/source-stream result union;
 7. deterministic binding/render tests cover portable command-name eligibility,
    POSIX quoting, exact bundle and runtime closure, whole-surface runtime
    admission, hostile argv forwarding, and no host fields;
 8. application and CLI tests prove direct preview/wrapper plan-digest parity,
    bundle/runtime/source drift rejection at zero source attempts, exact one-
-   attempt success, no maintainer envelope, and no raw fallback;
+   attempt transformed-JSON, identity, and append-argv-only success, source
+   stream/status fidelity, uncertain-stream suppression, final-write faults,
+   no maintainer envelope, and no raw fallback;
 9. the production-composition recovery matrix covers all 27 preview faults,
    all 28 execute pre-start phase cases at zero attempts, and all 15 execute
    post-start phase cases at one non-retryable attempt, with exact scoped-help
@@ -526,10 +577,11 @@ tree:
    amd64; a dependent aggregation job verifies the exact five evidence
    documents and five candidate archive hashes, and the release publish job
    depends on that aggregate. Linux/macOS rows activate the ordinary POSIX
-   command, while Windows proves structured unsupported rendering with zero
-   wrapper source attempts;
-13. evidence schema 2 records `wrapper_outcome`, the applicable rendered-source
-   digest, and wrapper source-attempt count without claiming caller attestation;
+   commands for all three result cases, while Windows proves structured
+   unsupported rendering with zero wrapper source attempts;
+13. evidence schema 3 records the ordered wrapper cases, result modes, stream
+   digests, conventional statuses, and attempt counts without storing source
+   bytes or claiming caller attestation;
 14. `task check` passes;
 15. `task security` passes;
 16. `task public:check` passes; and
@@ -543,11 +595,11 @@ jobs; an exact commit has complete platform evidence only after the required CI
 matrix succeeds. Emulation and cross-build metadata do not count as native
 runtime evidence.
 
-The gate does not claim identity-wrapper or argv-only-transform execution,
-original-preserving optimization, external-processor execution, raw execution,
-persistent wrapper installation or executable shims, Windows POSIX activation,
-arbitrary transformer integration, support for a source CLI beyond an accepted
-adapter contract, executable attestation, or publication authorization.
+The gate does not claim original-preserving optimization, external-processor
+execution, raw execution, richer argv transforms, persistent wrapper
+installation or executable shims, Windows POSIX activation, arbitrary
+transformer integration, support for a source CLI beyond an accepted adapter
+contract, executable attestation, or publication authorization.
 
 ## Evidence discipline
 
