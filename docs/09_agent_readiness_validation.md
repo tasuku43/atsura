@@ -162,7 +162,7 @@ go run ./cmd/atr sample read --id smp_2f4a6c8e0b1d --format json
 go run ./cmd/atr --error-format json sample read --id smp_000000000000
 ```
 
-The root agent contract must be schema version 9 with `view: index`, reveal the
+The root agent contract must be schema version 10 with `view: index`, reveal the
 `sample` namespace and both exact paths, and contain no input, output,
 authentication, error, mutation, fixed-target, or workflow detail. Its
 `scope_request` must identify the selector fields and exact invocation template.
@@ -196,27 +196,27 @@ measurements were 1,517 bytes for root agent help, 5,359 bytes for exact
 `sample read` help, and 8,359 bytes for the `sample` namespace. The 512-byte
 limit continues to bound each root selection entry.
 
-With schema 9, measured on 2026-07-22 for the host-neutral wrapper catalog, the
-current root is 6,316 bytes, exact `sample read` help is 5,938 bytes, and the
-`sample` namespace is 8,849 bytes. Exact artifact contracts remain scoped:
-`source inspect` is 11,271 bytes, `spec init` is 10,584 bytes, `spec validate`
-is 11,776 bytes, `bundle build` is 8,479 bytes, `bundle status` is 7,620 bytes,
-`bundle trust` is 8,836 bytes, `bundle preview` is 16,747 bytes, `bundle
-execute` is 15,504 bytes, `wrapper render` is 11,444 bytes, and `wrapper run`
-is 15,399 bytes. Preview's larger scoped contract
+With schema 10, measured on 2026-07-22 for the plan-result-mode catalog, the
+current root is 6,333 bytes, exact `sample read` help is 6,005 bytes, and the
+`sample` namespace is 8,916 bytes. Exact artifact contracts remain scoped:
+`source inspect` is 11,338 bytes, `spec init` is 10,651 bytes, `spec validate`
+is 11,843 bytes, `bundle build` is 8,546 bytes, `bundle status` is 7,687 bytes,
+`bundle trust` is 8,903 bytes, `bundle preview` is 16,887 bytes, `bundle execute`
+is 15,571 bytes, `wrapper render` is 11,509 bytes, and `wrapper run` is 16,127
+bytes. Preview's larger scoped contract
 includes the versioned `wrapper-plan` JSON-pointer field/type inventory. The
 root contains selection entries rather than those complete invocation and
 failure contracts.
 
-Schema 9 retains the fixed derived-scale regression with six selected commands, 18
-producer endpoints, 18 consumer endpoints, and 324 implicit same-kind edges.
-The grouped document is 26,158 UTF-8 bytes; a pair-expanded representation of
-the same facts is 169,632 bytes. The fixed corpus has a 65,536-byte
-whole-response budget. The test expands the groups in memory and proves exact
-edge-set equality, so meeting the budget cannot delete producer fields,
-consumer inputs, usage, invocation contracts, or fault recovery. This is a
-regression bound for the named corpus, not a claim that an arbitrary catalog
-can never exceed 64 KiB.
+Schema 10 retains the fixed derived-scale regression with six selected
+commands, 18 producer endpoints, 18 consumer endpoints, and 324 implicit same-
+kind edges. The grouped document is 26,225 UTF-8 bytes; a pair-expanded
+representation of the same facts is 169,699 bytes. The fixed corpus has a
+65,536-byte whole-response budget. The test expands the groups in memory and
+proves exact edge-set equality, so meeting the budget cannot delete producer
+fields, consumer inputs, usage, invocation contracts, or fault recovery. This
+is a regression bound for the named corpus, not a claim that an arbitrary
+catalog can never exceed 64 KiB.
 
 Validation must also cover:
 
@@ -324,9 +324,11 @@ go run ./cmd/atr bundle status --bundle /tmp/atsura-bundle.json
 The root index plus exact scoped help meets the two-invocation unknown-surface
 bound. Known-path discovery takes one scoped-help invocation. The first status
 reports `not_adopted`. Trust displays the exact digest and compiled
-surface/wrapper summary on the controlling terminal and records only that
-digest after explicit confirmation. The final status reports `adopted: true`.
-Status and trust both report `source_process_attempts: 0`.
+surface/wrapper summary on the controlling terminal, counts wrappers whose
+source streams may be returned without projection, emits the conditional
+control/secret warning when that count is nonzero, and records only the digest
+after explicit confirmation. The final status reports `adopted: true`. Status
+and trust both report `source_process_attempts: 0`.
 
 ### Recovery probes
 
@@ -375,8 +377,8 @@ option surface. If the match has cataloged descendants, a following non-dash
 token that does not complete a known child is ambiguous rather than assumed to
 be positional; the caller must put an inner `--` before positional data. The
 schema-2 JSON envelope contains `plan_digest`, `plan`, and
-`source_process_attempts`. Exact schema-9 agent help declares the nested plan
-as `wrapper-plan` version 3 and publishes its typed JSON-pointer inventory. The
+`source_process_attempts`. Exact schema-10 agent help declares the nested plan
+as `wrapper-plan` version 4 and publishes its typed JSON-pointer inventory. The
 plan binds:
 
 - bundle, catalog, and specification digests;
@@ -385,6 +387,8 @@ plan binds:
 - the exact schema-3 specification entry for an explicit match, or JSON `null`
   for an inherited match;
 - reason, option surface, and wrapper kind;
+- exactly one result mode, `transformed_json` or
+  `source_stream_passthrough`;
 - original and transformed argv;
 - ordered before, invoke, output, and after stages; and
 - closed stdin, inherited working-directory and environment modes, plus maximum
@@ -393,8 +397,10 @@ plan binds:
 The plan digest is the SHA-256 identity of the canonical complete plan.
 Repeating preview with identical validated evidence and argv returns the same
 plan and digest. The runnable `spec init` example produces an explicit identity
-wrapper entry; fixture coverage also exercises an inherited entry and a typed
-transforming wrapper. Every success and failure reports or proves
+wrapper entry whose plan declares `source_stream_passthrough`; fixture coverage
+also exercises an inherited entry, an append-argv-only wrapper, and a typed
+transforming wrapper whose plan declares `transformed_json`. Every success and
+failure reports or proves
 `source_process_attempts: 0`; no provider credential or network call is needed.
 
 ### Recovery probes
@@ -431,17 +437,19 @@ before otherwise ambiguous positional data. `append_args` are appended to the
 exact attempted argv even when
 it already contains `--`; option-looking appended values then remain after the
 positional-only marker rather than being silently relocated. Preview requires
-one active cataloged selector matching the planned input format, but preview
-alone does not prove that its value encodes the requested select fields. The
+one active cataloged selector matching the planned input format only for
+`transformed_json`; a source-stream plan has no output selector. Preview alone
+does not prove that a selector value encodes the requested select fields. The
 GitHub CLI compatibility contract in Scenario F makes that narrower command-
-and adapter-specific admission check before execution.
+and adapter-specific admission check before transformed execution.
 
 ### Acceptance
 
 An agent that knows only the preview outcome reaches its scoped contract with
 at most two help-discovery invocations; a known path takes one. It can identify
 every plan field from the declared JSON contract, distinguish explicit from
-inherited surface origin without reconstructing policy, and select every
+inherited surface origin and both result modes without reconstructing policy,
+and select every
 recovery command from structured faults. Routine external processing and
 source-process attempts are both zero. This acceptance proves plan inspection,
 not runtime application, raw execution, or ordinary-command activation.
@@ -531,10 +539,11 @@ runs the runner and recovery contracts before exact-archive replay.
 
 ### Current compatibility limits
 
-This scenario does not cover identity-wrapper execution, argv-only transforms,
-nonempty successful stderr, a source CLI beyond an accepted runtime adapter,
-raw execution, arbitrary shell/jq/RTK/plugin transformers, or caller-owned
-ordinary-command activation; Scenario G owns that last result.
+This direct `bundle execute` scenario does not cover identity-wrapper
+execution, argv-only transforms, nonempty successful stderr, a source CLI
+beyond an accepted runtime adapter, raw execution, arbitrary shell/jq/RTK/plugin
+transformers, or caller-owned ordinary-command activation. Scenario G owns the
+finite identity, append-only, nonempty-stderr, and activation results.
 It does not claim that every GitHub CLI major-2 command is supported.
 The accepted major-2 range is a maintained compatibility decision rather than
 proof that one captured fixture predicts every future 2.x release.
@@ -554,9 +563,10 @@ structured fault rather than from raw source data.
 
 Given one adopted runtime-admitted bundle and a stable installed or built
 `atr`, a maintainer can render a deterministic POSIX function, activate it in a
-caller-owned Linux or macOS shell, and invoke ordinary `gh` to receive only the
-plan-declared compact JSON value. No coding-agent-host protocol or repository-
-source inspection is part of routine invocation.
+caller-owned Linux or macOS shell, and invoke ordinary `gh` through any of the
+three finite result cases: transformed JSON, identity source stream, or append-
+argv-only source stream. No coding-agent-host protocol or repository-source
+inspection is part of routine invocation.
 
 ### Runnable probe
 
@@ -632,15 +642,34 @@ gh pr list --limit=1
 unset -f gh
 ```
 
+That is the `transformed_json` case. Repeat the build/adopt/render/activate
+sequence with two separate schema-3 specifications:
+
+- keep the generated identity wrapper to obtain
+  `source_stream_passthrough`, then invoke ordinary `gh pr list --limit=1`; and
+- use an output-less transform whose only action is
+  `invoke.append_args: ["--limit=1"]`, then invoke ordinary `gh issue list`
+  without supplying `--limit` at the call site.
+
+Each bundle contains exactly one included command and only an option surface
+covered by the maintained GitHub CLI runtime grammar. These are three reviewed
+bundles and three ordinary invocations, not runtime mode selection or fallback.
+
 The generated function contains the complete `wrapper run` contract-version-1
 closure and always inserts the explicit `--` separator before `"$@"`. Users do
 not copy the bundle digest or runtime identity into a second command. On
-success, ordinary `gh` stdout is exactly one compact JSON object or array plus
-LF and stderr is empty. The source JSON supplies container and value types; the
-fresh schema-3 plan governs selection, rename, order, and compact rendering.
+transformed success, ordinary `gh` stdout is exactly one compact JSON object or
+array plus LF and stderr is empty. The source JSON supplies container and value
+types, while the fresh schema-4 plan governs selection, rename, order, compact
+rendering, and `result_mode`. On a conventionally completed source-stream
+case, stdout and stderr are the exact separately bounded source bytes and the
+ordinary command returns the source status only after both final writes
+complete. Atsura adds no LF, envelope, projection, or UTF-8 interpretation and
+makes no timing or stdout/stderr-interleaving claim.
 
-`wrapper render --format json` returns the same source in a schema-1 review
-envelope with its SHA-256, command name, contract, bundle locator/digest,
+For each bundle, `wrapper render --format json` returns the same source in a
+schema-1 review envelope with its SHA-256, command name, contract, bundle
+locator/digest,
 current `atr` path/hash/size, and zero source attempts. That source digest is
 review evidence. Sourcing or modifying the function is caller-owned, so it is
 not runtime attestation.
@@ -653,8 +682,8 @@ not runtime attestation.
 - Windows returns `wrapper_platform_not_supported`, empty success stdout, one
   structured fault on stderr, and zero wrapper source attempts. It does not
   claim POSIX activation.
-- An identity, mixed, multi-command, partially admitted, inherited-option, or
-  otherwise unsupported complete surface returns
+- A mixed, multi-command, partially admitted, or otherwise unsupported complete
+  surface returns
   `wrapper_runtime_not_supported` before rendering.
 - A changed bundle digest, missing adoption, source drift, malformed closure,
   or honest current-`atr` path/hash/size mismatch starts zero source processes
@@ -665,8 +694,16 @@ not runtime attestation.
 - Spaces, empty values, Unicode, duplicate values, dash-prefixed values, and
   literal shell metacharacters remain separate argv elements; the fixed
   function uses no `eval` or `sh -c`.
-- Any admitted post-start failure is non-retryable, emits no raw source channel,
-  and never selects raw execution, another bundle, or ambient `gh` as fallback.
+- A conventional source nonzero status in `source_stream_passthrough` returns
+  the exact bounded streams and the same status; it is not an Atsura fault or a
+  replay recommendation.
+- Signal/abnormal termination, timeout, cancellation, capture overflow, wait or
+  identity uncertainty, and inconsistent process evidence are non-retryable,
+  expose neither captured stream, and never select raw execution, another
+  bundle, or ambient `gh` as fallback.
+- A short stdout or stderr final write is non-retryable
+  `execute_output_write_failed`. Already-written caller bytes cannot be
+  retracted, the source status is not returned, and replay is not recommended.
 - The function starts the bound absolute `atr` path before honest `wrapper run`
   code can verify that executable. Drift detection prevents that honest
   mismatched runtime from starting the source; it does not attest or sandbox
@@ -680,8 +717,9 @@ takes one scoped-help invocation. After caller-owned activation, routine use is
 the ordinary `gh` invocation with zero external reconstruction. Direct preview
 and wrapper application use the same fresh plan and plan digest for identical
 validated inputs; the generic fixture, not wrapper stdout, compares that
-evidence. Successful source attempts equal one and every pre-start rejection
-equals zero. Vendor-specific activation remains downstream.
+evidence. Each admitted case has exactly one successful source attempt, the
+three-case fixture has three, and every pre-start rejection has zero. Vendor-
+specific activation remains downstream.
 
 ## Scenario H: Exact installed-artifact transform and wrapper journey
 
@@ -692,8 +730,9 @@ extracted from its immutable archive and can close the finite GitHub CLI
 transform journey on that target without a repository-built replacement
 binary, provider credential, provider network call, or undeclared parser. On
 Linux and macOS the same extracted executable must also render and serve the
-ordinary-command POSIX function. Windows must prove the exact unsupported-
-render result while retaining the transform journey.
+transformed-JSON, identity, and append-argv-only ordinary-command POSIX cases.
+Windows must prove the exact unsupported-render result while retaining the
+transform journey.
 
 ### Automated probe
 
@@ -711,7 +750,7 @@ four GitHub CLI inspection probes and the admitted `issue list` and `pr list`
 invocations. Its append-only JSONL log is outside public output.
 
 The replay starts from an isolated user-config root. Before starting the source
-fixture, packaged `atr` must return schema-9 root help plus exact `source
+fixture, packaged `atr` must return schema-10 root help plus exact `source
 inspect`, `spec init`, `spec validate`, `bundle preview`, `bundle execute`,
 `wrapper render`, and `wrapper run` scopes. It checks the complete
 catalog/specification output-schema field
@@ -737,33 +776,44 @@ stderr, or unselected-field canaries. Successful execute adds exactly one
 attempt per command, returns fields `["id","title","state"]`, omits the
 unselected canary, and has the same command-specific plan digest as preview.
 
-For the `pr list` bundle, Linux and macOS also render JSON review material and
-raw function text from the exact extracted `atr`, compare the exact source and
+Linux and macOS also build and adopt three wrapper bundles: the existing
+transformed-JSON `pr list` case, one identity case, and one output-less fixed-
+argv-append case. For each bundle they render JSON review material and raw
+function text from the exact extracted `atr`, compare the exact source and
 SHA-256, source that fixed material in an isolated generic POSIX shell, and
-invoke ordinary `gh pr list --limit=1`. The result must equal the plan-declared
-compact JSON value, wrapper/direct plan identity must match in bounded fixture
-evidence, and the append-only log must add exactly one wrapper source attempt.
-Windows must instead receive `wrapper_platform_not_supported`, no rendered
-source digest, and zero wrapper source attempts.
+invoke ordinary `gh`. Every wrapper/preview schema-4 plan identity must match
+in bounded fixture evidence and the append-only log must add exactly one source
+attempt per case. The transformed result must equal its compact JSON value.
+The other two must match the fixture's exact bounded stdout/stderr digests and
+conventional status without storing either stream. Windows must instead
+receive `wrapper_platform_not_supported`, no rendered source digest or case,
+and zero wrapper source attempts.
 
-The bounded journey document uses evidence schema 2. Linux/macOS record
-`wrapper_outcome: ordinary_command_verified`, a valid
-`wrapper_source_sha256`, and `wrapper_source_process_attempts: 1`; Windows
-records `wrapper_outcome: platform_not_supported`, an empty wrapper-source
-digest, and zero attempts. Together with the four inspection and two direct
-success attempts plus induced failures, the fixed fixture-attempt total is 11
-on Linux/macOS and 10 on Windows. These are acceptance requirements, not a
-claim here that a gate run has passed.
+The bounded journey document required for this source-stream candidate uses
+evidence schema 3. Linux/macOS record `wrapper_outcome:
+ordinary_command_verified`, an ordered three-entry `wrapper_cases` inventory,
+and `wrapper_source_process_attempts: 3`. Case names occur in the fixed order
+`transformed_json`, `identity`, `append_only`. Each case binds `name`,
+`wrapper_kind`, `result_mode`, `bundle_digest`, `plan_digest`,
+`wrapper_source_sha256`, `stdout_sha256`, `stderr_sha256`,
+`source_exit_code`, and `source_process_attempts: 1`. Windows records
+`wrapper_outcome: platform_not_supported`, an empty `wrapper_cases` inventory,
+and zero attempts.
+Together with the four inspection and two direct success attempts plus induced
+failures, the fixed fixture-attempt total is 13 on Linux/macOS and remains 10
+on Windows. These are acceptance requirements, not a claim here that a gate run
+has passed.
 
 ### Platform acceptance
 
 CI runs this probe natively on Linux amd64, Linux arm64, macOS amd64, macOS
 arm64, and Windows amd64. The release workflow downloads the exact archive
 uploaded by its build job and blocks publication until all five native replays
-succeed. The four POSIX rows must close the ordinary-command contract; the
-Windows row must close the exact structured unsupported-render contract and
-does not count as POSIX activation. Each job uploads a bounded document bound to its target, archive
-digest, and exact revision. A dependent job accepts exactly those five
+succeed. The four POSIX rows must close all three ordinary-command result
+cases; the Windows row must close the exact structured unsupported-render
+contract and does not count as POSIX activation. Each job uploads a bounded
+document bound to its target, archive digest, and exact revision. A dependent
+job accepts exactly those five
 canonical documents, validates the complete fixed journey facts, and emits a
 path-free unattested digest index after recomputing all five candidate archive
 hashes. Cross-compilation, build metadata, aggregation of locally fabricated
@@ -772,17 +822,18 @@ the five native job results.
 
 On 2026-07-22, the exact packaged Darwin/arm64 journey passed for revision
 `b4ade8c`, including ordinary-command activation. That bounded observation does
-not cover this later documentation tree, Linux, macOS amd64, Windows, evidence
-aggregation, publication, or the complete release matrix; the tagged revision
-must replay every required row.
+not cover this later documentation tree, schema-4 source-stream plans, evidence
+schema 3, the identity or append-argv-only cases, Linux, macOS amd64, Windows,
+evidence aggregation, publication, or the complete release matrix; the tagged
+revision must replay every required row.
 
 Exact scoped help is the public authoring contract: the source catalog exposes
 command paths, provenance, option grammar, structured output selector, and
 fields; schema-3 help exposes surface, option, wrapper, select, rename, and
 render constraints; execute help exposes the finite runtime-admission matrix;
 wrapper help exposes the renderer-produced closure, explicit `--` argv
-boundary, platform matrix, static review envelope, and fresh-plan output
-authority.
+boundary, platform matrix, static review envelope, and the exact fresh-plan
+result-mode union.
 The harness's deterministic YAML edit verifies those artifact contracts but
 does not erase the user's deliberate configuration-authoring step.
 
