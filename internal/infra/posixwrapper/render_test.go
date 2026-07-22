@@ -254,8 +254,7 @@ func TestRenderedHelpCannotBeHijackedByCallerCommandFunction(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	script := "command() { printf 'CALLER_COMMAND:%s\\n' \"$*\"; }\n" +
-		"return() { printf 'CALLER_RETURN:%s\\n' \"$*\"; }\n" + string(rendered.Source) +
+	script := "command() { printf 'CALLER_COMMAND:%s\\n' \"$*\"; }\n" + string(rendered.Source) +
 		"\nfixture issue list --help\ncommand preserved\n"
 	output, err := exec.Command("/bin/sh", "-c", script).Output()
 	if err != nil {
@@ -266,6 +265,33 @@ func TestRenderedHelpCannotBeHijackedByCallerCommandFunction(t *testing.T) {
 		"CALLER_COMMAND:preserved\n"
 	if string(output) != want {
 		t.Fatalf("help or caller command function isolation failed:\n%q\nwant:\n%q", output, want)
+	}
+}
+
+func TestRenderedHelpCannotBeHijackedByCallerReturnFunctionWhenSupported(t *testing.T) {
+	if _, err := os.Stat("/bin/bash"); err != nil {
+		t.Skip("bash is not installed")
+	}
+	help := wrapperbinding.CompiledHelp{Commands: []wrapperbinding.HelpCommand{{
+		Path: []string{"issue", "list"}, Summary: "List issues", Reason: "Keep issue inventory", Options: []wrapperbinding.HelpOption{},
+	}}}
+	binding := helpBinding(t, "fixture", help)
+	rendered, err := Render(binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	script := "return() { printf 'CALLER_RETURN:%s\\n' \"$*\"; }\n" + string(rendered.Source) +
+		"\nfixture issue list --help\nreturn preserved\n"
+	output, err := exec.Command("/bin/bash", "-c", script).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "Atsura tailored help\nBundle digest: " + binding.BundleDigest + "\n" +
+		"Command: issue list\nSource summary: List issues\nTailoring reason: Keep issue inventory\n" +
+		"CALLER_RETURN:preserved\n"
+	if string(output) != want {
+		t.Fatalf("help or caller return function isolation failed:\n%q\nwant:\n%q", output, want)
 	}
 }
 
