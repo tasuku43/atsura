@@ -12,6 +12,10 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/tasuku43/atsura/internal/domain/processorprocess"
+	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
+	"github.com/tasuku43/atsura/tools/internal/processormanifest"
 )
 
 const (
@@ -20,7 +24,7 @@ const (
 	maxEvidenceFileBytes  = 16 * 1024
 	maxArchiveBytes       = int64(256 * 1024 * 1024)
 	maxAggregateBytes     = 4 * 1024
-	wantedHelpContracts   = 8
+	wantedHelpContracts   = 12
 	wantedInspections     = 4
 	wantedGoInspections   = 3
 	wantedRejections      = 8
@@ -28,6 +32,8 @@ const (
 	wantedWindowsAttempts = 10
 	wantedPOSIXWrappers   = 3
 	wantedGoPOSIXWrappers = 1
+	wantedGoPOSIXCases    = 4
+	wantedGoPOSIXAttempts = 5
 )
 
 const (
@@ -37,6 +43,7 @@ const (
 	identityStderrSHA256    = "cfc159919dad8548c6e2ed887297e77aed35d6f2d20d42c08b29d7caa4f8faa0"
 	appendStdoutSHA256      = "162a8a6b49c40255d3d0d2e5ed86f5d4ca88b3963d8c667bd7b79e768bd26d29"
 	appendStderrSHA256      = "b8f249840842aad27390cfb637be1e2456a9d873ab1141d01d2cdccff1699c4a"
+	optimizedGoStdoutSHA256 = "a4f3dee01192dc3d1e710a3301d7f9f35bf7e7f14135b4a96ce398dc3af043b4"
 )
 
 var releaseTagPattern = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$`)
@@ -44,8 +51,9 @@ var releaseTagPattern = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.
 var go126VersionPattern = regexp.MustCompile(`^go1\.26\.(0|[1-9][0-9]*)$`)
 
 const (
-	goAdapterKind            = "atsura.source.go_cli"
-	goAdapterContractVersion = 1
+	goAdapterKind             = "atsura.source.go_cli"
+	goAdapterContractVersion  = 2
+	rtkAdapterContractVersion = 1
 )
 
 var wantedFaults = []string{
@@ -126,6 +134,72 @@ type goSourceEvidence struct {
 	WrapperCases             []wrapperCaseEvidence `json:"wrapper_cases"`
 	WrapperSourceAttempts    int                   `json:"wrapper_source_process_attempts"`
 	ZeroAttemptRejections    int                   `json:"zero_attempt_rejections"`
+	Optimizer                goOptimizerEvidence   `json:"optimizer"`
+}
+
+type goOptimizerEvidence struct {
+	Outcome               string                      `json:"outcome"`
+	Processor             *processorArtifactEvidence  `json:"processor,omitempty"`
+	Execution             *optimizerExecutionEvidence `json:"execution,omitempty"`
+	BundleDigest          string                      `json:"bundle_digest,omitempty"`
+	PlanDigest            string                      `json:"plan_digest,omitempty"`
+	WrapperSourceSHA256   string                      `json:"wrapper_source_sha256,omitempty"`
+	Cases                 []optimizerCaseEvidence     `json:"cases"`
+	Faults                []optimizerFaultEvidence    `json:"faults"`
+	SourceProcessAttempts int                         `json:"source_process_attempts"`
+	ZeroAttemptRejections int                         `json:"zero_attempt_rejections"`
+}
+
+type optimizerExecutionEvidence struct {
+	CallerArgv                    []string `json:"caller_argv"`
+	SourceArgv                    []string `json:"source_argv"`
+	SourceStdinMode               string   `json:"source_stdin_mode"`
+	SourceWorkingDirectoryMode    string   `json:"source_working_directory_mode"`
+	SourceEnvironmentMode         string   `json:"source_environment_mode"`
+	SourceMaxAttempts             int      `json:"source_max_attempts"`
+	SourceTimeoutMillis           int64    `json:"source_timeout_millis"`
+	SourceStdoutLimitBytes        int      `json:"source_stdout_limit_bytes"`
+	SourceStderrLimitBytes        int      `json:"source_stderr_limit_bytes"`
+	InputFormat                   string   `json:"input_format"`
+	OutputFormat                  string   `json:"output_format"`
+	AllowOriginalOutput           bool     `json:"allow_original_output"`
+	ProcessorArgv                 []string `json:"processor_argv"`
+	ProcessorStdinMode            string   `json:"processor_stdin_mode"`
+	ProcessorWorkingDirectoryMode string   `json:"processor_working_directory_mode"`
+	ProcessorEnvironmentContract  string   `json:"processor_environment_contract"`
+	ProcessorMaxAttempts          int      `json:"processor_max_attempts"`
+	ProcessorTimeoutMillis        int64    `json:"processor_timeout_millis"`
+	ProcessorStdoutLimitBytes     int      `json:"processor_stdout_limit_bytes"`
+	ProcessorStderrLimitBytes     int      `json:"processor_stderr_limit_bytes"`
+}
+
+type processorArtifactEvidence struct {
+	ContractID                string `json:"contract_id"`
+	AdapterKind               string `json:"adapter_kind"`
+	AdapterContractVersion    int    `json:"adapter_contract_version"`
+	Version                   string `json:"version"`
+	Target                    string `json:"target"`
+	ArchiveName               string `json:"archive_name"`
+	ArchiveSHA256             string `json:"archive_sha256"`
+	BinarySHA256              string `json:"binary_sha256"`
+	BinarySize                int64  `json:"binary_size"`
+	ObservationDigest         string `json:"observation_digest"`
+	InspectionProcessAttempts int    `json:"inspection_process_attempts"`
+}
+
+type optimizerCaseEvidence struct {
+	Name                  string `json:"name"`
+	Disposition           string `json:"disposition"`
+	StdoutSHA256          string `json:"stdout_sha256"`
+	StderrSHA256          string `json:"stderr_sha256"`
+	SourceExitCode        int    `json:"source_exit_code"`
+	SourceProcessAttempts int    `json:"source_process_attempts"`
+}
+
+type optimizerFaultEvidence struct {
+	Name                  string `json:"name"`
+	Code                  string `json:"code"`
+	SourceProcessAttempts int    `json:"source_process_attempts"`
 }
 
 type wrapperCaseEvidence struct {
@@ -216,7 +290,7 @@ func collectEvidence(configuration options) (aggregateDocument, error) {
 		return aggregateDocument{}, err
 	}
 	return aggregateDocument{
-		SchemaVersion:   1,
+		SchemaVersion:   2,
 		Tag:             configuration.tag,
 		Revision:        configuration.revision,
 		ProvenanceLevel: "workflow_index_unattested",
@@ -414,7 +488,7 @@ func requireJSONEOF(decoder *json.Decoder) error {
 
 func validateEvidence(document evidenceDocument, target, archiveName, version, revision string) error {
 	journey := document.ArtifactJourney
-	if document.SchemaVersion != 4 {
+	if document.SchemaVersion != 5 {
 		return fmt.Errorf("evidence schema version is invalid")
 	}
 	if journey.Target != target || journey.ObservedHost != target || journey.ArchiveName != archiveName || journey.Version != version || journey.Revision != revision {
@@ -460,9 +534,9 @@ func validateEvidence(document evidenceDocument, target, archiveName, version, r
 func validateGoSourceEvidence(evidence goSourceEvidence, target string) error {
 	if evidence.AdapterKind != goAdapterKind || evidence.AdapterContractVersion != goAdapterContractVersion ||
 		!go126VersionPattern.MatchString(evidence.SourceVersion) ||
-		!lowercaseHex(evidence.CatalogDigest, digestLength) ||
-		!lowercaseHex(evidence.BundleDigest, digestLength) ||
-		!lowercaseHex(evidence.PlanDigest, digestLength) ||
+		!lowercaseHex(evidence.CatalogDigest, digestLength) || evidence.CatalogDigest == emptySHA256 ||
+		!lowercaseHex(evidence.BundleDigest, digestLength) || evidence.BundleDigest == emptySHA256 ||
+		!lowercaseHex(evidence.PlanDigest, digestLength) || evidence.PlanDigest == emptySHA256 ||
 		evidence.SourceInspectionAttempts != wantedGoInspections ||
 		!equalStrings(evidence.CommandsVerified, []string{"test"}) {
 		return fmt.Errorf("Go source evidence identity is invalid")
@@ -472,18 +546,124 @@ func validateGoSourceEvidence(evidence goSourceEvidence, target string) error {
 			evidence.WrapperSourceAttempts != 0 || evidence.ZeroAttemptRejections != 1 {
 			return fmt.Errorf("Windows Go wrapper evidence is invalid")
 		}
-		return nil
+		return validateWindowsOptimizerEvidence(evidence.Optimizer)
 	}
 	if evidence.WrapperOutcome != "ordinary_command_verified" || evidence.WrapperSourceAttempts != wantedGoPOSIXWrappers ||
-		evidence.ZeroAttemptRejections != 1 || len(evidence.WrapperCases) != wantedGoPOSIXWrappers {
+		evidence.ZeroAttemptRejections != 1 || evidence.WrapperCases == nil || len(evidence.WrapperCases) != wantedGoPOSIXWrappers {
 		return fmt.Errorf("POSIX Go wrapper evidence is invalid")
 	}
-	actual := evidence.WrapperCases[0]
-	if actual.Name != "go_test_identity" || actual.WrapperKind != "identity" || actual.ResultMode != "source_stream_passthrough" ||
-		actual.BundleDigest != evidence.BundleDigest || actual.PlanDigest != evidence.PlanDigest ||
-		!lowercaseHex(actual.WrapperSourceSHA256, digestLength) || actual.WrapperSourceSHA256 == emptySHA256 || !lowercaseHex(actual.StdoutSHA256, digestLength) ||
-		actual.StdoutSHA256 == emptySHA256 || actual.StderrSHA256 != emptySHA256 || actual.SourceExitCode != 0 || actual.SourceProcessAttempts != 1 {
-		return fmt.Errorf("POSIX Go wrapper case is invalid")
+	identity := evidence.WrapperCases[0]
+	if identity.Name != "go_test_identity" || identity.WrapperKind != "identity" ||
+		identity.ResultMode != "source_stream_passthrough" || identity.BundleDigest != evidence.BundleDigest ||
+		identity.PlanDigest != evidence.PlanDigest || !lowercaseHex(identity.WrapperSourceSHA256, digestLength) ||
+		identity.WrapperSourceSHA256 == emptySHA256 || !lowercaseHex(identity.StdoutSHA256, digestLength) ||
+		identity.StdoutSHA256 == emptySHA256 || identity.StderrSHA256 != emptySHA256 || identity.SourceExitCode != 0 ||
+		identity.SourceProcessAttempts != 1 {
+		return fmt.Errorf("POSIX Go identity wrapper case is invalid")
+	}
+	return validatePOSIXOptimizerEvidence(evidence, target)
+}
+
+func validateWindowsOptimizerEvidence(evidence goOptimizerEvidence) error {
+	if evidence.Outcome != "platform_not_supported" || evidence.Processor != nil || evidence.Execution != nil || evidence.BundleDigest != "" ||
+		evidence.PlanDigest != "" || evidence.WrapperSourceSHA256 != "" || evidence.Cases == nil || len(evidence.Cases) != 0 ||
+		evidence.Faults == nil || len(evidence.Faults) != 0 || evidence.SourceProcessAttempts != 0 || evidence.ZeroAttemptRejections != 1 {
+		return fmt.Errorf("Windows optimizer evidence is invalid")
+	}
+	return nil
+}
+
+func validatePOSIXOptimizerEvidence(evidence goSourceEvidence, target string) error {
+	optimizer := evidence.Optimizer
+	if optimizer.Outcome != "reachable_outcomes_verified" || optimizer.Processor == nil || optimizer.Execution == nil ||
+		!lowercaseHex(optimizer.BundleDigest, digestLength) || optimizer.BundleDigest == emptySHA256 || optimizer.BundleDigest == evidence.BundleDigest ||
+		!lowercaseHex(optimizer.PlanDigest, digestLength) || optimizer.PlanDigest == emptySHA256 || optimizer.PlanDigest == evidence.PlanDigest ||
+		!lowercaseHex(optimizer.WrapperSourceSHA256, digestLength) || optimizer.WrapperSourceSHA256 == emptySHA256 ||
+		optimizer.WrapperSourceSHA256 == evidence.WrapperCases[0].WrapperSourceSHA256 ||
+		optimizer.Cases == nil || len(optimizer.Cases) != wantedGoPOSIXCases ||
+		optimizer.Faults == nil || len(optimizer.Faults) != 3 ||
+		optimizer.SourceProcessAttempts != wantedGoPOSIXAttempts || optimizer.ZeroAttemptRejections != 2 {
+		return fmt.Errorf("POSIX optimizer evidence is invalid")
+	}
+	if err := validateProcessorEvidence(*optimizer.Processor, target); err != nil {
+		return err
+	}
+	if err := validateOptimizerExecution(*optimizer.Execution); err != nil {
+		return err
+	}
+	wantedCases := []struct {
+		name, disposition string
+		exitCode          int
+		exactStdout       string
+	}{
+		{name: "optimized_pass", disposition: "optimized", exitCode: 0, exactStdout: optimizedGoStdoutSHA256},
+		{name: "preserved_before_skip", disposition: "preserved_before_processor", exitCode: 0},
+		{name: "preserved_before_fail", disposition: "preserved_before_processor", exitCode: 1},
+		{name: "preserved_before_ineligible", disposition: "preserved_before_processor", exitCode: 0},
+	}
+	seenStdout := make(map[string]struct{}, len(wantedCases))
+	for index, wanted := range wantedCases {
+		optimizerCase := optimizer.Cases[index]
+		if optimizerCase.Name != wanted.name || optimizerCase.Disposition != wanted.disposition ||
+			!lowercaseHex(optimizerCase.StdoutSHA256, digestLength) || optimizerCase.StdoutSHA256 == emptySHA256 ||
+			optimizerCase.StderrSHA256 != emptySHA256 || optimizerCase.SourceExitCode != wanted.exitCode ||
+			optimizerCase.SourceProcessAttempts != 1 {
+			return fmt.Errorf("POSIX optimizer case %d is invalid", index)
+		}
+		if wanted.exactStdout != "" && optimizerCase.StdoutSHA256 != wanted.exactStdout {
+			return fmt.Errorf("POSIX optimizer case %d stream evidence is invalid", index)
+		}
+		if _, duplicate := seenStdout[optimizerCase.StdoutSHA256]; duplicate {
+			return fmt.Errorf("POSIX optimizer stdout evidence is duplicated")
+		}
+		seenStdout[optimizerCase.StdoutSHA256] = struct{}{}
+	}
+	wantedFaults := []optimizerFaultEvidence{
+		{Name: "projection_rejection", Code: "wrapper_runtime_not_supported", SourceProcessAttempts: 0},
+		{Name: "preflight_processor_drift", Code: "processor_identity_changed", SourceProcessAttempts: 0},
+		{Name: "post_source_processor_drift", Code: "processor_identity_changed", SourceProcessAttempts: 1},
+	}
+	for index, wanted := range wantedFaults {
+		if optimizer.Faults[index] != wanted {
+			return fmt.Errorf("POSIX optimizer fault %d is invalid", index)
+		}
+	}
+	return nil
+}
+
+func validateOptimizerExecution(evidence optimizerExecutionEvidence) error {
+	if !equalStrings(evidence.CallerArgv, []string{"test"}) ||
+		!equalStrings(evidence.SourceArgv, []string{"test", "-json"}) ||
+		evidence.SourceStdinMode != "closed" || evidence.SourceWorkingDirectoryMode != "inherit" ||
+		evidence.SourceEnvironmentMode != "inherit" || evidence.SourceMaxAttempts != 1 ||
+		evidence.SourceTimeoutMillis != sourceprocess.MaxTimeout.Milliseconds() ||
+		evidence.SourceStdoutLimitBytes != sourceprocess.MaxStdoutBytes ||
+		evidence.SourceStderrLimitBytes != sourceprocess.MaxStderrBytes ||
+		evidence.InputFormat != "go_test_jsonl" || evidence.OutputFormat != "go_test_pass_summary" ||
+		!evidence.AllowOriginalOutput || !equalStrings(evidence.ProcessorArgv, []string{"pipe", "--filter=go-test"}) ||
+		evidence.ProcessorStdinMode != "stage_input" || evidence.ProcessorWorkingDirectoryMode != "isolated" ||
+		evidence.ProcessorEnvironmentContract != processorprocess.EnvironmentRTKIsolatedV2 ||
+		evidence.ProcessorMaxAttempts != 1 || evidence.ProcessorTimeoutMillis != processorprocess.MaxTimeout.Milliseconds() ||
+		evidence.ProcessorStdoutLimitBytes != processorprocess.MaxStdoutBytes ||
+		evidence.ProcessorStderrLimitBytes != processorprocess.MaxStderrBytes {
+		return fmt.Errorf("POSIX optimizer execution evidence is invalid")
+	}
+	return nil
+}
+
+func validateProcessorEvidence(evidence processorArtifactEvidence, target string) error {
+	manifest := processormanifest.PinnedManifest()
+	metadata, err := manifest.Target(target)
+	if err != nil {
+		return fmt.Errorf("processor target evidence is invalid")
+	}
+	if evidence.ContractID != metadata.ContractID() || evidence.AdapterKind != metadata.ProcessorKind() ||
+		evidence.AdapterContractVersion != rtkAdapterContractVersion || evidence.Version != metadata.Version() ||
+		evidence.Target != metadata.Target() || evidence.ArchiveName != metadata.ArchiveName() ||
+		evidence.ArchiveSHA256 != metadata.ArchiveSHA256() || evidence.BinarySHA256 != metadata.BinarySHA256() ||
+		evidence.BinarySize != metadata.BinarySize() || !lowercaseHex(evidence.ObservationDigest, digestLength) ||
+		evidence.ObservationDigest == emptySHA256 || evidence.InspectionProcessAttempts != 1 {
+		return fmt.Errorf("processor provenance evidence is invalid")
 	}
 	return nil
 }

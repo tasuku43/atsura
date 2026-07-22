@@ -11,6 +11,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/tasuku43/atsura/internal/domain/processorprocess"
+	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
+	"github.com/tasuku43/atsura/tools/internal/processormanifest"
 )
 
 const (
@@ -27,7 +31,7 @@ func TestRunAggregatesCanonicalNativeEvidence(t *testing.T) {
 	if err := run(validArguments(directory, archives), &output); err != nil {
 		t.Fatal(err)
 	}
-	wanted := fmt.Sprintf(`{"schema_version":1,"tag":"v1.2.3-rc.1","revision":"0123456789abcdef0123456789abcdef01234567","provenance_level":"workflow_index_unattested","targets":[{"target":"linux/amd64","result":"passed","archive_name":"atr_v1.2.3-rc.1_linux_amd64.tar.gz","archive_sha256":"%s"},{"target":"linux/arm64","result":"passed","archive_name":"atr_v1.2.3-rc.1_linux_arm64.tar.gz","archive_sha256":"%s"},{"target":"darwin/amd64","result":"passed","archive_name":"atr_v1.2.3-rc.1_darwin_amd64.tar.gz","archive_sha256":"%s"},{"target":"darwin/arm64","result":"passed","archive_name":"atr_v1.2.3-rc.1_darwin_arm64.tar.gz","archive_sha256":"%s"},{"target":"windows/amd64","result":"passed","archive_name":"atr_v1.2.3-rc.1_windows_amd64.zip","archive_sha256":"%s"}]}`+"\n", digests[0], digests[1], digests[2], digests[3], digests[4])
+	wanted := fmt.Sprintf(`{"schema_version":2,"tag":"v1.2.3-rc.1","revision":"0123456789abcdef0123456789abcdef01234567","provenance_level":"workflow_index_unattested","targets":[{"target":"linux/amd64","result":"passed","archive_name":"atr_v1.2.3-rc.1_linux_amd64.tar.gz","archive_sha256":"%s"},{"target":"linux/arm64","result":"passed","archive_name":"atr_v1.2.3-rc.1_linux_arm64.tar.gz","archive_sha256":"%s"},{"target":"darwin/amd64","result":"passed","archive_name":"atr_v1.2.3-rc.1_darwin_amd64.tar.gz","archive_sha256":"%s"},{"target":"darwin/arm64","result":"passed","archive_name":"atr_v1.2.3-rc.1_darwin_arm64.tar.gz","archive_sha256":"%s"},{"target":"windows/amd64","result":"passed","archive_name":"atr_v1.2.3-rc.1_windows_amd64.zip","archive_sha256":"%s"}]}`+"\n", digests[0], digests[1], digests[2], digests[3], digests[4])
 	if output.String() != wanted {
 		t.Fatalf("aggregate mismatch\n got: %s\nwant: %s", output.String(), wanted)
 	}
@@ -211,7 +215,7 @@ func TestDecodeEvidenceRejectsUnknownDuplicateAndTrailingJSON(t *testing.T) {
 		unknown,
 		duplicate,
 		append(append([]byte{}, valid...), []byte(` {}`)...),
-		[]byte(`{"schema_version":4,"artifact_journey":`),
+		[]byte(`{"schema_version":5,"artifact_journey":`),
 	} {
 		if _, err := decodeEvidence(value); err == nil {
 			t.Fatalf("invalid JSON was accepted: %s", value)
@@ -287,6 +291,18 @@ func TestValidateEvidenceRejectsInvalidContracts(t *testing.T) {
 		{"Go plan digest", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.PlanDigest = "abc" }},
 		{"Go wrapper outcome", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.WrapperOutcome = "other" }},
 		{"Go wrapper case", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.WrapperCases[0].Name = "other" }},
+		{"Go wrapper kind", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.WrapperCases[0].WrapperKind = "transform"
+		}},
+		{"Go wrapper result mode", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.WrapperCases[0].ResultMode = "original_preserving_optimizer"
+		}},
+		{"Go wrapper bundle binding", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.WrapperCases[0].BundleDigest = strings.Repeat("f", digestLength)
+		}},
+		{"Go wrapper plan binding", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.WrapperCases[0].PlanDigest = strings.Repeat("f", digestLength)
+		}},
 		{"Go wrapper stdout", func(value *evidenceDocument) {
 			value.ArtifactJourney.GoSource.WrapperCases[0].StdoutSHA256 = emptySHA256
 		}},
@@ -297,6 +313,156 @@ func TestValidateEvidenceRejectsInvalidContracts(t *testing.T) {
 		{"Go zero-attempt count", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.ZeroAttemptRejections = 0 }},
 		{"Go empty wrapper source", func(value *evidenceDocument) {
 			value.ArtifactJourney.GoSource.WrapperCases[0].WrapperSourceSHA256 = emptySHA256
+		}},
+		{"Go wrapper status", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.WrapperCases[0].SourceExitCode = 1 }},
+		{"Go wrapper case attempts", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.WrapperCases[0].SourceProcessAttempts++
+		}},
+		{"optimizer outcome", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.Optimizer.Outcome = "other" }},
+		{"optimizer processor absent", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.Optimizer.Processor = nil }},
+		{"optimizer processor contract", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Processor.ContractID = "atsura.output.other.v1"
+		}},
+		{"optimizer processor adapter", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Processor.AdapterKind = "atsura.processor.other"
+		}},
+		{"optimizer processor adapter contract", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Processor.AdapterContractVersion++
+		}},
+		{"optimizer processor version", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Processor.Version = "0.43.1"
+		}},
+		{"optimizer processor target", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Processor.Target = "linux/arm64"
+		}},
+		{"optimizer processor archive", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Processor.ArchiveName = "rtk.tar.gz"
+		}},
+		{"optimizer processor archive digest", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Processor.ArchiveSHA256 = strings.Repeat("0", digestLength)
+		}},
+		{"optimizer processor binary digest", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Processor.BinarySHA256 = strings.Repeat("0", digestLength)
+		}},
+		{"optimizer processor binary size", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Processor.BinarySize++
+		}},
+		{"optimizer observation digest", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Processor.ObservationDigest = "abc"
+		}},
+		{"optimizer inspection attempts", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Processor.InspectionProcessAttempts++
+		}},
+		{"optimizer execution absent", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.Optimizer.Execution = nil }},
+		{"optimizer caller argv", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Execution.CallerArgv = []string{"test", "extra"}
+		}},
+		{"optimizer source argv", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Execution.SourceArgv = []string{"test"}
+		}},
+		{"optimizer source stdin", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Execution.SourceStdinMode = "inherit"
+		}},
+		{"optimizer source cwd", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Execution.SourceWorkingDirectoryMode = "isolated"
+		}},
+		{"optimizer source environment", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Execution.SourceEnvironmentMode = "isolated"
+		}},
+		{"optimizer source max attempts", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.Optimizer.Execution.SourceMaxAttempts++ }},
+		{"optimizer source timeout", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Execution.SourceTimeoutMillis++
+		}},
+		{"optimizer source stdout bound", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Execution.SourceStdoutLimitBytes--
+		}},
+		{"optimizer source stderr bound", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Execution.SourceStderrLimitBytes--
+		}},
+		{"optimizer input format", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Execution.InputFormat = "other"
+		}},
+		{"optimizer output format", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Execution.OutputFormat = "other"
+		}},
+		{"optimizer original output", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Execution.AllowOriginalOutput = false
+		}},
+		{"optimizer processor argv", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Execution.ProcessorArgv = []string{"pipe"}
+		}},
+		{"optimizer processor stdin", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Execution.ProcessorStdinMode = "closed"
+		}},
+		{"optimizer processor cwd", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Execution.ProcessorWorkingDirectoryMode = "inherit"
+		}},
+		{"optimizer processor environment", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Execution.ProcessorEnvironmentContract = "atsura.processor.rtk_isolated.v1"
+		}},
+		{"optimizer processor max attempts", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Execution.ProcessorMaxAttempts++
+		}},
+		{"optimizer processor timeout", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Execution.ProcessorTimeoutMillis++
+		}},
+		{"optimizer processor stdout bound", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Execution.ProcessorStdoutLimitBytes--
+		}},
+		{"optimizer processor stderr bound", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Execution.ProcessorStderrLimitBytes--
+		}},
+		{"optimizer bundle digest", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.Optimizer.BundleDigest = "abc" }},
+		{"optimizer plan digest", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.Optimizer.PlanDigest = "abc" }},
+		{"optimizer wrapper digest", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.Optimizer.WrapperSourceSHA256 = "abc" }},
+		{"optimizer cases absent", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.Optimizer.Cases = nil }},
+		{"optimizer case missing", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Cases = value.ArtifactJourney.GoSource.Optimizer.Cases[:3]
+		}},
+		{"optimizer case order", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Cases[0], value.ArtifactJourney.GoSource.Optimizer.Cases[1] =
+				value.ArtifactJourney.GoSource.Optimizer.Cases[1], value.ArtifactJourney.GoSource.Optimizer.Cases[0]
+		}},
+		{"optimizer preserved after", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Cases[1].Disposition = "preserved_after_processor"
+		}},
+		{"optimizer summary digest", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Cases[0].StdoutSHA256 = strings.Repeat("f", digestLength)
+		}},
+		{"optimizer duplicate preserved digest", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Cases[2].StdoutSHA256 = value.ArtifactJourney.GoSource.Optimizer.Cases[1].StdoutSHA256
+		}},
+		{"optimizer case stderr", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Cases[1].StderrSHA256 = strings.Repeat("f", digestLength)
+		}},
+		{"optimizer case status", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.Optimizer.Cases[2].SourceExitCode = 0 }},
+		{"optimizer case attempts", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Cases[0].SourceProcessAttempts++
+		}},
+		{"optimizer faults absent", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.Optimizer.Faults = nil }},
+		{"optimizer fault missing", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Faults = value.ArtifactJourney.GoSource.Optimizer.Faults[:2]
+		}},
+		{"optimizer fault order", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Faults[0], value.ArtifactJourney.GoSource.Optimizer.Faults[1] =
+				value.ArtifactJourney.GoSource.Optimizer.Faults[1], value.ArtifactJourney.GoSource.Optimizer.Faults[0]
+		}},
+		{"optimizer arbitrary fault", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Faults[0].Code = "processor_process_start_failed_after_source"
+		}},
+		{"optimizer fault attempts", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Faults[0].SourceProcessAttempts++
+		}},
+		{"optimizer source attempts", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.Optimizer.SourceProcessAttempts-- }},
+		{"optimizer zero-attempt count", func(value *evidenceDocument) { value.ArtifactJourney.GoSource.Optimizer.ZeroAttemptRejections-- }},
+		{"optimizer reuses identity bundle", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.BundleDigest = value.ArtifactJourney.GoSource.BundleDigest
+		}},
+		{"optimizer reuses identity plan", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.PlanDigest = value.ArtifactJourney.GoSource.PlanDigest
+		}},
+		{"optimizer reuses identity wrapper", func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.WrapperSourceSHA256 = value.ArtifactJourney.GoSource.WrapperCases[0].WrapperSourceSHA256
 		}},
 	}
 	for _, test := range tests {
@@ -331,6 +497,22 @@ func TestValidateEvidenceRequiresStructuredUnsupportedWindowsWrapperCases(t *tes
 		},
 		func(value *evidenceDocument) { value.ArtifactJourney.GoSource.WrapperSourceAttempts = 1 },
 		func(value *evidenceDocument) { value.ArtifactJourney.GoSource.ZeroAttemptRejections = 0 },
+		func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Outcome = "reachable_outcomes_verified"
+		},
+		func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Processor = validProcessorEvidence("linux/amd64")
+		},
+		func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.Execution = validOptimizerExecution()
+		},
+		func(value *evidenceDocument) {
+			value.ArtifactJourney.GoSource.Optimizer.BundleDigest = strings.Repeat("a", digestLength)
+		},
+		func(value *evidenceDocument) { value.ArtifactJourney.GoSource.Optimizer.Cases = nil },
+		func(value *evidenceDocument) { value.ArtifactJourney.GoSource.Optimizer.Faults = nil },
+		func(value *evidenceDocument) { value.ArtifactJourney.GoSource.Optimizer.SourceProcessAttempts = 1 },
+		func(value *evidenceDocument) { value.ArtifactJourney.GoSource.Optimizer.ZeroAttemptRejections = 0 },
 	}
 	for index, mutate := range mutations {
 		value := cloneEvidence(t, base)
@@ -373,7 +555,7 @@ func writeValidEvidenceSet(t *testing.T, directory, archives string) []string {
 
 func validEvidence(target, archiveName, archiveDigest string) evidenceDocument {
 	result := evidenceDocument{
-		SchemaVersion: 4,
+		SchemaVersion: 5,
 		ArtifactJourney: artifactJourneyEvidence{
 			Target: target, ObservedHost: target, ArchiveName: archiveName, ArchiveSHA256: archiveDigest,
 			Version: testVersion, Revision: testRevision,
@@ -388,7 +570,7 @@ func validEvidence(target, archiveName, archiveDigest string) evidenceDocument {
 				AdapterKind: goAdapterKind, AdapterContractVersion: goAdapterContractVersion,
 				SourceVersion: "go1.26.5", CatalogDigest: strings.Repeat("8", digestLength),
 				SourceInspectionAttempts: wantedGoInspections, CommandsVerified: []string{"test"},
-				BundleDigest: strings.Repeat("9", digestLength), PlanDigest: strings.Repeat("0", digestLength),
+				BundleDigest: strings.Repeat("9", digestLength), PlanDigest: strings.Repeat("1", digestLength),
 			},
 		},
 	}
@@ -401,6 +583,10 @@ func validEvidence(target, archiveName, archiveDigest string) evidenceDocument {
 		result.ArtifactJourney.GoSource.WrapperCases = []wrapperCaseEvidence{}
 		result.ArtifactJourney.GoSource.WrapperSourceAttempts = 0
 		result.ArtifactJourney.GoSource.ZeroAttemptRejections = 1
+		result.ArtifactJourney.GoSource.Optimizer = goOptimizerEvidence{
+			Outcome: "platform_not_supported", Cases: []optimizerCaseEvidence{}, Faults: []optimizerFaultEvidence{},
+			SourceProcessAttempts: 0, ZeroAttemptRejections: 1,
+		}
 	} else {
 		result.ArtifactJourney.WrapperOutcome = "ordinary_command_verified"
 		result.ArtifactJourney.WrapperCases = []wrapperCaseEvidence{
@@ -425,17 +611,67 @@ func validEvidence(target, archiveName, archiveDigest string) evidenceDocument {
 		}
 		result.ArtifactJourney.WrapperSourceAttempts = wantedPOSIXWrappers
 		result.ArtifactJourney.FixtureAttempts = wantedPOSIXAttempts
+		identityBundleDigest := result.ArtifactJourney.GoSource.BundleDigest
+		identityPlanDigest := result.ArtifactJourney.GoSource.PlanDigest
+		identityWrapperDigest := strings.Repeat("2", digestLength)
+		optimizerBundleDigest := strings.Repeat("3", digestLength)
+		optimizerPlanDigest := strings.Repeat("4", digestLength)
+		optimizerWrapperDigest := strings.Repeat("5", digestLength)
+		caseValues := []optimizerCaseEvidence{
+			{Name: "optimized_pass", Disposition: "optimized", StdoutSHA256: optimizedGoStdoutSHA256, StderrSHA256: emptySHA256, SourceExitCode: 0, SourceProcessAttempts: 1},
+			{Name: "preserved_before_skip", Disposition: "preserved_before_processor", StdoutSHA256: strings.Repeat("6", digestLength), StderrSHA256: emptySHA256, SourceExitCode: 0, SourceProcessAttempts: 1},
+			{Name: "preserved_before_fail", Disposition: "preserved_before_processor", StdoutSHA256: strings.Repeat("7", digestLength), StderrSHA256: emptySHA256, SourceExitCode: 1, SourceProcessAttempts: 1},
+			{Name: "preserved_before_ineligible", Disposition: "preserved_before_processor", StdoutSHA256: strings.Repeat("8", digestLength), StderrSHA256: emptySHA256, SourceExitCode: 0, SourceProcessAttempts: 1},
+		}
 		result.ArtifactJourney.GoSource.WrapperOutcome = "ordinary_command_verified"
 		result.ArtifactJourney.GoSource.WrapperCases = []wrapperCaseEvidence{{
 			Name: "go_test_identity", WrapperKind: "identity", ResultMode: "source_stream_passthrough",
-			BundleDigest: strings.Repeat("9", digestLength), PlanDigest: strings.Repeat("0", digestLength),
-			WrapperSourceSHA256: strings.Repeat("1", digestLength), StdoutSHA256: strings.Repeat("2", digestLength), StderrSHA256: emptySHA256,
+			BundleDigest: identityBundleDigest, PlanDigest: identityPlanDigest, WrapperSourceSHA256: identityWrapperDigest,
+			StdoutSHA256: strings.Repeat("f", digestLength), StderrSHA256: emptySHA256,
 			SourceExitCode: 0, SourceProcessAttempts: 1,
 		}}
 		result.ArtifactJourney.GoSource.WrapperSourceAttempts = wantedGoPOSIXWrappers
 		result.ArtifactJourney.GoSource.ZeroAttemptRejections = 1
+		result.ArtifactJourney.GoSource.Optimizer = goOptimizerEvidence{
+			Outcome: "reachable_outcomes_verified", Processor: validProcessorEvidence(target), Execution: validOptimizerExecution(),
+			BundleDigest: optimizerBundleDigest, PlanDigest: optimizerPlanDigest, WrapperSourceSHA256: optimizerWrapperDigest,
+			Cases: caseValues,
+			Faults: []optimizerFaultEvidence{
+				{Name: "projection_rejection", Code: "wrapper_runtime_not_supported", SourceProcessAttempts: 0},
+				{Name: "preflight_processor_drift", Code: "processor_identity_changed", SourceProcessAttempts: 0},
+				{Name: "post_source_processor_drift", Code: "processor_identity_changed", SourceProcessAttempts: 1},
+			},
+			SourceProcessAttempts: wantedGoPOSIXAttempts, ZeroAttemptRejections: 2,
+		}
 	}
 	return result
+}
+
+func validOptimizerExecution() *optimizerExecutionEvidence {
+	return &optimizerExecutionEvidence{
+		CallerArgv: []string{"test"}, SourceArgv: []string{"test", "-json"},
+		SourceStdinMode: "closed", SourceWorkingDirectoryMode: "inherit", SourceEnvironmentMode: "inherit",
+		SourceMaxAttempts: 1, SourceTimeoutMillis: sourceprocess.MaxTimeout.Milliseconds(),
+		SourceStdoutLimitBytes: sourceprocess.MaxStdoutBytes, SourceStderrLimitBytes: sourceprocess.MaxStderrBytes,
+		InputFormat: "go_test_jsonl", OutputFormat: "go_test_pass_summary", AllowOriginalOutput: true,
+		ProcessorArgv: []string{"pipe", "--filter=go-test"}, ProcessorStdinMode: "stage_input",
+		ProcessorWorkingDirectoryMode: "isolated", ProcessorEnvironmentContract: processorprocess.EnvironmentRTKIsolatedV2,
+		ProcessorMaxAttempts: 1, ProcessorTimeoutMillis: processorprocess.MaxTimeout.Milliseconds(),
+		ProcessorStdoutLimitBytes: processorprocess.MaxStdoutBytes, ProcessorStderrLimitBytes: processorprocess.MaxStderrBytes,
+	}
+}
+
+func validProcessorEvidence(target string) *processorArtifactEvidence {
+	metadata, err := processormanifest.PinnedManifest().Target(target)
+	if err != nil {
+		panic(err)
+	}
+	return &processorArtifactEvidence{
+		ContractID: metadata.ContractID(), AdapterKind: metadata.ProcessorKind(), AdapterContractVersion: rtkAdapterContractVersion,
+		Version: metadata.Version(), Target: metadata.Target(), ArchiveName: metadata.ArchiveName(), ArchiveSHA256: metadata.ArchiveSHA256(),
+		BinarySHA256: metadata.BinarySHA256(), BinarySize: metadata.BinarySize(), ObservationDigest: strings.Repeat("5", digestLength),
+		InspectionProcessAttempts: 1,
+	}
 }
 
 func marshalEvidence(t *testing.T, value evidenceDocument) []byte {
