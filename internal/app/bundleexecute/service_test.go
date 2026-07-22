@@ -7,9 +7,11 @@ import (
 	"testing"
 
 	"github.com/tasuku43/atsura/internal/app/planapply"
+	"github.com/tasuku43/atsura/internal/app/processorcompat"
 	"github.com/tasuku43/atsura/internal/domain/bundletrust"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
+	"github.com/tasuku43/atsura/internal/domain/processorprocess"
 	"github.com/tasuku43/atsura/internal/domain/runtimeadmission"
 	"github.com/tasuku43/atsura/internal/domain/sourcecatalog"
 	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
@@ -94,6 +96,37 @@ type parserStub struct {
 	input []byte
 }
 
+type processorIdentityStub struct {
+	value processorprocess.Identity
+	calls int
+}
+
+func (s *processorIdentityStub) Identify(context.Context, string) (processorprocess.Identity, error) {
+	s.calls++
+	return s.value, nil
+}
+
+type processorProcessStub struct{ calls int }
+
+func (s *processorProcessStub) Run(context.Context, processorprocess.Request) (processorprocess.Result, error) {
+	s.calls++
+	return processorprocess.Result{ExitCode: -1}, nil
+}
+
+type processorCompatibilityStub struct{ calls int }
+
+func (s *processorCompatibilityStub) VerifyPlan(tailoringplan.Plan) error {
+	s.calls++
+	return nil
+}
+
+type optimizerAdmissionStub struct{ calls int }
+
+func (s *optimizerAdmissionStub) ExpectedSummary([]byte) (string, bool) {
+	s.calls++
+	return "", false
+}
+
 func (s *parserStub) Parse(_ context.Context, input []byte) (tailoring.JSONValue, error) {
 	s.calls++
 	s.input = append([]byte{}, input...)
@@ -155,6 +188,69 @@ func executeService(t *testing.T, compatibility *compatibilityStub, process *pro
 	return NewWithApplier(applier), tailoringplan.Attempt{Executable: "fixture", Args: []string{"item", "list"}}
 }
 
+func optimizerExecuteBundle(t *testing.T) (tailoringbundle.Bundle, string, sourceprocess.Identity, processorprocess.Identity) {
+	t.Helper()
+	sourceIdentity := sourceprocess.Identity{ResolvedPath: "/opt/bin/go", SHA256: strings.Repeat("b", 64), Size: 1024}
+	processorIdentity := processorprocess.Identity{
+		ResolvedPath: "/opt/bin/rtk",
+		SHA256:       "2dab449f32ea744c30b02a3ef9806e3e7d3b356a145332f3f2aaabb5ea48edee",
+		Size:         7763408,
+	}
+	catalog := sourcecatalog.Catalog{
+		SchemaVersion: sourcecatalog.SchemaVersion,
+		Adapter:       sourcecatalog.Adapter{Kind: processorcompat.SourceAdapterKind, ContractVersion: processorcompat.SourceContractVersion},
+		Source: sourcecatalog.Source{
+			RequestedExecutable: "go", ResolvedPath: sourceIdentity.ResolvedPath, SHA256: sourceIdentity.SHA256, Size: sourceIdentity.Size, Version: "go1.26.5",
+		},
+		Probe: sourcecatalog.Probe{IDs: []string{"help", "test_help", "version"}, Attempts: 3},
+		Commands: []sourcecatalog.Command{{
+			Path: []string{"test"}, Summary: "test packages", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin,
+			Options: []sourcecatalog.Option{},
+			StructuredOutput: []sourcecatalog.StructuredOutput{{
+				Format: processorcompat.InputFormat, SelectorFlag: "-json",
+				Fields: []string{"Action", "Elapsed", "FailedBuild", "Output", "Package", "Test", "Time"},
+			}},
+		}},
+	}
+	observation := processorprocess.Observation{
+		SchemaVersion: processorprocess.ObservationSchemaVersion,
+		Adapter:       processorprocess.Adapter{Kind: processorcompat.ProcessorAdapterKind, ContractVersion: processorcompat.ProcessorContractVersion},
+		Platform:      processorprocess.Platform{OS: "darwin", Arch: "arm64"},
+		Identity:      processorIdentity,
+		Version:       processorcompat.ProcessorVersion,
+		Probe: processorprocess.Probe{
+			Argv: []string{"--version"}, EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV1, Attempts: 1,
+		},
+	}
+	registry := processorcompat.New()
+	entry, err := registry.DefaultEntry(catalog, observation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, err := registry.Binding(observation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalogDigest, err := catalog.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := tailoringbundle.Compile(catalog, tailoringbundle.Specification{
+		SchemaVersion: tailoringbundle.SpecificationSchemaVersion,
+		CatalogDigest: catalogDigest,
+		Surface:       tailoringbundle.Surface{Default: tailoringbundle.SurfaceDefaultExclude},
+		Commands:      []tailoringbundle.CommandEntry{entry},
+	}, binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, err := bundle.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bundle, digest, sourceIdentity, processorIdentity
+}
+
 func TestExecuteRebuildsPlanRunsBoundSourceOnceAndTransformsTypedJSON(t *testing.T) {
 	compatibility := &compatibilityStub{}
 	process := &processStub{result: sourceprocess.Result{Attempts: 1, ExitCode: 0, Stdout: []byte(`private raw bytes`), Identity: sourceprocess.Identity{ResolvedPath: "/opt/bin/fixture", SHA256: strings.Repeat("a", 64), Size: 42}}}
@@ -205,6 +301,45 @@ func TestExecuteRejectsUnsupportedWrapperAndCompatibilityBeforeProcess(t *testin
 	public := assertFault(t, err, "wrapper_runtime_not_supported", false)
 	if process.calls != 0 || public.Message != runtimeMessageGeneric || strings.Contains(err.Error(), "unproven selector") {
 		t.Fatalf("unsupported adapter public=%+v error=%v process calls=%d", public, err, process.calls)
+	}
+}
+
+func TestExecuteRejectsOptimizerBeforeSourceOrProcessorExecution(t *testing.T) {
+	bundle, digest, sourceIdentity, processorIdentity := optimizerExecuteBundle(t)
+	sourceCompatibility := &compatibilityStub{}
+	sourceProcess := &processStub{}
+	parser := &parserStub{}
+	processorIdentityPort := &processorIdentityStub{value: processorIdentity}
+	processorProcess := &processorProcessStub{}
+	processorCompatibility := &processorCompatibilityStub{}
+	admission := &optimizerAdmissionStub{}
+	applier := planapply.New(
+		&bundleStub{bundle: bundle, digest: digest},
+		&adoptionStub{state: bundletrust.StateAdopted},
+		&identityStub{value: sourceIdentity},
+		sourceCompatibility,
+		sourceProcess,
+		parser,
+		planapply.ProcessorSupport{
+			Identity: processorIdentityPort, Processes: processorProcess, Compatibility: processorCompatibility, Admission: admission,
+		},
+	)
+
+	result, err := NewWithApplier(applier).Execute(
+		context.Background(), executeIntent(), "bundle.json", tailoringplan.Attempt{Executable: "go", Args: []string{"test"}},
+	)
+	public := assertFault(t, err, "wrapper_runtime_not_supported", false)
+	if public.Kind != fault.KindUnsupported || len(public.NextActions) != 1 || public.NextActions[0].Command != "help bundle execute" {
+		t.Fatalf("public = %+v", public)
+	}
+	if result.ResultMode != tailoringplan.ResultModeOriginalPreservingOptimizer || result.SourceProcessAttempts != 0 || result.ProcessorProcessAttempts != 0 || result.Optimizer != nil || result.SourceStream != nil || result.TransformedJSON != nil {
+		t.Fatalf("result = %+v", result)
+	}
+	if sourceCompatibility.calls != 0 || sourceProcess.calls != 0 || parser.calls != 0 || processorIdentityPort.calls != 0 || processorProcess.calls != 0 || processorCompatibility.calls != 0 || admission.calls != 0 {
+		t.Fatalf("calls source compatibility/process/parser=%d/%d/%d processor identity/process/compatibility/admission=%d/%d/%d/%d",
+			sourceCompatibility.calls, sourceProcess.calls, parser.calls,
+			processorIdentityPort.calls, processorProcess.calls, processorCompatibility.calls, admission.calls,
+		)
 	}
 }
 

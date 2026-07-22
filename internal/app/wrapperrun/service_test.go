@@ -11,6 +11,8 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
 	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
+	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
+	"github.com/tasuku43/atsura/internal/domain/tailoringplan"
 	"github.com/tasuku43/atsura/internal/domain/wrapperbinding"
 )
 
@@ -103,10 +105,15 @@ func TestExecuteVerifiesRuntimeAndForwardsExactArgvToBundleDerivedPlan(t *testin
 	binding := runtimeBinding()
 	current := &currentExecutableStub{locator: "/proc/current/atr"}
 	identity := &identityStub{value: runtimeIdentity()}
-	wantResult := planapply.Result{BundleDigest: binding.BundleDigest, PlanDigest: strings.Repeat("c", 64), MatchedCommand: []string{"item", "list"}, SourceProcessAttempts: 1}
+	wantResult := planapply.Result{
+		BundleDigest: binding.BundleDigest, PlanDigest: strings.Repeat("c", 64), MatchedCommand: []string{"test"},
+		WrapperKind: tailoringbundle.WrapperTransform, ResultMode: tailoringplan.ResultModeOriginalPreservingOptimizer,
+		Optimizer:             &planapply.OptimizerResult{Stdout: []byte("Go test: 1 passed in 1 packages"), ExitCode: 0, Disposition: planapply.OptimizerOptimized},
+		SourceProcessAttempts: 1, ProcessorProcessAttempts: 1,
+	}
 	applier := &applierStub{result: wantResult}
 	service := New(current, identity, applier)
-	args := []string{"item", "list", "", "space value", "-dash", "Unicode 雪", "$(literal)", "--", "ordered"}
+	args := []string{"test", "", "space value", "-dash", "Unicode 雪", "$(literal)", "--", "ordered"}
 	wantArgs := append([]string{}, args...)
 
 	result, err := service.Execute(context.Background(), executeIntent(), binding, args)
@@ -116,11 +123,14 @@ func TestExecuteVerifiesRuntimeAndForwardsExactArgvToBundleDerivedPlan(t *testin
 	if !reflect.DeepEqual(result, wantResult) {
 		t.Fatalf("result = %+v, want %+v", result, wantResult)
 	}
+	if err := result.Validate(); err != nil {
+		t.Fatalf("forwarded optimizer result is invalid: %v", err)
+	}
 	if current.calls != 1 || identity.calls != 1 || identity.locator != current.locator || applier.calls != 1 {
 		t.Fatalf("current/identity/apply calls = %d/%d/%d, identity locator=%q", current.calls, identity.calls, applier.calls, identity.locator)
 	}
 	request := applier.request
-	if request.BundlePath != binding.BundleLocator || request.ExpectedBundleDigest != binding.BundleDigest || !request.DeriveExecutableFromLoadedBundle || !request.AllowSourceStreamPassthrough {
+	if request.BundlePath != binding.BundleLocator || request.ExpectedBundleDigest != binding.BundleDigest || !request.DeriveExecutableFromLoadedBundle || !request.AllowSourceStreamPassthrough || !request.AllowOriginalPreservingOptimizer {
 		t.Fatalf("plan application binding = %+v", request)
 	}
 	if request.Attempt.Executable != "" || !reflect.DeepEqual(request.Attempt.Args, wantArgs) {
@@ -134,7 +144,7 @@ func TestExecuteVerifiesRuntimeAndForwardsExactArgvToBundleDerivedPlan(t *testin
 		t.Fatalf("wrapper recovery context = %+v", request.Command)
 	}
 	args[0] = "mutated-after-execute"
-	if request.Attempt.Args[0] != "item" {
+	if request.Attempt.Args[0] != "test" {
 		t.Fatalf("forwarded argv aliases caller storage: %#v", request.Attempt.Args)
 	}
 }
