@@ -998,6 +998,96 @@ func TestProcessorInspectCatalogPublishesExactAdapterObservationAndFaultContract
 	}
 }
 
+func TestProcessorEvidenceCatalogClosesAuthoringBuildAndAdoptionContracts(t *testing.T) {
+	findInput := func(spec CommandSpec, name string) (CommandInput, bool) {
+		for _, input := range spec.Agent.Inputs {
+			if input.Name == name {
+				return input, true
+			}
+		}
+		return CommandInput{}, false
+	}
+	errorMap := func(spec CommandSpec) map[string]CommandError {
+		result := make(map[string]CommandError, len(spec.Agent.Errors))
+		for _, declared := range spec.Agent.Errors {
+			result[declared.Code] = declared
+		}
+		return result
+	}
+	fieldNames := func(spec CommandSpec) []string {
+		result := make([]string, len(spec.Agent.Output.Fields))
+		for index, field := range spec.Agent.Output.Fields {
+			result[index] = field.Name
+		}
+		return result
+	}
+
+	for _, path := range []string{"spec init", "bundle build"} {
+		spec, found := DefaultCatalog().Lookup(path)
+		if !found {
+			t.Fatalf("%s is missing", path)
+		}
+		processor, found := findInput(spec, "--processor")
+		if !found || processor.Source != InputSourceFlag || processor.Required || processor.ValueKind != InputValueText ||
+			processor.Cardinality != InputCardinalitySingle || processor.AllowedValues == nil || len(processor.AllowedValues) != 0 {
+			t.Errorf("%s processor input=%+v found=%t", path, processor, found)
+		}
+		errors := errorMap(spec)
+		for code, expected := range map[string]struct {
+			kind      fault.Kind
+			retryable bool
+		}{
+			"invalid_processor_observation_selection":      {kind: fault.KindInvalidInput},
+			"processor_observation_file_not_found":         {kind: fault.KindNotFound},
+			"processor_observation_file_permission_denied": {kind: fault.KindPermission},
+			"unsafe_processor_observation_file":            {kind: fault.KindInvalidInput},
+			"processor_observation_file_too_large":         {kind: fault.KindInvalidInput},
+			"processor_observation_file_read_failed":       {kind: fault.KindUnavailable, retryable: true},
+			"invalid_processor_observation_file":           {kind: fault.KindInvalidInput},
+		} {
+			got, exists := errors[code]
+			if !exists || got.Kind != expected.kind || got.Retryable != expected.retryable {
+				t.Errorf("%s fault %q=%+v want=%+v", path, code, got, expected)
+			}
+		}
+	}
+
+	init, _ := DefaultCatalog().Lookup("spec init")
+	initErrors := errorMap(init)
+	if init.Args != "--catalog <path> [--processor <inspection.json>] -- <command>" ||
+		initErrors["processor_default_not_admitted"].Kind != fault.KindRejected || initErrors["invalid_processor_default"].Kind != fault.KindContract {
+		t.Fatalf("spec init processor contract args=%q errors=%+v", init.Args, initErrors)
+	}
+
+	build, _ := DefaultCatalog().Lookup("bundle build")
+	buildErrors := errorMap(build)
+	if build.Args != "--catalog <path> --spec <path> [--processor <inspection.json>]" ||
+		buildErrors["processor_observation_required"].Kind != fault.KindInvalidInput ||
+		buildErrors["processor_observation_not_used"].Kind != fault.KindInvalidInput ||
+		buildErrors["processor_compatibility_not_admitted"].Kind != fault.KindRejected {
+		t.Fatalf("bundle build processor contract args=%q errors=%+v", build.Args, buildErrors)
+	}
+
+	status, _ := DefaultCatalog().Lookup("bundle status")
+	if status.Agent.Output.JSONSchemaVersion != 3 || !reflect.DeepEqual(fieldNames(status), []string{
+		"bundle_digest", "catalog_digest", "specification_digest", "adoption", "source", "adopted", "source_path", "source_sha256", "source_version",
+		"processors", "source_process_attempts", "processor_process_attempts",
+	}) || status.Agent.Output.Fields[9].Type != OutputFieldTypeArray || status.Agent.Output.Fields[9].Schema == nil ||
+		status.Agent.Output.Fields[9].Schema.ID != "bundle-processor-status" || status.Agent.Output.Fields[9].Schema.Version != 1 ||
+		len(status.Agent.Output.Fields[9].Schema.Fields) != 7 {
+		t.Fatalf("bundle status processor output=%+v", status.Agent.Output)
+	}
+
+	trust, _ := DefaultCatalog().Lookup("bundle trust")
+	if trust.Agent.Output.JSONSchemaVersion != 3 || !reflect.DeepEqual(fieldNames(trust), []string{
+		"bundle_digest", "adopted", "already_adopted", "source", "processors", "source_process_attempts", "processor_process_attempts",
+	}) || trust.Agent.Output.Fields[4].Type != OutputFieldTypeArray || trust.Agent.Output.Fields[4].Schema == nil ||
+		trust.Agent.Output.Fields[4].Schema.ID != "bundle-processor-status" || trust.Agent.Output.Fields[4].Schema.Version != 1 ||
+		len(trust.Agent.Output.Fields[4].Schema.Fields) != 7 || errorMap(trust)["bundle_processor_drift"].Kind != fault.KindRejected {
+		t.Fatalf("bundle trust processor output=%+v errors=%+v", trust.Agent.Output, errorMap(trust))
+	}
+}
+
 func TestSpecificationCatalogPublishesFiniteAuthoringGrammar(t *testing.T) {
 	for _, path := range []string{"spec init", "spec validate"} {
 		t.Run(strings.ReplaceAll(path, " ", "_"), func(t *testing.T) {
@@ -1054,8 +1144,9 @@ func TestSpecificationCatalogPublishesFiniteAuthoringGrammar(t *testing.T) {
 	init, _ := DefaultCatalog().Lookup("spec init")
 	authoring := init.Summary + "\n" + init.Agent.Outcome + "\n" + strings.Join(init.Agent.Prerequisites, "\n")
 	for _, want := range []string{
-		"identity-wrapper authoring baseline",
+		"identity or admitted optimizer baseline",
 		"not an executable transform",
+		"performs no PATH lookup, download, installation, inspection, or processor execution",
 		"kind=transform",
 		"output.kind=projection",
 		"output.projection.input=json",

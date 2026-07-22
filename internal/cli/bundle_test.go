@@ -15,7 +15,9 @@ import (
 	"github.com/tasuku43/atsura/internal/app/bundleauthority"
 	"github.com/tasuku43/atsura/internal/app/bundleexecute"
 	"github.com/tasuku43/atsura/internal/app/planpreview"
+	"github.com/tasuku43/atsura/internal/app/processorcompat"
 	"github.com/tasuku43/atsura/internal/domain/bundletrust"
+	"github.com/tasuku43/atsura/internal/domain/processorprocess"
 	"github.com/tasuku43/atsura/internal/domain/sourcecatalog"
 	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
@@ -23,6 +25,7 @@ import (
 	"github.com/tasuku43/atsura/internal/infra/bundlejson"
 	"github.com/tasuku43/atsura/internal/infra/githubcli"
 	"github.com/tasuku43/atsura/internal/infra/gocli"
+	"github.com/tasuku43/atsura/internal/infra/processorjson"
 	"github.com/tasuku43/atsura/internal/infra/sourceexec"
 	"github.com/tasuku43/atsura/internal/infra/sourcejson"
 	"github.com/tasuku43/atsura/internal/infra/trustfile"
@@ -57,6 +60,19 @@ func (s *cliTrustStore) Add(context.Context, string) (bool, error) {
 type cliConfirmation struct{}
 
 func (cliConfirmation) Confirm(context.Context, bundletrust.Summary) error { return nil }
+
+type cliProcessorIdentity struct {
+	identity processorprocess.Identity
+	err      error
+	calls    int
+	path     string
+}
+
+func (p *cliProcessorIdentity) Identify(_ context.Context, path string) (processorprocess.Identity, error) {
+	p.calls++
+	p.path = path
+	return p.identity, p.err
+}
 
 type cliRuntimeProof struct{ err error }
 
@@ -313,6 +329,57 @@ commands:
 	return catalogPath, specificationPath
 }
 
+func admittedProcessorObservationPath(t *testing.T) (string, processorprocess.Observation) {
+	t.Helper()
+	observation := testProcessorInspectionResult(t).Observation
+	observation.Identity.SHA256 = "2dab449f32ea744c30b02a3ef9806e3e7d3b356a145332f3f2aaabb5ea48edee"
+	encoded, err := processorjson.Encode(observation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "rtk-inspection.json")
+	if err := os.WriteFile(path, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path, observation
+}
+
+func goOptimizerArtifactPaths(t *testing.T) (string, string, string, processorprocess.Observation) {
+	t.Helper()
+	catalogPath, specificationPath := goRuntimeBundleArtifactPaths(t)
+	processorPath, observation := admittedProcessorObservationPath(t)
+	var out, errOut bytes.Buffer
+	command := New(strings.NewReader(""), &out, &errOut)
+	args := []string{"spec", "init", "--catalog", catalogPath, "--processor", processorPath, "--", "test"}
+	if code := command.RunContext(context.Background(), args); code != ExitOK || errOut.Len() != 0 {
+		t.Fatalf("optimizer spec init code=%d stderr=%q", code, errOut.String())
+	}
+	for _, want := range []string{"kind: transform", "append_args:", "- -json", "kind: optimizer", "contract: " + processorcompat.ContractID} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("optimizer spec lacks %q:\n%s", want, out.String())
+		}
+	}
+	if err := os.WriteFile(specificationPath, out.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return catalogPath, specificationPath, processorPath, observation
+}
+
+func optimizerBundleArtifactPath(t *testing.T, catalogPath, specificationPath, processorPath string) string {
+	t.Helper()
+	var out, errOut bytes.Buffer
+	command := New(strings.NewReader(""), &out, &errOut)
+	args := []string{"bundle", "build", "--catalog", catalogPath, "--spec", specificationPath, "--processor", processorPath}
+	if code := command.RunContext(context.Background(), args); code != ExitOK || errOut.Len() != 0 {
+		t.Fatalf("optimizer bundle build code=%d stderr=%q", code, errOut.String())
+	}
+	path := filepath.Join(t.TempDir(), "optimizer-bundle.json")
+	if err := os.WriteFile(path, out.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 func bundleArtifactPath(t *testing.T, catalogPath, specificationPath string) string {
 	t.Helper()
 	var out, errOut bytes.Buffer
@@ -362,6 +429,130 @@ func TestSpecValidateAndBundleBuildCloseCanonicalFileWorkflow(t *testing.T) {
 	}
 }
 
+func TestProcessorEvidenceClosesGoOptimizerAuthoringAndBuildWorkflow(t *testing.T) {
+	catalogPath, specificationPath, processorPath, observation := goOptimizerArtifactPaths(t)
+	bundlePath := optimizerBundleArtifactPath(t, catalogPath, specificationPath, processorPath)
+	bundle, digest, err := bundlejson.New().Load(context.Background(), bundlePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(digest) != 64 || bundle.SchemaVersion != tailoringbundle.BundleSchemaVersion || len(bundle.Processors) != 1 || len(bundle.Surface) != 1 {
+		t.Fatalf("optimizer bundle digest=%q bundle=%+v", digest, bundle)
+	}
+	binding := bundle.Processors[0]
+	entry := bundle.Surface[0]
+	if binding.Contract != processorcompat.ContractID || binding.Observation.Identity != observation.Identity ||
+		binding.InputFormat != processorcompat.InputFormat || binding.OutputFormat != processorcompat.OutputFormat ||
+		entry.Wrapper.Output == nil || entry.Wrapper.Output.Kind != tailoringbundle.OutputKindOptimizer ||
+		entry.Wrapper.Output.Optimizer == nil || entry.Wrapper.Output.Optimizer.Contract != processorcompat.ContractID {
+		t.Fatalf("optimizer binding=%+v surface=%+v", binding, entry)
+	}
+}
+
+func TestBundleBuildRejectsMissingAndUnusedProcessorEvidenceBeforeProcessorIO(t *testing.T) {
+	t.Run("optimizer requires evidence", func(t *testing.T) {
+		catalogPath, specificationPath, _, _ := goOptimizerArtifactPaths(t)
+		var out, errOut bytes.Buffer
+		command := New(strings.NewReader(""), &out, &errOut)
+		if code := command.RunContext(context.Background(), bundleCommandArgs("bundle build", catalogPath, specificationPath)); code != ExitUsage ||
+			out.Len() != 0 || !strings.Contains(errOut.String(), "processor_observation_required") {
+			t.Fatalf("bundle build missing evidence code=%d stdout=%q stderr=%q", code, out.String(), errOut.String())
+		}
+	})
+
+	t.Run("identity rejects observation without reading it", func(t *testing.T) {
+		catalogPath, specificationPath := goRuntimeBundleArtifactPaths(t)
+		missingPath := filepath.Join(t.TempDir(), "must-not-be-read.json")
+		var out, errOut bytes.Buffer
+		command := New(strings.NewReader(""), &out, &errOut)
+		args := []string{"bundle", "build", "--catalog", catalogPath, "--spec", specificationPath, "--processor", missingPath}
+		if code := command.RunContext(context.Background(), args); code != ExitUsage || out.Len() != 0 ||
+			!strings.Contains(errOut.String(), "processor_observation_not_used") || strings.Contains(errOut.String(), "processor_observation_file_not_found") {
+			t.Fatalf("bundle build unused evidence code=%d stdout=%q stderr=%q", code, out.String(), errOut.String())
+		}
+	})
+}
+
+func TestSpecInitRejectsProcessorEvidenceOutsideFiniteCompatibilityRegistry(t *testing.T) {
+	catalogPath, _ := bundleArtifactPaths(t)
+	processorPath, _ := admittedProcessorObservationPath(t)
+	var out, errOut bytes.Buffer
+	command := New(strings.NewReader(""), &out, &errOut)
+	args := []string{"spec", "init", "--catalog", catalogPath, "--processor", processorPath, "--", "item", "list"}
+	if code := command.RunContext(context.Background(), args); code != ExitRejected || out.Len() != 0 || !strings.Contains(errOut.String(), "processor_default_not_admitted") {
+		t.Fatalf("spec init incompatible processor code=%d stdout=%q stderr=%q", code, out.String(), errOut.String())
+	}
+}
+
+func TestBundleStatusAndTrustProjectCurrentProcessorIdentityWithoutProcessAttempts(t *testing.T) {
+	catalogPath, specificationPath, processorPath, observation := goOptimizerArtifactPaths(t)
+	bundlePath := optimizerBundleArtifactPath(t, catalogPath, specificationPath, processorPath)
+	trust := &cliTrustStore{state: bundletrust.StateNotAdopted}
+	processorIdentity := &cliProcessorIdentity{identity: observation.Identity}
+	newCommand := func() (*CLI, *bytes.Buffer, *bytes.Buffer) {
+		var out, errOut bytes.Buffer
+		command := New(strings.NewReader(""), &out, &errOut)
+		command.authority = bundleauthority.New(bundlejson.New(), sourceexec.New(), trust, cliConfirmation{}, processorIdentity)
+		return command, &out, &errOut
+	}
+
+	statusCommand, out, errOut := newCommand()
+	if code := statusCommand.RunContext(context.Background(), []string{"bundle", "status", "--bundle", bundlePath}); code != ExitOK || errOut.Len() != 0 {
+		t.Fatalf("bundle status code=%d stderr=%q", code, errOut.String())
+	}
+	var status bundleStatusDocument
+	if err := json.Unmarshal(out.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if status.SchemaVersion != 3 || len(status.Status.Processors) != 1 || status.Status.SourceProcessAttempts != 0 || status.Status.ProcessorProcessAttempts != 0 {
+		t.Fatalf("bundle status=%+v", status)
+	}
+	processor := status.Status.Processors[0]
+	if processor.Contract != processorcompat.ContractID || processor.AdapterKind != processorcompat.ProcessorAdapterKind || processor.Version != processorcompat.ProcessorVersion ||
+		processor.ResolvedPath != observation.Identity.ResolvedPath || processor.SHA256 != observation.Identity.SHA256 || processor.Size != observation.Identity.Size || processor.State != bundletrust.ProcessorCurrent {
+		t.Fatalf("bundle status processor=%+v", processor)
+	}
+	processorRaw, err := json.Marshal(processor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var processorFields map[string]json.RawMessage
+	if err := json.Unmarshal(processorRaw, &processorFields); err != nil {
+		t.Fatal(err)
+	}
+	assertJSONKeys(t, processorFields, []string{"adapter_kind", "contract", "resolved_path", "sha256", "size", "state", "version"})
+
+	trustCommand, out, errOut := newCommand()
+	if code := trustCommand.RunContext(context.Background(), []string{"bundle", "trust", "--bundle", bundlePath}); code != ExitOK || errOut.Len() != 0 {
+		t.Fatalf("bundle trust code=%d stderr=%q", code, errOut.String())
+	}
+	var trustDocument bundleTrustDocument
+	if err := json.Unmarshal(out.Bytes(), &trustDocument); err != nil {
+		t.Fatal(err)
+	}
+	if trustDocument.SchemaVersion != 3 || !trustDocument.Trust.Adopted || len(trustDocument.Trust.Processors) != 1 ||
+		trustDocument.Trust.Processors[0] != processor || trustDocument.Trust.SourceProcessAttempts != 0 || trustDocument.Trust.ProcessorProcessAttempts != 0 ||
+		processorIdentity.calls != 2 || processorIdentity.path != observation.Identity.ResolvedPath {
+		t.Fatalf("bundle trust=%+v identity=%+v", trustDocument, processorIdentity)
+	}
+}
+
+func TestBundleTrustRejectsProcessorDriftBeforeAdoption(t *testing.T) {
+	catalogPath, specificationPath, processorPath, observation := goOptimizerArtifactPaths(t)
+	bundlePath := optimizerBundleArtifactPath(t, catalogPath, specificationPath, processorPath)
+	trust := &cliTrustStore{state: bundletrust.StateNotAdopted}
+	drifted := observation.Identity
+	drifted.SHA256 = strings.Repeat("b", 64)
+	processorIdentity := &cliProcessorIdentity{identity: drifted}
+	var out, errOut bytes.Buffer
+	command := New(strings.NewReader(""), &out, &errOut)
+	command.authority = bundleauthority.New(bundlejson.New(), sourceexec.New(), trust, cliConfirmation{}, processorIdentity)
+	if code := command.RunContext(context.Background(), []string{"bundle", "trust", "--bundle", bundlePath}); code != ExitRejected || out.Len() != 0 ||
+		!strings.Contains(errOut.String(), "bundle_processor_drift") || trust.state != bundletrust.StateNotAdopted || processorIdentity.calls != 1 {
+		t.Fatalf("bundle trust drift code=%d stdout=%q stderr=%q trust=%q identity=%+v", code, out.String(), errOut.String(), trust.state, processorIdentity)
+	}
+}
+
 func TestBundleStatusAndTrustUseExactBundleWithoutSourceProcess(t *testing.T) {
 	catalogPath, specificationPath := bundleArtifactPaths(t)
 	bundlePath := bundleArtifactPath(t, catalogPath, specificationPath)
@@ -381,7 +572,8 @@ func TestBundleStatusAndTrustUseExactBundleWithoutSourceProcess(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &statusDocument); err != nil {
 		t.Fatal(err)
 	}
-	if statusDocument.Status.Adoption != bundletrust.StateNotAdopted || statusDocument.Status.Source != bundletrust.SourceCurrent || statusDocument.Status.Adopted || statusDocument.Status.SourceProcessAttempts != 0 {
+	if statusDocument.SchemaVersion != 3 || statusDocument.Status.Adoption != bundletrust.StateNotAdopted || statusDocument.Status.Source != bundletrust.SourceCurrent || statusDocument.Status.Adopted ||
+		statusDocument.Status.Processors == nil || len(statusDocument.Status.Processors) != 0 || statusDocument.Status.SourceProcessAttempts != 0 || statusDocument.Status.ProcessorProcessAttempts != 0 {
 		t.Fatalf("status = %+v", statusDocument.Status)
 	}
 
@@ -393,7 +585,8 @@ func TestBundleStatusAndTrustUseExactBundleWithoutSourceProcess(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &trustDocument); err != nil {
 		t.Fatal(err)
 	}
-	if !trustDocument.Trust.Adopted || trustDocument.Trust.AlreadyAdopted || trustDocument.Trust.SourceProcessAttempts != 0 || trust.state != bundletrust.StateAdopted {
+	if trustDocument.SchemaVersion != 3 || !trustDocument.Trust.Adopted || trustDocument.Trust.AlreadyAdopted || trustDocument.Trust.Processors == nil || len(trustDocument.Trust.Processors) != 0 ||
+		trustDocument.Trust.SourceProcessAttempts != 0 || trustDocument.Trust.ProcessorProcessAttempts != 0 || trust.state != bundletrust.StateAdopted {
 		t.Fatalf("trust = %+v, store = %q", trustDocument.Trust, trust.state)
 	}
 }

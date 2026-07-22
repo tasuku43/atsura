@@ -14,6 +14,7 @@ import (
 	"github.com/tasuku43/atsura/internal/app/doctorcmd"
 	"github.com/tasuku43/atsura/internal/app/planapply"
 	"github.com/tasuku43/atsura/internal/app/planpreview"
+	"github.com/tasuku43/atsura/internal/app/processorcompat"
 	"github.com/tasuku43/atsura/internal/app/processorinspect"
 	"github.com/tasuku43/atsura/internal/app/runtimecompat"
 	"github.com/tasuku43/atsura/internal/app/samplecmd"
@@ -31,6 +32,7 @@ import (
 	"github.com/tasuku43/atsura/internal/infra/gocli"
 	"github.com/tasuku43/atsura/internal/infra/posixwrapper"
 	"github.com/tasuku43/atsura/internal/infra/processorexec"
+	"github.com/tasuku43/atsura/internal/infra/processorjson"
 	"github.com/tasuku43/atsura/internal/infra/rtkprocessor"
 	"github.com/tasuku43/atsura/internal/infra/sampledata"
 	"github.com/tasuku43/atsura/internal/infra/selfexec"
@@ -109,6 +111,8 @@ func newCLIWithSamples(
 	bundleLoader := bundlejson.New()
 	sourceRunner := sourceexec.New()
 	processorRunner := processorexec.New()
+	processorObservations := processorjson.New()
+	processorCompatibility := processorcompat.New()
 	trustStore := trustfile.New(trustPath)
 	runtimeVerifier := newRuntimeCompatibility()
 	planApplier := planapply.New(bundleLoader, trustStore, sourceRunner, runtimeVerifier, sourceRunner, sourcejson.New())
@@ -126,9 +130,13 @@ func newCLIWithSamples(
 		processors: processorinspect.New(processorinspect.Registration{
 			Selector: "rtk", AdapterKind: rtkprocessor.AdapterKind, Inspector: rtkprocessor.New(processorRunner),
 		}),
-		bundles:        bundlebuild.New(catalogjson.New(), specyaml.New()),
-		drafts:         specinit.New(catalogjson.New()),
-		authority:      bundleauthority.New(bundleLoader, sourceRunner, trustStore, terminalconfirm.New()),
+		bundles: bundlebuild.New(catalogjson.New(), specyaml.New(), bundlebuild.ProcessorSupport{
+			Observations: processorObservations, Compatibility: processorCompatibility,
+		}),
+		drafts: specinit.New(catalogjson.New(), specinit.ProcessorSupport{
+			Observations: processorObservations, Compatibility: processorCompatibility,
+		}),
+		authority:      bundleauthority.New(bundleLoader, sourceRunner, trustStore, terminalconfirm.New(), processorRunner),
 		previews:       planpreview.New(bundleLoader, trustStore, sourceRunner),
 		executions:     bundleexecute.NewWithApplier(planApplier),
 		wrapperRenders: wrapperrender.New(runtime.GOOS, bundleLoader, trustStore, sourceRunner, currentExecutable, runtimeVerifier, posixwrapper.New()),

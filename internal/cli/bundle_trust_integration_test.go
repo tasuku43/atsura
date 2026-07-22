@@ -70,7 +70,8 @@ func TestBundleTrustRejectsRedirectedDigestWithoutControllingTerminal(t *testing
 	if err := json.Unmarshal(status.stdout, &document); err != nil {
 		t.Fatal(err)
 	}
-	if document.SchemaVersion != 2 || document.Status.BundleDigest != digest || document.Status.Adoption != bundletrust.StateNotAdopted || document.Status.Adopted || document.Status.Source != bundletrust.SourceCurrent || document.Status.SourceProcessAttempts != 0 {
+	if document.SchemaVersion != 3 || document.Status.BundleDigest != digest || document.Status.Adoption != bundletrust.StateNotAdopted || document.Status.Adopted || document.Status.Source != bundletrust.SourceCurrent ||
+		document.Status.Processors == nil || len(document.Status.Processors) != 0 || document.Status.SourceProcessAttempts != 0 || document.Status.ProcessorProcessAttempts != 0 {
 		t.Fatalf("bundle status = %+v", document)
 	}
 	assertNoTrustReceipt(t, receiptPath)

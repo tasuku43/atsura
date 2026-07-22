@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/tasuku43/atsura/internal/app/bundleauthority"
 	"github.com/tasuku43/atsura/internal/domain/bundletrust"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
@@ -48,16 +49,18 @@ type bundleStatusDocument struct {
 }
 
 type bundleStatusPayload struct {
-	BundleDigest          string                  `json:"bundle_digest"`
-	CatalogDigest         string                  `json:"catalog_digest"`
-	SpecificationDigest   string                  `json:"specification_digest"`
-	Adoption              bundletrust.State       `json:"adoption"`
-	Source                bundletrust.SourceState `json:"source"`
-	Adopted               bool                    `json:"adopted"`
-	SourcePath            string                  `json:"source_path"`
-	SourceSHA256          string                  `json:"source_sha256"`
-	SourceVersion         string                  `json:"source_version"`
-	SourceProcessAttempts int                     `json:"source_process_attempts"`
+	BundleDigest             string                  `json:"bundle_digest"`
+	CatalogDigest            string                  `json:"catalog_digest"`
+	SpecificationDigest      string                  `json:"specification_digest"`
+	Adoption                 bundletrust.State       `json:"adoption"`
+	Source                   bundletrust.SourceState `json:"source"`
+	Adopted                  bool                    `json:"adopted"`
+	SourcePath               string                  `json:"source_path"`
+	SourceSHA256             string                  `json:"source_sha256"`
+	SourceVersion            string                  `json:"source_version"`
+	Processors               []bundleProcessorStatus `json:"processors"`
+	SourceProcessAttempts    int                     `json:"source_process_attempts"`
+	ProcessorProcessAttempts int                     `json:"processor_process_attempts"`
 }
 
 type bundleTrustDocument struct {
@@ -66,11 +69,23 @@ type bundleTrustDocument struct {
 }
 
 type bundleTrustPayload struct {
-	BundleDigest          string                  `json:"bundle_digest"`
-	Adopted               bool                    `json:"adopted"`
-	AlreadyAdopted        bool                    `json:"already_adopted"`
-	Source                bundletrust.SourceState `json:"source"`
-	SourceProcessAttempts int                     `json:"source_process_attempts"`
+	BundleDigest             string                  `json:"bundle_digest"`
+	Adopted                  bool                    `json:"adopted"`
+	AlreadyAdopted           bool                    `json:"already_adopted"`
+	Source                   bundletrust.SourceState `json:"source"`
+	Processors               []bundleProcessorStatus `json:"processors"`
+	SourceProcessAttempts    int                     `json:"source_process_attempts"`
+	ProcessorProcessAttempts int                     `json:"processor_process_attempts"`
+}
+
+type bundleProcessorStatus struct {
+	Contract     string                     `json:"contract"`
+	AdapterKind  string                     `json:"adapter_kind"`
+	Version      string                     `json:"version"`
+	ResolvedPath string                     `json:"resolved_path"`
+	SHA256       string                     `json:"sha256"`
+	Size         int64                      `json:"size"`
+	State        bundletrust.ProcessorState `json:"state"`
 }
 
 type bundlePreviewDocument struct {
@@ -125,7 +140,7 @@ func runSpecValidate(ctx context.Context, c *CLI, _ CommandSpec, intent operatio
 }
 
 func runSpecInit(ctx context.Context, c *CLI, _ CommandSpec, intent operation.Intent, inputs ParsedInputs) int {
-	specification, err := c.drafts.Init(ctx, intent, inputs.One("--catalog"), inputs.Values("command"))
+	specification, err := c.drafts.Init(ctx, intent, inputs.One("--catalog"), inputs.Values("command"), inputs.Values("--processor")...)
 	if err != nil {
 		return c.fail(ctx, err)
 	}
@@ -140,7 +155,7 @@ func runSpecInit(ctx context.Context, c *CLI, _ CommandSpec, intent operation.In
 }
 
 func runBundleBuild(ctx context.Context, c *CLI, _ CommandSpec, intent operation.Intent, inputs ParsedInputs) int {
-	result, err := c.bundles.Build(ctx, intent, inputs.One("--catalog"), inputs.One("--spec"))
+	result, err := c.bundles.Build(ctx, intent, inputs.One("--catalog"), inputs.One("--spec"), inputs.Values("--processor")...)
 	if err != nil {
 		return c.fail(ctx, err)
 	}
@@ -153,10 +168,11 @@ func runBundleStatus(ctx context.Context, c *CLI, _ CommandSpec, intent operatio
 	if err != nil {
 		return c.fail(ctx, err)
 	}
-	document := bundleStatusDocument{SchemaVersion: 2, Status: bundleStatusPayload{
+	document := bundleStatusDocument{SchemaVersion: 3, Status: bundleStatusPayload{
 		BundleDigest: result.BundleDigest, CatalogDigest: result.CatalogDigest, SpecificationDigest: result.SpecificationDigest,
 		Adoption: result.Adoption, Source: result.Source, Adopted: result.Adopted, SourcePath: result.SourcePath,
-		SourceSHA256: result.SourceSHA256, SourceVersion: result.SourceVersion, SourceProcessAttempts: result.SourceProcessAttempts,
+		SourceSHA256: result.SourceSHA256, SourceVersion: result.SourceVersion, Processors: projectBundleProcessorStatuses(result.Processors),
+		SourceProcessAttempts: result.SourceProcessAttempts, ProcessorProcessAttempts: result.ProcessorProcessAttempts,
 	}}
 	return c.emitJSONDocument(ctx, document, "bundle status")
 }
@@ -171,11 +187,23 @@ func runBundleTrust(ctx context.Context, c *CLI, spec CommandSpec, intent operat
 	if err != nil {
 		return c.fail(ctx, err)
 	}
-	document := bundleTrustDocument{SchemaVersion: 2, Trust: bundleTrustPayload{
+	document := bundleTrustDocument{SchemaVersion: 3, Trust: bundleTrustPayload{
 		BundleDigest: result.BundleDigest, Adopted: result.Adopted, AlreadyAdopted: result.AlreadyAdopted,
-		Source: result.Source, SourceProcessAttempts: result.SourceProcessAttempts,
+		Source: result.Source, Processors: projectBundleProcessorStatuses(result.Processors),
+		SourceProcessAttempts: result.SourceProcessAttempts, ProcessorProcessAttempts: result.ProcessorProcessAttempts,
 	}}
 	return c.emitJSONDocument(ctx, document, "bundle trust")
+}
+
+func projectBundleProcessorStatuses(statuses []bundleauthority.ProcessorStatus) []bundleProcessorStatus {
+	result := make([]bundleProcessorStatus, len(statuses))
+	for index, status := range statuses {
+		result[index] = bundleProcessorStatus{
+			Contract: status.Contract, AdapterKind: status.AdapterKind, Version: status.Version,
+			ResolvedPath: status.ResolvedPath, SHA256: status.SHA256, Size: status.Size, State: status.State,
+		}
+	}
+	return result
 }
 
 func runBundlePreview(ctx context.Context, c *CLI, _ CommandSpec, intent operation.Intent, inputs ParsedInputs) int {

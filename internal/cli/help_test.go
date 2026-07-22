@@ -443,14 +443,17 @@ func TestTailoringExactAgentHelpPublishesSelfContainedAuthoringContracts(t *test
 	}
 
 	init := command("spec", "init")
-	if !strings.Contains(init.Summary, "authoring baseline") || !strings.Contains(init.Contract.Outcome, "compatible transform") || len(init.Contract.Output.Fields) != 1 {
+	if init.Usage != "atr spec init --catalog <path> [--processor <inspection.json>] -- <command>" ||
+		!strings.Contains(init.Summary, "optimizer baseline") || !strings.Contains(init.Contract.Outcome, "identity without processor evidence") ||
+		len(init.Contract.Inputs) != 3 || init.Contract.Inputs[1].Name != "--processor" || init.Contract.Inputs[1].Required ||
+		len(init.Contract.Output.Fields) != 1 {
 		t.Fatalf("spec init help=%+v", init)
 	}
 	if schema := init.Contract.Output.Fields[0].Schema; schema == nil || schema.ID != "tailoring-specification" || schema.Version != tailoringbundle.SpecificationSchemaVersion {
 		t.Fatalf("spec init schema=%+v", schema)
 	}
 	initPrerequisites := strings.Join(init.Contract.Prerequisites, "\n")
-	for _, want := range []string{"kind=transform", "output.kind=projection", "output.projection.select", "output.projection.rename", "output.projection.render=compact_json"} {
+	for _, want := range []string{"kind=transform", "output.kind=projection", "output.projection.select", "output.projection.rename", "output.projection.render=compact_json", "no PATH lookup", "processor execution while authoring"} {
 		if !strings.Contains(initPrerequisites, want) {
 			t.Errorf("spec init prerequisites lack %q: %s", want, initPrerequisites)
 		}
@@ -465,6 +468,30 @@ func TestTailoringExactAgentHelpPublishesSelfContainedAuthoringContracts(t *test
 	}
 	if normalized == nil || normalized.ID != "tailoring-specification" || normalized.Version != tailoringbundle.SpecificationSchemaVersion {
 		t.Fatalf("spec validate schema=%+v", normalized)
+	}
+
+	build := command("bundle", "build")
+	if build.Usage != "atr bundle build --catalog <path> --spec <path> [--processor <inspection.json>]" ||
+		len(build.Contract.Inputs) != 3 || build.Contract.Inputs[2].Name != "--processor" || build.Contract.Inputs[2].Required ||
+		!strings.Contains(strings.Join(build.Contract.Prerequisites, "\n"), "rejects that option before reading processor evidence") {
+		t.Fatalf("bundle build help=%+v", build)
+	}
+
+	status := command("bundle", "status")
+	trust := command("bundle", "trust")
+	for path, projected := range map[string]agentCommand{"bundle status": status, "bundle trust": trust} {
+		if projected.Contract.Output.JSONSchemaVersion != 3 {
+			t.Errorf("%s output=%+v", path, projected.Contract.Output)
+		}
+		fields := make(map[string]OutputField, len(projected.Contract.Output.Fields))
+		for _, field := range projected.Contract.Output.Fields {
+			fields[field.Name] = field
+		}
+		if fields["processors"].Type != OutputFieldTypeArray || fields["processors"].Schema == nil ||
+			fields["processors"].Schema.ID != "bundle-processor-status" || len(fields["processors"].Schema.Fields) != 7 ||
+			fields["processor_process_attempts"].Type != OutputFieldTypeInteger {
+			t.Errorf("%s processor fields=%+v", path, fields)
+		}
 	}
 
 	execute := command("bundle", "execute")

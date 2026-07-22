@@ -237,8 +237,9 @@ type OutputField struct {
 }
 
 // OutputSchema publishes a versioned, flat JSON-pointer inventory for a
-// structured object whose nested shape would otherwise be opaque in agent
-// help. Required applies when the field's parent object is present.
+// structured object, or for each object element of a structured array, whose
+// nested shape would otherwise be opaque in agent help. Required applies when
+// the field's parent object is present.
 type OutputSchema struct {
 	ID      string              `json:"id"`
 	Version int                 `json:"version"`
@@ -622,6 +623,18 @@ func artifactInputErrors(command string, includeBundle bool) []CommandError {
 	)
 }
 
+func processorObservationErrors(command string) []CommandError {
+	return []CommandError{
+		declaredCommandError(fault.KindInvalidInput, "invalid_processor_observation_selection", false, "help "+command, "Select at most one non-empty processor inspection JSON path."),
+		declaredCommandError(fault.KindNotFound, "processor_observation_file_not_found", false, "processor inspect", "Generate and select a current processor inspection JSON file."),
+		declaredCommandError(fault.KindPermission, "processor_observation_file_permission_denied", false, "processor inspect", "Correct processor observation file permissions."),
+		declaredCommandError(fault.KindInvalidInput, "unsafe_processor_observation_file", false, "processor inspect", "Use a stable regular processor inspection file."),
+		declaredCommandError(fault.KindInvalidInput, "processor_observation_file_too_large", false, "processor inspect", "Regenerate a processor inspection file within the 64 KiB bound."),
+		declaredCommandError(fault.KindUnavailable, "processor_observation_file_read_failed", true, "processor inspect", "Retry after the processor observation file is readable."),
+		declaredCommandError(fault.KindInvalidInput, "invalid_processor_observation_file", false, "processor inspect", "Regenerate strict processor inspection JSON from the explicit executable."),
+	}
+}
+
 func bundleFileErrors(command string) []CommandError {
 	return []CommandError{
 		declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help "+command, "Pass one exact bundle build JSON path."),
@@ -870,6 +883,18 @@ func processorObservationOutputSchema() *OutputSchema {
 	}
 	sort.Slice(fields, func(i, j int) bool { return fields[i].Path < fields[j].Path })
 	return &OutputSchema{ID: "processor-observation", Version: processorprocess.ObservationSchemaVersion, Fields: fields}
+}
+
+func bundleProcessorStatusOutputSchema() *OutputSchema {
+	return &OutputSchema{ID: "bundle-processor-status", Version: 1, Fields: []OutputSchemaField{
+		{Path: "/adapter_kind", Type: OutputFieldTypeString, Required: true},
+		{Path: "/contract", Type: OutputFieldTypeString, Required: true},
+		{Path: "/resolved_path", Type: OutputFieldTypeString, Required: true},
+		{Path: "/sha256", Type: OutputFieldTypeString, Required: true},
+		{Path: "/size", Type: OutputFieldTypeInteger, Required: true},
+		{Path: "/state", Type: OutputFieldTypeString, Required: true},
+		{Path: "/version", Type: OutputFieldTypeString, Required: true},
+	}}
 }
 
 func tailoringSpecificationOutputSchema() *OutputSchema {
@@ -1249,32 +1274,34 @@ func DefaultCatalog() Catalog {
 		),
 		CommandSpec{
 			Path:    "spec init",
-			Summary: "Create a schema-4 identity-wrapper authoring baseline",
-			Args:    "--catalog <path> -- <command>",
+			Summary: "Create a schema-4 identity or admitted optimizer baseline",
+			Args:    "--catalog <path> [--processor <inspection.json>] -- <command>",
 			Effect:  operation.EffectRead,
 			Role:    RoleUtility,
 			Agent: AgentContract{
 				CapabilityID: "tailoring.spec.init",
-				Outcome:      "Create an exclude-by-default schema-4 authoring baseline containing one exact verified command with inherited options and an identity wrapper; review and replace that wrapper with a compatible transform before execution",
+				Outcome:      "Create an exclude-by-default schema-4 authoring baseline for one exact verified command: identity without processor evidence, or the finite registry-owned optimizer default when one explicit source-compatible processor observation is supplied",
 				Inputs: []CommandInput{
 					{Name: "--catalog", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read the exact bounded JSON document emitted by source inspect.", AllowedValues: []string{}},
+					{Name: "--processor", Source: InputSourceFlag, Required: false, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Optionally read one exact bounded JSON document emitted by processor inspect; no executable discovery or inspection occurs during authoring.", AllowedValues: []string{}},
 					{Name: "command", Source: InputSourceArgument, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalityRepeatable, Description: "Select one exact verified source command path after the positional-only marker.", AllowedValues: []string{}},
 				},
 				Output: CommandOutput{
 					Authority: OutputAuthorityCatalog,
 					Formats:   []OutputFormat{OutputFormatText}, DefaultFormat: OutputFormatText,
 					Fields: []OutputField{
-						{Name: "specification", Type: OutputFieldTypeObject, Description: "Complete schema-4 YAML tailoring specification authoring baseline; its identity wrapper is previewable but is not executable by a transform-only runtime.", Schema: tailoringSpecificationOutputSchema()},
+						{Name: "specification", Type: OutputFieldTypeObject, Description: "Complete schema-4 YAML tailoring specification authoring baseline; processor evidence may select only a registry-owned finite optimizer default.", Schema: tailoringSpecificationOutputSchema()},
 					},
 					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable,
 				},
 				Prerequisites: []string{
 					"A source inspect JSON document containing the exact command as verified_builtin evidence; use its versioned source-command-catalog inventory to select command paths, options, structured-output selectors, and fields.",
-					"The emitted identity wrapper is an authoring baseline for review and preview, not an executable transform.",
+					"Without --processor, the emitted identity wrapper is an authoring baseline for review and preview, not an executable transform.",
+					"With --processor, the exact observation must match a closed source-command, processor adapter, version, platform, artifact, and output-contract tuple; Atsura performs no PATH lookup, download, installation, inspection, or processor execution while authoring.",
 					"The built-in projection grammar is kind=transform; explicit empty before and after arrays; invoke.append_args as exact argv elements; output.kind=projection; output.projection.input=json; a non-empty ordered output.projection.select drawn from the command's cataloged structured-output fields; optional output.projection.rename entries from selected fields to unique output names; and output.projection.render=compact_json. Optimizers require a separately admitted finite contract and exact processor evidence. Arbitrary shell, script, jq, plugin, external-transformer, and runtime-LLM actions are invalid.",
 				},
-				Errors: []CommandError{
-					declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help spec init", "Pass a catalog and exact command path."),
+				Errors: append([]CommandError{
+					declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help spec init", "Pass a catalog, at most one processor observation, and one exact command path."),
 					declaredCommandError(fault.KindNotFound, "catalog_command_not_found", false, "help spec init", "Select an exact command present in the catalog."),
 					declaredCommandError(fault.KindRejected, "unverified_catalog_command", false, "source inspect", "Use only verified built-in command evidence."),
 					declaredCommandError(fault.KindContract, "invalid_source_catalog", false, "source inspect", "Regenerate a valid source catalog."),
@@ -1286,12 +1313,15 @@ func DefaultCatalog() Catalog {
 					declaredCommandError(fault.KindUnavailable, "catalog_file_read_failed", true, "source inspect", "Retry after the catalog file is readable."),
 					declaredCommandError(fault.KindInvalidInput, "invalid_catalog_file", false, "source inspect", "Regenerate strict source inspection JSON."),
 					declaredCommandError(fault.KindRejected, "catalog_digest_mismatch", false, "source inspect", "Regenerate and review source inspection JSON."),
+				}, append(processorObservationErrors("spec init"),
+					declaredCommandError(fault.KindRejected, "processor_default_not_admitted", false, "processor inspect", "Generate current processor evidence and select an exact source command admitted by the finite compatibility registry."),
+					declaredCommandError(fault.KindContract, "invalid_processor_default", false, "help spec init", "Repair the registry-owned optimizer authoring default."),
 					declaredCommandError(fault.KindContract, "output_contract_exceeded", false, "help spec init", "Reduce the bounded draft output."),
 					declaredCommandError(fault.KindContract, "output_encoding_failed", false, "help spec init", "Repair deterministic YAML projection."),
 					declaredCommandError(fault.KindInternal, "internal_error", false, "help spec init", "Inspect catalog loading and draft construction."),
 					declaredCommandError(fault.KindInternal, "output_write_failed", true, "spec init", "Retry with a writable output stream."),
 					declaredCommandError(fault.KindCanceled, "operation_canceled", true, "spec init", "Retry when the caller is ready."),
-				},
+				)...),
 			},
 			handler: runSpecInit,
 		},
@@ -1336,40 +1366,48 @@ func DefaultCatalog() Catalog {
 		CommandSpec{
 			Path:    "bundle build",
 			Summary: "Compile catalog and specification into one canonical bundle",
-			Args:    "--catalog <path> --spec <path>",
+			Args:    "--catalog <path> --spec <path> [--processor <inspection.json>]",
 			Effect:  operation.EffectRead,
 			Role:    RoleUtility,
 			Agent: AgentContract{
 				CapabilityID: "tailoring.bundle.build",
-				Outcome:      "Compile exact source evidence and a valid schema-4 surface-wrapper specification into one deterministic bundle without adopting or executing it",
+				Outcome:      "Compile exact source evidence, a valid schema-4 surface-wrapper specification, and exactly required explicit processor evidence into one deterministic identity-bound bundle without adopting or executing it",
 				Inputs: []CommandInput{
 					{Name: "--catalog", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read the exact bounded JSON document emitted by source inspect.", AllowedValues: []string{}},
 					{Name: "--spec", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read one bounded strict schema-4 tailoring specification.", AllowedValues: []string{}},
+					{Name: "--processor", Source: InputSourceFlag, Required: false, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Supply one exact processor inspect JSON document only when the specification contains an optimizer stage.", AllowedValues: []string{}},
 				},
 				Output: CommandOutput{
 					Authority: OutputAuthorityCatalog,
 					Formats:   []OutputFormat{OutputFormatJSON}, DefaultFormat: OutputFormatJSON,
 					Fields: []OutputField{
 						{Name: "bundle_digest", Type: OutputFieldTypeString, Description: "SHA-256 identity of the canonical embedded bundle JSON."},
-						{Name: "bundle", Type: OutputFieldTypeObject, Description: "Canonical catalog, normalized specification, recomputable digests, and purpose-specific surface with wrappers."},
+						{Name: "bundle", Type: OutputFieldTypeObject, Description: "Canonical catalog, normalized specification, recomputable digests, purpose-specific surface, wrappers, and any exact registry-admitted processor binding."},
 					},
 					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable,
 					JSONEnvelope: "build", JSONSchemaVersion: 2,
 				},
-				Prerequisites: []string{"A source inspect JSON document and schema-4 specification that passes spec validate; build does not create an adoption receipt."},
-				Errors:        artifactInputErrors("bundle build", true),
+				Prerequisites: []string{
+					"A source inspect JSON document and schema-4 specification that passes spec validate; build does not create an adoption receipt.",
+					"An optimizer specification requires exactly one explicit --processor observation; a specification without an optimizer rejects that option before reading processor evidence. Bundle build performs no processor inspection or execution.",
+				},
+				Errors: append(artifactInputErrors("bundle build", true), append(processorObservationErrors("bundle build"),
+					declaredCommandError(fault.KindInvalidInput, "processor_observation_required", false, "processor inspect", "Generate and supply exact processor evidence for the optimizer specification."),
+					declaredCommandError(fault.KindInvalidInput, "processor_observation_not_used", false, "help bundle build", "Omit --processor when the specification has no optimizer stage."),
+					declaredCommandError(fault.KindRejected, "processor_compatibility_not_admitted", false, "processor inspect", "Generate current evidence for an exact source and optimizer tuple admitted by the finite registry."),
+				)...),
 			},
 			handler: runBundleBuild,
 		},
 		CommandSpec{
 			Path:    "bundle status",
-			Summary: "Inspect exact bundle adoption and source drift without execution",
+			Summary: "Inspect exact bundle adoption, source, and processor drift",
 			Args:    "--bundle <path>",
 			Effect:  operation.EffectRead,
 			Role:    RoleUtility,
 			Agent: AgentContract{
 				CapabilityID: "tailoring.bundle.status",
-				Outcome:      "Determine whether one exact purpose-specific bundle is user-adopted and report its current source identity independently without starting it",
+				Outcome:      "Determine whether one exact purpose-specific bundle is user-adopted and report its current source and processor identities independently without starting either",
 				Inputs: []CommandInput{
 					{Name: "--bundle", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read the exact bounded JSON document emitted by bundle build.", AllowedValues: []string{}},
 				},
@@ -1386,12 +1424,14 @@ func DefaultCatalog() Catalog {
 						{Name: "source_path", Type: OutputFieldTypeString, Description: "Exact resolved source path embedded in the bundle."},
 						{Name: "source_sha256", Type: OutputFieldTypeString, Description: "Exact source byte identity embedded in the bundle."},
 						{Name: "source_version", Type: OutputFieldTypeString, Description: "Adapter-observed source version embedded in the bundle."},
+						{Name: "processors", Type: OutputFieldTypeArray, Description: "Ordered exact bundle processor records; empty when the bundle binds no processor.", Schema: bundleProcessorStatusOutputSchema()},
 						{Name: "source_process_attempts", Type: OutputFieldTypeInteger, Description: "Always zero; status starts no source process."},
+						{Name: "processor_process_attempts", Type: OutputFieldTypeInteger, Description: "Always zero; status reads processor identity bytes but starts no processor process."},
 					},
 					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable,
-					JSONEnvelope: "status", JSONSchemaVersion: 2,
+					JSONEnvelope: "status", JSONSchemaVersion: 3,
 				},
-				Prerequisites: []string{"One bundle build JSON document; repository presence does not imply adoption or source-operation permission."},
+				Prerequisites: []string{"One bundle build JSON document; repository presence does not imply adoption or source-operation permission. Status reads exact source and processor file identities without starting either executable."},
 				Errors: append(bundleFileErrors("bundle status"),
 					declaredCommandError(fault.KindContract, "output_contract_exceeded", false, "help bundle status", "Repair the bounded status projection."),
 					declaredCommandError(fault.KindContract, "output_encoding_failed", false, "help bundle status", "Repair deterministic status JSON."),
@@ -1542,13 +1582,13 @@ func DefaultCatalog() Catalog {
 		},
 		CommandSpec{
 			Path:    "bundle trust",
-			Summary: "Interactively adopt one exact tailoring bundle digest",
+			Summary: "Interactively adopt one exact current tailoring bundle digest",
 			Args:    "--bundle <path>",
 			Effect:  operation.EffectWrite,
 			Role:    RoleAct,
 			Agent: AgentContract{
 				CapabilityID: "tailoring.bundle.trust",
-				Outcome:      "Display one current bundle's exact source, surface, and wrapper summary on a controlling terminal and record its digest as user-adopted after exact confirmation",
+				Outcome:      "Display one current bundle's exact source, processors, surface, and wrapper summary on a controlling terminal and record its digest as user-adopted after exact confirmation",
 				Inputs:       []CommandInput{{Name: "--bundle", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Read the exact bounded JSON document emitted by bundle build.", AllowedValues: []string{}}},
 				Output: CommandOutput{
 					Authority: OutputAuthorityCatalog,
@@ -1558,17 +1598,20 @@ func DefaultCatalog() Catalog {
 						{Name: "adopted", Type: OutputFieldTypeBoolean, Description: "True after the exact adoption receipt is present."},
 						{Name: "already_adopted", Type: OutputFieldTypeBoolean, Description: "True when no adoption-store mutation was needed."},
 						{Name: "source", Type: OutputFieldTypeString, Description: "Source identity state; adoption succeeds only when current."},
+						{Name: "processors", Type: OutputFieldTypeArray, Description: "Ordered exact bundle processor records; every processor is current on success and the array is empty for identity-only bundles.", Schema: bundleProcessorStatusOutputSchema()},
 						{Name: "source_process_attempts", Type: OutputFieldTypeInteger, Description: "Always zero; adoption starts no source process."},
+						{Name: "processor_process_attempts", Type: OutputFieldTypeInteger, Description: "Always zero; adoption reads processor identity bytes but starts no processor process."},
 					},
 					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable,
-					JSONEnvelope: "trust", JSONSchemaVersion: 2,
+					JSONEnvelope: "trust", JSONSchemaVersion: 3,
 				},
-				Prerequisites: []string{"A current canonical bundle and an interactive controlling terminal; redirected stdin cannot adopt a bundle, and adoption is not source authorization."},
+				Prerequisites: []string{"A canonical bundle whose exact source and every bound processor identity are current, plus an interactive controlling terminal; redirected stdin cannot adopt a bundle, and adoption is not source authorization."},
 				FixedTarget:   &FixedTarget{Kind: "bundle-adoption-store", ID: "selected", Description: "This Atsura installation's user-local exact-digest bundle adoption store.", Scope: FixedTargetScopeToolLocal},
 				Mutation:      &MutationContract{TargetKind: "bundle-adoption-store", TargetInputs: []string{}, Impact: operation.Impact{Cardinality: operation.CardinalityOne, Notification: operation.DeclarationNo, AccessChange: operation.DeclarationYes, Destructive: operation.DeclarationNo}},
 				Errors: append(bundleFileErrors("bundle trust"),
 					declaredCommandError(fault.KindRejected, "invalid_bundle_trust_store", false, "bundle status", "Repair or reconcile invalid user-local adoption state."),
 					declaredCommandError(fault.KindRejected, "bundle_source_drift", false, "bundle status", "Inspect source drift before building and adopting new evidence."),
+					declaredCommandError(fault.KindRejected, "bundle_processor_drift", false, "bundle status", "Inspect processor drift before building and adopting new evidence."),
 					declaredCommandError(fault.KindUnavailable, "bundle_trust_store_failed", false, "bundle status", "Reconcile adoption state after a safe store failure."),
 					declaredCommandError(fault.KindContract, "invalid_mutation_contract", false, "help bundle trust", "Repair the adoption mutation declaration."),
 					declaredCommandError(fault.KindContract, "missing_mutation_action", false, "help bundle trust", "Configure the adoption-store mutation action."),
@@ -3261,8 +3304,8 @@ func validateOutputSchema(field OutputField) error {
 	if field.Schema == nil {
 		return nil
 	}
-	if field.Type != OutputFieldTypeObject {
-		return fmt.Errorf("only object fields may publish a nested schema")
+	if field.Type != OutputFieldTypeObject && field.Type != OutputFieldTypeArray {
+		return fmt.Errorf("only object fields and object-element array fields may publish a nested schema")
 	}
 	if err := validateReferenceName(field.Schema.ID); err != nil {
 		return fmt.Errorf("id: %w", err)
