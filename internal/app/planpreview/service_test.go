@@ -3,6 +3,7 @@ package planpreview
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -57,17 +58,27 @@ func previewIntent() operation.Intent {
 }
 
 func previewBundle(t *testing.T) (tailoringbundle.Bundle, string, sourceprocess.Identity) {
+	return previewBundleWithDefaults(t, []tailoringbundle.OptionDefault{})
+}
+
+func previewBundleWithDefaults(t *testing.T, defaults []tailoringbundle.OptionDefault) (tailoringbundle.Bundle, string, sourceprocess.Identity) {
 	t.Helper()
 	catalog := sourcecatalog.Catalog{
 		SchemaVersion: sourcecatalog.SchemaVersion,
 		Adapter:       sourcecatalog.Adapter{Kind: "atsura.source.alternate", ContractVersion: 1},
 		Source:        sourcecatalog.Source{RequestedExecutable: "fixture", ResolvedPath: "/opt/bin/fixture", SHA256: strings.Repeat("a", 64), Size: 42, Version: "1.0.0"},
 		Probe:         sourcecatalog.Probe{IDs: []string{"help"}, Attempts: 1},
-		Commands:      []sourcecatalog.Command{{Path: []string{"item", "list"}, Summary: "List items", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin, Options: []sourcecatalog.Option{{Name: "--json", TakesValue: true}}, StructuredOutput: []sourcecatalog.StructuredOutput{}}},
+		Commands: []sourcecatalog.Command{{Path: []string{"item", "list"}, Summary: "List items", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin, Options: []sourcecatalog.Option{
+			{Name: "--json", TakesValue: true}, {Name: "--limit", TakesValue: true},
+		}, StructuredOutput: []sourcecatalog.StructuredOutput{}}},
 	}
 	catalogDigest, err := catalog.Digest()
 	if err != nil {
 		t.Fatal(err)
+	}
+	wrapperKind := tailoringbundle.WrapperIdentity
+	if len(defaults) > 0 {
+		wrapperKind = tailoringbundle.WrapperTransform
 	}
 	specification := tailoringbundle.Specification{
 		SchemaVersion: tailoringbundle.SpecificationSchemaVersion,
@@ -76,7 +87,7 @@ func previewBundle(t *testing.T) (tailoringbundle.Bundle, string, sourceprocess.
 		Commands: []tailoringbundle.CommandEntry{{
 			Command: []string{"item", "list"}, Presence: tailoringbundle.PresenceInclude, Reason: "Needed.",
 			Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultInherit, Include: []string{}, Exclude: []string{}},
-			Wrapper: &tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{}},
+			Wrapper: &tailoringbundle.Wrapper{Kind: wrapperKind, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{OptionDefaults: append([]tailoringbundle.OptionDefault{}, defaults...), AppendArgs: []string{}}, After: []tailoringbundle.StageAction{}},
 		}},
 	}
 	bundle, err := tailoringbundle.Compile(catalog, specification)
@@ -89,6 +100,46 @@ func previewBundle(t *testing.T) (tailoringbundle.Bundle, string, sourceprocess.
 	}
 	identity := sourceprocess.Identity{ResolvedPath: catalog.Source.ResolvedPath, SHA256: catalog.Source.SHA256, Size: catalog.Source.Size}
 	return bundle, digest, identity
+}
+
+func TestPreviewDerivesCanonicalDefaultAndPreservesCallerOverrideWithoutStartingSource(t *testing.T) {
+	bundle, digest, identity := previewBundleWithDefaults(t, []tailoringbundle.OptionDefault{{Option: "--limit", Value: "30"}})
+	tests := []struct {
+		name        string
+		args        []string
+		wantArgs    []string
+		wantApplied []tailoringbundle.OptionDefault
+	}{
+		{
+			name: "omitted option receives canonical default", args: []string{"item", "list"},
+			wantArgs:    []string{"item", "list", "--limit=30"},
+			wantApplied: []tailoringbundle.OptionDefault{{Option: "--limit", Value: "30"}},
+		},
+		{
+			name: "explicit caller value wins", args: []string{"item", "list", "--limit=2"},
+			wantArgs: []string{"item", "list", "--limit=2"}, wantApplied: []tailoringbundle.OptionDefault{},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := New(
+				&bundleStub{bundle: bundle, digest: digest},
+				&adoptionStub{state: bundletrust.StateAdopted},
+				&identityStub{identity: identity},
+			).Preview(context.Background(), previewIntent(), "bundle.json", tailoringplan.Attempt{Executable: "fixture", Args: test.args})
+			if err != nil {
+				t.Fatal(err)
+			}
+			request, err := result.Plan.SourceRequest()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.SourceProcessAttempts != 0 || !reflect.DeepEqual(request.Process.Args, test.wantArgs) ||
+				!reflect.DeepEqual(result.Plan.Stages.Invoke.AppliedOptionDefaults, test.wantApplied) {
+				t.Fatalf("result=%+v request=%+v", result, request)
+			}
+		})
+	}
 }
 
 func TestPreviewRequiresAdoptionAndCurrentIdentityThenBuildsPurePlan(t *testing.T) {

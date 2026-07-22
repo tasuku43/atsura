@@ -62,7 +62,7 @@ func sourceStreamFixture(t *testing.T, kind tailoringbundle.WrapperKind, appende
 			Wrapper: &tailoringbundle.Wrapper{
 				Kind:   kind,
 				Before: []tailoringbundle.StageAction{},
-				Invoke: tailoringbundle.Invocation{AppendArgs: append([]string{}, appendedArgs...)},
+				Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: append([]string{}, appendedArgs...)},
 				After:  []tailoringbundle.StageAction{},
 			},
 		}},

@@ -1,5 +1,5 @@
-// Package bundlebuild validates schema-4 tailoring specifications and compiles
-// canonical schema-3 bundles.
+// Package bundlebuild validates schema-5 tailoring specifications and compiles
+// canonical schema-4 bundles.
 package bundlebuild
 
 import (
@@ -253,11 +253,11 @@ func preserve(err error) error {
 }
 
 func invalidSpecification(err error) error {
-	return fault.Wrap(fault.KindInvalidInput, "invalid_specification", "The schema-4 tailoring specification is not valid for the selected catalog.", false, err, specificationHelp())
+	return fault.Wrap(fault.KindInvalidInput, "invalid_specification", "The schema-5 tailoring specification is not valid for the selected catalog.", false, err, specificationHelp())
 }
 
 func specificationHelp() fault.NextAction {
-	return fault.NextAction{Command: "help spec validate", Reason: "Correct the catalog-bound schema-4 tailoring specification."}
+	return fault.NextAction{Command: "help spec validate", Reason: "Correct the catalog-bound schema-5 tailoring specification."}
 }
 
 func bundleHelp() fault.NextAction {

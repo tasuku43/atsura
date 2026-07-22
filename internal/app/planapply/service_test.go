@@ -3,6 +3,7 @@ package planapply
 import (
 	"context"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -143,7 +144,9 @@ func TestApplyAcceptsExactExpectedBundleDigestThroughOneSuccessfulAttempt(t *tes
 			Path:       []string{"item", "list"},
 			Summary:    "List items",
 			Provenance: sourcecatalog.ProvenanceVerifiedBuiltin,
-			Options:    []sourcecatalog.Option{{Name: "--json", TakesValue: true}},
+			Options: []sourcecatalog.Option{
+				{Name: "--json", TakesValue: true}, {Name: "--limit", TakesValue: true},
+			},
 			StructuredOutput: []sourcecatalog.StructuredOutput{{
 				Format: "json", SelectorFlag: "--json", Fields: []string{"id", "name"},
 			}},
@@ -169,7 +172,10 @@ func TestApplyAcceptsExactExpectedBundleDigestThroughOneSuccessfulAttempt(t *tes
 			Wrapper: &tailoringbundle.Wrapper{
 				Kind:   tailoringbundle.WrapperTransform,
 				Before: []tailoringbundle.StageAction{},
-				Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--json=id,name"}},
+				Invoke: tailoringbundle.Invocation{
+					OptionDefaults: []tailoringbundle.OptionDefault{{Option: "--limit", Value: "30"}},
+					AppendArgs:     []string{"--json=id,name"},
+				},
 				Output: &tailoringbundle.Output{Kind: tailoringbundle.OutputKindProjection, Projection: &tailoringbundle.Projection{
 					Input:  "json",
 					Select: []string{"id", "name"},
@@ -225,6 +231,9 @@ func TestApplyAcceptsExactExpectedBundleDigestThroughOneSuccessfulAttempt(t *tes
 	}
 	if loader.calls != 1 || adoption.calls != 1 || identities.calls != 1 || compatibility.calls != 1 || process.calls != 1 || parser.calls != 1 {
 		t.Fatalf("calls load/adoption/identity/compatibility/process/parser=%d/%d/%d/%d/%d/%d", loader.calls, adoption.calls, identities.calls, compatibility.calls, process.calls, parser.calls)
+	}
+	if got, want := process.request.Process.Args, []string{"item", "list", "--limit=30", "--json=id,name"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("source request args=%v, want %v", got, want)
 	}
 }
 

@@ -3,6 +3,7 @@ package bundleexecute
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -138,6 +139,10 @@ func executeIntent() operation.Intent {
 }
 
 func executeBundle(t *testing.T, transform bool) (tailoringbundle.Bundle, string, sourceprocess.Identity) {
+	return executeBundleWithDefaults(t, transform, []tailoringbundle.OptionDefault{})
+}
+
+func executeBundleWithDefaults(t *testing.T, transform bool, defaults []tailoringbundle.OptionDefault) (tailoringbundle.Bundle, string, sourceprocess.Identity) {
 	t.Helper()
 	catalog := sourcecatalog.Catalog{
 		SchemaVersion: sourcecatalog.SchemaVersion,
@@ -146,7 +151,9 @@ func executeBundle(t *testing.T, transform bool) (tailoringbundle.Bundle, string
 		Probe:         sourcecatalog.Probe{IDs: []string{"help"}, Attempts: 1},
 		Commands: []sourcecatalog.Command{{
 			Path: []string{"item", "list"}, Summary: "List items", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin,
-			Options:          []sourcecatalog.Option{{Name: "--json", TakesValue: true}},
+			Options: []sourcecatalog.Option{
+				{Name: "--json", TakesValue: true}, {Name: "--limit", TakesValue: true},
+			},
 			StructuredOutput: []sourcecatalog.StructuredOutput{{Format: "json", SelectorFlag: "--json", Fields: []string{"id", "name", "state"}}},
 		}},
 	}
@@ -154,10 +161,10 @@ func executeBundle(t *testing.T, transform bool) (tailoringbundle.Bundle, string
 	if err != nil {
 		t.Fatal(err)
 	}
-	wrapper := &tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{}}
+	wrapper := &tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{}}, After: []tailoringbundle.StageAction{}}
 	if transform {
 		wrapper = &tailoringbundle.Wrapper{
-			Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--json=id,name,state"}},
+			Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{OptionDefaults: append([]tailoringbundle.OptionDefault{}, defaults...), AppendArgs: []string{"--json=id,name,state"}},
 			Output: &tailoringbundle.Output{Kind: tailoringbundle.OutputKindProjection, Projection: &tailoringbundle.Projection{Input: "json", Select: []string{"id", "name", "state"}, Rename: []tailoringbundle.Rename{{From: "id", To: "item_id"}}, Render: "compact_json"}},
 			After:  []tailoringbundle.StageAction{},
 		}
@@ -182,8 +189,12 @@ func executeBundle(t *testing.T, transform bool) (tailoringbundle.Bundle, string
 }
 
 func executeService(t *testing.T, compatibility *compatibilityStub, process *processStub, parser *parserStub) (*Service, tailoringplan.Attempt) {
+	return executeServiceWithDefaults(t, compatibility, process, parser, []tailoringbundle.OptionDefault{})
+}
+
+func executeServiceWithDefaults(t *testing.T, compatibility *compatibilityStub, process *processStub, parser *parserStub, defaults []tailoringbundle.OptionDefault) (*Service, tailoringplan.Attempt) {
 	t.Helper()
-	bundle, digest, identity := executeBundle(t, true)
+	bundle, digest, identity := executeBundleWithDefaults(t, true, defaults)
 	applier := planapply.New(&bundleStub{bundle: bundle, digest: digest}, &adoptionStub{state: bundletrust.StateAdopted}, &identityStub{value: identity}, compatibility, process, parser)
 	return NewWithApplier(applier), tailoringplan.Attempt{Executable: "fixture", Args: []string{"item", "list"}}
 }
@@ -281,6 +292,54 @@ func TestExecuteRebuildsPlanRunsBoundSourceOnceAndTransformsTypedJSON(t *testing
 	}
 	if string(parser.input) != "private raw bytes" || compatibility.plan.SchemaVersion != tailoringplan.SchemaVersion {
 		t.Fatalf("parser input=%q compatibility plan=%+v", parser.input, compatibility.plan)
+	}
+}
+
+func TestExecuteAppliesDefaultOnceAndPreservesExplicitCallerOverride(t *testing.T) {
+	tests := []struct {
+		name        string
+		callerArgs  []string
+		wantArgs    []string
+		wantApplied []tailoringbundle.OptionDefault
+	}{
+		{
+			name: "omitted option", callerArgs: []string{"item", "list"},
+			wantArgs:    []string{"item", "list", "--limit=30", "--json=id,name,state"},
+			wantApplied: []tailoringbundle.OptionDefault{{Option: "--limit", Value: "30"}},
+		},
+		{
+			name: "caller override", callerArgs: []string{"item", "list", "--limit=2"},
+			wantArgs:    []string{"item", "list", "--limit=2", "--json=id,name,state"},
+			wantApplied: []tailoringbundle.OptionDefault{},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			compatibility := &compatibilityStub{}
+			identity := sourceprocess.Identity{ResolvedPath: "/opt/bin/fixture", SHA256: strings.Repeat("a", 64), Size: 42}
+			process := &processStub{result: sourceprocess.Result{Attempts: 1, ExitCode: 0, Stdout: []byte(`private raw bytes`), Identity: identity}}
+			parser := &parserStub{value: tailoring.NewJSONArray([]tailoring.JSONValue{
+				tailoring.NewJSONObject([]tailoring.JSONField{
+					{Name: "id", Value: tailoring.NewJSONNumber("1")},
+					{Name: "name", Value: tailoring.NewJSONString("item")},
+					{Name: "state", Value: tailoring.NewJSONString("OPEN")},
+				}),
+			})}
+			service, attempt := executeServiceWithDefaults(
+				t, compatibility, process, parser,
+				[]tailoringbundle.OptionDefault{{Option: "--limit", Value: "30"}},
+			)
+			attempt.Args = test.callerArgs
+			result, err := service.Execute(context.Background(), executeIntent(), "bundle.json", attempt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.SourceProcessAttempts != 1 || process.calls != 1 || parser.calls != 1 ||
+				!reflect.DeepEqual(process.request.Process.Args, test.wantArgs) ||
+				!reflect.DeepEqual(compatibility.plan.Stages.Invoke.AppliedOptionDefaults, test.wantApplied) {
+				t.Fatalf("result=%+v request=%+v plan=%+v", result, process.request, compatibility.plan)
+			}
+		})
 	}
 }
 

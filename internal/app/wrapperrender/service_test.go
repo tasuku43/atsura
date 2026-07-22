@@ -55,7 +55,7 @@ func renderBundle(t *testing.T, requestedExecutable string) (tailoringbundle.Bun
 			Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultExclude, Include: []string{"--limit"}, Exclude: []string{}},
 			Wrapper: &tailoringbundle.Wrapper{
 				Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{},
-				Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--json=number,title"}},
+				Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{"--json=number,title"}},
 				Output: &tailoringbundle.Output{Kind: tailoringbundle.OutputKindProjection, Projection: &tailoringbundle.Projection{Input: "json", Select: []string{"number", "title"}, Rename: []tailoringbundle.Rename{}, Render: "compact_json"}},
 				After:  []tailoringbundle.StageAction{},
 			},
@@ -112,7 +112,7 @@ func renderMultiCommandBundle(t *testing.T) (tailoringbundle.Bundle, string) {
 				Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultExclude, Include: []string{"--limit"}, Exclude: []string{}},
 				Wrapper: &tailoringbundle.Wrapper{
 					Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{},
-					Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{},
+					Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{}}, After: []tailoringbundle.StageAction{},
 				},
 			},
 			{
@@ -120,7 +120,10 @@ func renderMultiCommandBundle(t *testing.T) (tailoringbundle.Bundle, string) {
 				Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultExclude, Include: []string{"--limit"}, Exclude: []string{}},
 				Wrapper: &tailoringbundle.Wrapper{
 					Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{},
-					Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--json=number,title"}},
+					Invoke: tailoringbundle.Invocation{
+						OptionDefaults: []tailoringbundle.OptionDefault{{Option: "--limit", Value: "30"}},
+						AppendArgs:     []string{"--json=number,title"},
+					},
 					Output: &tailoringbundle.Output{Kind: tailoringbundle.OutputKindProjection, Projection: &tailoringbundle.Projection{Input: "json", Select: []string{"number", "title"}, Rename: []tailoringbundle.Rename{}, Render: "compact_json"}},
 					After:  []tailoringbundle.StageAction{},
 				},
@@ -181,7 +184,7 @@ func renderProcessorBundle(t *testing.T) (tailoringbundle.Bundle, string) {
 			Wrapper: &tailoringbundle.Wrapper{
 				Kind:   tailoringbundle.WrapperTransform,
 				Before: []tailoringbundle.StageAction{},
-				Invoke: tailoringbundle.Invocation{AppendArgs: []string{"-json"}},
+				Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{"-json"}},
 				Output: &tailoringbundle.Output{
 					Kind: tailoringbundle.OutputKindOptimizer,
 					Optimizer: &tailoringbundle.Optimizer{
@@ -508,6 +511,10 @@ func TestRenderRejectsCompleteBundleWhenLaterSurfaceEntryIsUnsupported(t *testin
 		for _, entry := range got.Surface {
 			inspected = append(inspected, append([]string(nil), entry.Command...))
 			if reflect.DeepEqual(entry.Command, []string{"pr", "list"}) {
+				wantDefaults := []tailoringbundle.OptionDefault{{Option: "--limit", Value: "30"}}
+				if !reflect.DeepEqual(entry.Wrapper.Invoke.OptionDefaults, wantDefaults) {
+					t.Fatalf("later surface defaults=%+v, want %+v", entry.Wrapper.Invoke.OptionDefaults, wantDefaults)
+				}
 				return errors.New("later surface entry is outside the maintained contract")
 			}
 		}

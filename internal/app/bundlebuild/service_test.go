@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -88,7 +89,7 @@ func fixtures(t *testing.T) (sourcecatalog.Catalog, tailoringbundle.Specificatio
 		Commands: []tailoringbundle.CommandEntry{{
 			Command: []string{"item", "list"}, Presence: tailoringbundle.PresenceInclude, Reason: "List compact items.",
 			Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultInherit, Include: []string{}, Exclude: []string{}},
-			Wrapper: &tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{}},
+			Wrapper: &tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{}}, After: []tailoringbundle.StageAction{}},
 		}},
 	}
 	return catalog, specification
@@ -112,6 +113,37 @@ func TestValidateAndBuildUseSameInputs(t *testing.T) {
 	}
 	if catalogs.calls != 2 || specifications.calls != 2 {
 		t.Fatalf("calls = catalog %d, specification %d", catalogs.calls, specifications.calls)
+	}
+}
+
+func TestValidateAndBuildPreserveCatalogTypedOptionDefaults(t *testing.T) {
+	catalog, specification := fixtures(t)
+	catalog.Commands[0].Options = append(catalog.Commands[0].Options, sourcecatalog.Option{Name: "--limit", TakesValue: true})
+	digest, err := catalog.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	specification.CatalogDigest = digest
+	defaults := []tailoringbundle.OptionDefault{{Option: "--limit", Value: "30"}}
+	specification.Commands[0].Wrapper = &tailoringbundle.Wrapper{
+		Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{},
+		Invoke: tailoringbundle.Invocation{OptionDefaults: defaults, AppendArgs: []string{}},
+		After:  []tailoringbundle.StageAction{},
+	}
+	service := New(&catalogFake{value: catalog}, &specificationFake{value: specification})
+	validated, err := service.ValidateSpecification(context.Background(), operation.Intent{Command: "spec validate", Effect: operation.EffectRead}, "catalog", "specification")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if validated.IdentityWrapperCount != 0 || validated.TransformWrapperCount != 1 {
+		t.Fatalf("validated=%+v", validated)
+	}
+	built, err := service.Build(context.Background(), operation.Intent{Command: "bundle build", Effect: operation.EffectRead}, "catalog", "specification")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(built.Bundle.Surface) != 1 || !reflect.DeepEqual(built.Bundle.Surface[0].Wrapper.Invoke.OptionDefaults, defaults) {
+		t.Fatalf("built option defaults=%+v", built.Bundle.Surface)
 	}
 }
 
@@ -200,7 +232,7 @@ func TestBuildProcessorEvidenceFailureMatrix(t *testing.T) {
 		projectionSpecification.Commands[0].Wrapper = &tailoringbundle.Wrapper{
 			Kind:   tailoringbundle.WrapperTransform,
 			Before: []tailoringbundle.StageAction{},
-			Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--json=id"}},
+			Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{"--json=id"}},
 			Output: &tailoringbundle.Output{
 				Kind: tailoringbundle.OutputKindProjection,
 				Projection: &tailoringbundle.Projection{
