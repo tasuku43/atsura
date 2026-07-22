@@ -181,10 +181,14 @@ func TestManifestRejectsDriftAndUnsupportedContract(t *testing.T) {
 func TestRecordAndInventoryEnforceOwnershipPartitionsAndBounds(t *testing.T) {
 	digest := strings.Repeat("a", 64)
 	reference, _ := NewReference(digest)
+	inactiveDigest := strings.Repeat("b", 64)
+	inactiveReference, _ := NewReference(inactiveDigest)
+	tamperedDigest := strings.Repeat("c", 64)
+	tamperedReference, _ := NewReference(tamperedDigest)
 	owned := Record{CommandName: "gh", State: StateOwnedActive, Reference: reference, MaterialSHA256: digest}
-	inactive := Record{CommandName: "go", State: StateOwnedInactive, Reference: reference, MaterialSHA256: digest}
-	tampered := Record{CommandName: "git", State: StateTampered, Reference: reference, MaterialSHA256: digest}
-	collision := Record{CommandName: "gh", State: StateCollisionForeign}
+	inactive := Record{CommandName: "go", State: StateOwnedInactive, Reference: inactiveReference, MaterialSHA256: inactiveDigest}
+	tampered := Record{CommandName: "git", State: StateTampered, Reference: tamperedReference, MaterialSHA256: tamperedDigest}
+	collision := Record{CommandName: "cargo", State: StateCollisionForeign}
 	symlink := Record{CommandName: "go", State: StateCollisionSymlink}
 	special := Record{CommandName: "git", State: StateCollisionSpecial}
 	for _, record := range []Record{owned, inactive, tampered, collision, symlink, special} {
@@ -218,6 +222,10 @@ func TestRecordAndInventoryEnforceOwnershipPartitionsAndBounds(t *testing.T) {
 	if err := (Inventory{}).Validate(); !errors.Is(err, ErrInvalidInventory) {
 		t.Fatalf("nil inventory error = %v", err)
 	}
+	empty, err := SortInventory([]Record{}, []Record{})
+	if err != nil || empty.Records == nil || empty.Collisions == nil || empty.Clone().Records == nil || empty.Clone().Collisions == nil {
+		t.Fatalf("explicit empty inventory lost its list shape: %+v, %v", empty, err)
+	}
 	if _, err := SortInventory([]Record{collision}, []Record{}); !errors.Is(err, ErrInvalidInventory) {
 		t.Fatalf("collision in owned partition error = %v", err)
 	}
@@ -230,5 +238,20 @@ func TestRecordAndInventoryEnforceOwnershipPartitionsAndBounds(t *testing.T) {
 	}
 	if _, err := SortInventory([]Record{}, tooMany); !errors.Is(err, ErrInvalidInventory) {
 		t.Fatalf("unbounded collision inventory error = %v", err)
+	}
+
+	otherDigest := strings.Repeat("d", 64)
+	otherReference, _ := NewReference(otherDigest)
+	invalidInventories := []Inventory{
+		{Records: []Record{owned, {CommandName: "gh", State: StateOwnedActive, Reference: otherReference, MaterialSHA256: otherDigest}}, Collisions: []Record{}},
+		{Records: []Record{owned, {CommandName: "go", State: StateOwnedInactive, Reference: reference, MaterialSHA256: digest}}, Collisions: []Record{}},
+		{Records: []Record{}, Collisions: []Record{{CommandName: "gh", State: StateCollisionForeign}, {CommandName: "gh", State: StateCollisionSymlink}}},
+		{Records: []Record{owned}, Collisions: []Record{{CommandName: "gh", State: StateCollisionForeign}}},
+	}
+	for index, candidate := range invalidInventories {
+		_, sortErr := SortInventory(candidate.Records, candidate.Collisions)
+		if !errors.Is(sortErr, ErrInvalidInventory) {
+			t.Errorf("invalid inventory %d error = %v", index, sortErr)
+		}
 	}
 }

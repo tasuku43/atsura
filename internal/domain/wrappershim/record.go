@@ -83,12 +83,38 @@ func (i Inventory) Validate() error {
 	if err := validatePartition(i.Collisions, true); err != nil {
 		return err
 	}
+	activeCommands := make(map[string]struct{}, len(i.Records))
+	ownedReferences := make(map[Reference]struct{}, len(i.Records))
+	for _, record := range i.Records {
+		if _, exists := ownedReferences[record.Reference]; exists {
+			return fmt.Errorf("%w: owned artifact references must be unique", ErrInvalidInventory)
+		}
+		ownedReferences[record.Reference] = struct{}{}
+		if record.State == StateOwnedActive {
+			if _, exists := activeCommands[record.CommandName]; exists {
+				return fmt.Errorf("%w: at most one artifact may be active for a command", ErrInvalidInventory)
+			}
+			activeCommands[record.CommandName] = struct{}{}
+		}
+	}
+	collisionCommands := make(map[string]struct{}, len(i.Collisions))
+	for _, record := range i.Collisions {
+		if _, exists := collisionCommands[record.CommandName]; exists {
+			return fmt.Errorf("%w: at most one collision may describe a command", ErrInvalidInventory)
+		}
+		collisionCommands[record.CommandName] = struct{}{}
+		if _, active := activeCommands[record.CommandName]; active {
+			return fmt.Errorf("%w: one command cannot be both active and collided", ErrInvalidInventory)
+		}
+	}
 	return nil
 }
 
 // SortInventory returns a detached canonical inventory.
 func SortInventory(records, collisions []Record) (Inventory, error) {
-	result := Inventory{Records: append([]Record(nil), records...), Collisions: append([]Record(nil), collisions...)}
+	result := Inventory{Records: make([]Record, len(records)), Collisions: make([]Record, len(collisions))}
+	copy(result.Records, records)
+	copy(result.Collisions, collisions)
 	sort.Slice(result.Records, func(left, right int) bool {
 		return recordKey(result.Records[left]) < recordKey(result.Records[right])
 	})
@@ -102,7 +128,10 @@ func SortInventory(records, collisions []Record) (Inventory, error) {
 }
 
 func (i Inventory) Clone() Inventory {
-	return Inventory{Records: append([]Record(nil), i.Records...), Collisions: append([]Record(nil), i.Collisions...)}
+	result := Inventory{Records: make([]Record, len(i.Records)), Collisions: make([]Record, len(i.Collisions))}
+	copy(result.Records, i.Records)
+	copy(result.Collisions, i.Collisions)
+	return result
 }
 
 func validatePartition(records []Record, collisions bool) error {
