@@ -5,23 +5,30 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"runtime"
 	"strings"
 
 	"github.com/tasuku43/atsura/internal/app/bundleauthority"
 	"github.com/tasuku43/atsura/internal/app/bundlebuild"
 	"github.com/tasuku43/atsura/internal/app/bundleexecute"
 	"github.com/tasuku43/atsura/internal/app/doctorcmd"
+	"github.com/tasuku43/atsura/internal/app/planapply"
 	"github.com/tasuku43/atsura/internal/app/planpreview"
 	"github.com/tasuku43/atsura/internal/app/samplecmd"
 	"github.com/tasuku43/atsura/internal/app/sourceinspect"
 	"github.com/tasuku43/atsura/internal/app/specinit"
+	"github.com/tasuku43/atsura/internal/app/wrapperrender"
+	"github.com/tasuku43/atsura/internal/app/wrapperrun"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
 	"github.com/tasuku43/atsura/internal/domain/tailoringplan"
+	"github.com/tasuku43/atsura/internal/domain/wrapperbinding"
 	"github.com/tasuku43/atsura/internal/infra/bundlejson"
 	"github.com/tasuku43/atsura/internal/infra/catalogjson"
 	"github.com/tasuku43/atsura/internal/infra/githubcli"
+	"github.com/tasuku43/atsura/internal/infra/posixwrapper"
 	"github.com/tasuku43/atsura/internal/infra/sampledata"
+	"github.com/tasuku43/atsura/internal/infra/selfexec"
 	"github.com/tasuku43/atsura/internal/infra/sourceexec"
 	"github.com/tasuku43/atsura/internal/infra/sourcejson"
 	"github.com/tasuku43/atsura/internal/infra/specyaml"
@@ -34,6 +41,14 @@ type bundleExecutionService interface {
 	Execute(context.Context, operation.Intent, string, tailoringplan.Attempt) (bundleexecute.Result, error)
 }
 
+type wrapperRenderService interface {
+	Render(context.Context, operation.Intent, string) (wrapperrender.Result, error)
+}
+
+type wrapperRunService interface {
+	Execute(context.Context, operation.Intent, wrapperbinding.RuntimeInvocation, []string) (wrapperrun.Result, error)
+}
+
 // CLI contains injected streams and application services.
 type CLI struct {
 	In      io.Reader
@@ -42,15 +57,17 @@ type CLI struct {
 	Version string
 	Commit  string
 
-	catalog    Catalog
-	doctor     *doctorcmd.Service
-	samples    *samplecmd.Service
-	sources    *sourceinspect.Service
-	bundles    *bundlebuild.Service
-	drafts     *specinit.Service
-	authority  *bundleauthority.Service
-	previews   *planpreview.Service
-	executions bundleExecutionService
+	catalog        Catalog
+	doctor         *doctorcmd.Service
+	samples        *samplecmd.Service
+	sources        *sourceinspect.Service
+	bundles        *bundlebuild.Service
+	drafts         *specinit.Service
+	authority      *bundleauthority.Service
+	previews       *planpreview.Service
+	executions     bundleExecutionService
+	wrapperRenders wrapperRenderService
+	wrapperRuns    wrapperRunService
 }
 
 // New builds the production CLI with offline template adapters.
@@ -82,6 +99,9 @@ func newCLIWithSamples(
 	bundleLoader := bundlejson.New()
 	sourceRunner := sourceexec.New()
 	trustStore := trustfile.New(trustPath)
+	runtimeVerifier := githubcli.NewRuntimeVerifier()
+	planApplier := planapply.New(bundleLoader, trustStore, sourceRunner, runtimeVerifier, sourceRunner, sourcejson.New())
+	currentExecutable := selfexec.New()
 	return &CLI{
 		In: in, Out: out, Err: errOut,
 		Version: "dev",
@@ -91,11 +111,13 @@ func newCLIWithSamples(
 		sources: sourceinspect.New(map[string]sourceinspect.InspectorPort{
 			"github-cli": githubcli.New(sourceexec.New()),
 		}),
-		bundles:    bundlebuild.New(catalogjson.New(), specyaml.New()),
-		drafts:     specinit.New(catalogjson.New()),
-		authority:  bundleauthority.New(bundleLoader, sourceRunner, trustStore, terminalconfirm.New()),
-		previews:   planpreview.New(bundleLoader, trustStore, sourceRunner),
-		executions: bundleexecute.New(bundleLoader, trustStore, sourceRunner, githubcli.NewRuntimeVerifier(), sourceRunner, sourcejson.New()),
+		bundles:        bundlebuild.New(catalogjson.New(), specyaml.New()),
+		drafts:         specinit.New(catalogjson.New()),
+		authority:      bundleauthority.New(bundleLoader, sourceRunner, trustStore, terminalconfirm.New()),
+		previews:       planpreview.New(bundleLoader, trustStore, sourceRunner),
+		executions:     bundleexecute.NewWithApplier(planApplier),
+		wrapperRenders: wrapperrender.New(runtime.GOOS, bundleLoader, trustStore, sourceRunner, currentExecutable, runtimeVerifier, posixwrapper.New()),
+		wrapperRuns:    wrapperrun.New(currentExecutable, sourceRunner, planApplier),
 	}
 }
 

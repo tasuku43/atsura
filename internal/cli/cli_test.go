@@ -17,6 +17,7 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/doctor"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
+	"github.com/tasuku43/atsura/internal/domain/tailoring"
 )
 
 type cliInspector struct {
@@ -684,6 +685,16 @@ func TestEveryCatalogCommandDispatchesThroughItsSpec(t *testing.T) {
 		if spec.Path == "bundle execute" {
 			installTrustedBundleExecution(command, &cliBoundProcess{stdout: []byte(`[{"id":1,"name":"example"}]`)})
 			args = []string{"bundle", "execute", "--bundle", bundlePath, "--", os.Args[0], "item", "list"}
+		}
+		if spec.Path == "wrapper render" {
+			result := testWrapperRenderResult(t)
+			command.wrapperRenders = &cliWrapperRenderStub{result: result}
+			args = []string{"wrapper", "render", "--bundle", result.Binding.BundleLocator}
+		}
+		if spec.Path == "wrapper run" {
+			binding := testWrapperRenderResult(t).Binding.RuntimeInvocation()
+			command.wrapperRuns = &cliWrapperRunStub{result: testWrapperRunResult(tailoring.ResultShapeObject)}
+			args = wrapperRunInvocation(binding, "pr", "list")
 		}
 		if code := runCLI(command, args); code != wantCode {
 			t.Errorf("Run(%q) code = %d, want %d, stderr = %q", spec.Path, code, wantCode, stderr.String())

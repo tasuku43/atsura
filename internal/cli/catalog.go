@@ -13,6 +13,7 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/authn"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
+	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
 )
 
 const (
@@ -300,6 +301,16 @@ const (
 	OutputJSONRenderingCompact OutputJSONRendering = "compact_json"
 )
 
+// OutputJSONFraming states how one complete dynamic JSON value is delimited
+// on stdout. It is separate from semantic shape and compact rendering so a
+// caller never has to guess whether the successful value ends at EOF or LF.
+type OutputJSONFraming string
+
+const (
+	OutputJSONFramingUnknown    OutputJSONFraming = ""
+	OutputJSONFramingOneValueLF OutputJSONFraming = "one_value_lf"
+)
+
 // OutputDelivery states whether one invocation returns its complete selected
 // result or one page in a public cursor protocol. It makes no claim about how
 // much of an external collection the task selected.
@@ -362,6 +373,7 @@ type CommandOutput struct {
 	PlanSchema         *OutputSchemaReference `json:"plan_schema,omitempty"`
 	JSONShape          OutputJSONShape        `json:"json_shape,omitempty"`
 	JSONRendering      OutputJSONRendering    `json:"json_rendering,omitempty"`
+	JSONFraming        OutputJSONFraming      `json:"json_framing,omitempty"`
 }
 
 // PaginationCompletion states the one machine-readable condition that marks
@@ -497,6 +509,10 @@ func stringPointer(value string) *string {
 	return &value
 }
 
+func int64Pointer(value int64) *int64 {
+	return &value
+}
+
 func isMutationEffect(effect operation.Effect) bool {
 	return effect == operation.EffectCreate || effect == operation.EffectWrite
 }
@@ -608,6 +624,96 @@ func bundleExecuteErrors() []CommandError {
 		declaredCommandError(fault.KindInternal, "execute_output_write_failed", false, "bundle status", "The source completed; reconcile before considering another invocation."),
 		declaredCommandError(fault.KindCanceled, "operation_canceled", true, "bundle execute", "Retry only because cancellation occurred before a source attempt."),
 	)
+}
+
+func wrapperRenderErrors() []CommandError {
+	errors := bundleFileErrors("wrapper render")
+	errors[0] = declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help wrapper render", "Pass one exact absolute bundle path and choose text or JSON output.")
+	return append(errors,
+		declaredCommandError(fault.KindInvalidInput, "invalid_wrapper_binding", false, "help wrapper render", "Use an absolute clean bundle path whose requested executable is one portable POSIX command name."),
+		declaredCommandError(fault.KindUnsupported, "wrapper_platform_not_supported", false, "help wrapper render", "Render the POSIX function on a supported Linux or macOS runtime."),
+		declaredCommandError(fault.KindRejected, "invalid_bundle_trust_store", false, "bundle status", "Repair or reconcile invalid user-local adoption state."),
+		declaredCommandError(fault.KindRejected, "bundle_not_adopted", false, "bundle trust", "Review and adopt the exact bundle digest before rendering a wrapper."),
+		declaredCommandError(fault.KindRejected, "bundle_source_drift", false, "bundle status", "Rebuild and adopt current source evidence before rendering a wrapper."),
+		declaredCommandError(fault.KindNotFound, "source_executable_not_found", false, "bundle status", "Reconcile the missing bundle-bound source executable."),
+		declaredCommandError(fault.KindUnavailable, "source_identity_unavailable", true, "bundle status", "Retry after the bundle-bound source identity can be read."),
+		declaredCommandError(fault.KindInvalidInput, "unsafe_source_executable", false, "bundle status", "Select and inspect a supported regular source executable."),
+		declaredCommandError(fault.KindRejected, "source_identity_changed", false, "bundle status", "Rebuild from stable current source identity evidence."),
+		declaredCommandError(fault.KindContract, "invalid_source_identity", false, "bundle status", "Repair invalid source identity evidence."),
+		declaredCommandError(fault.KindUnsupported, "wrapper_runtime_not_supported", false, "help wrapper render", "Use one complete transforming surface admitted by the maintained source runtime."),
+		declaredCommandError(fault.KindUnavailable, "wrapper_runtime_unavailable", false, "help wrapper render", "Retry only after the current Atsura executable identity is readable and stable."),
+		declaredCommandError(fault.KindContract, "wrapper_render_failed", false, "help wrapper render", "Repair the fixed POSIX renderer or its validated product binding."),
+		declaredCommandError(fault.KindContract, "output_contract_exceeded", false, "help wrapper render", "Reduce the bounded generated wrapper output."),
+		declaredCommandError(fault.KindContract, "output_encoding_failed", false, "help wrapper render", "Repair deterministic wrapper review JSON."),
+		declaredCommandError(fault.KindInternal, "internal_error", false, "bundle status", "Inspect bundle, adoption, source, runtime, and renderer wiring."),
+		declaredCommandError(fault.KindInternal, "output_write_failed", true, "wrapper render", "Retry with a writable output stream."),
+		declaredCommandError(fault.KindCanceled, "operation_canceled", true, "wrapper render", "Retry when the caller is ready."),
+	)
+}
+
+func wrapperRunErrors() []CommandError {
+	errors := bundleFileErrors("wrapper run")
+	errors[0] = declaredCommandError(fault.KindInvalidInput, "invalid_arguments", false, "help wrapper run", "Use only the complete render-produced binding flags and forward argv after --.")
+	return append(errors,
+		declaredCommandError(fault.KindInvalidInput, "invalid_wrapper_binding", false, "wrapper render", "Render a complete binding from the exact current bundle and Atsura runtime."),
+		declaredCommandError(fault.KindUnavailable, "wrapper_runtime_unavailable", false, "wrapper render", "Render again only after the current Atsura executable identity is readable and stable."),
+		declaredCommandError(fault.KindRejected, "wrapper_runtime_drift", false, "wrapper render", "Render a new binding from the exact current Atsura runtime."),
+		declaredCommandError(fault.KindRejected, "bundle_binding_mismatch", false, "wrapper render", "Render a new wrapper from the exact current bundle bytes."),
+		declaredCommandError(fault.KindRejected, "invalid_bundle_trust_store", false, "bundle status", "Repair or reconcile invalid user-local adoption state."),
+		declaredCommandError(fault.KindRejected, "bundle_not_adopted", false, "bundle trust", "Review and adopt the exact bundle digest before execution."),
+		declaredCommandError(fault.KindRejected, "bundle_source_drift", false, "bundle status", "Rebuild and adopt current source evidence before execution."),
+		declaredCommandError(fault.KindNotFound, "source_executable_not_found", false, "bundle status", "Reconcile the missing bundle-bound source executable."),
+		declaredCommandError(fault.KindUnavailable, "source_identity_unavailable", true, "bundle status", "Retry after the bundle-bound source identity can be read."),
+		declaredCommandError(fault.KindInvalidInput, "unsafe_source_executable", false, "bundle status", "Select and inspect a supported regular source executable."),
+		declaredCommandError(fault.KindRejected, "source_identity_changed", false, "bundle status", "Rebuild from stable current source identity evidence; do not replay a started operation."),
+		declaredCommandError(fault.KindContract, "invalid_source_identity", false, "bundle status", "Repair invalid source identity evidence."),
+		declaredCommandError(fault.KindInvalidInput, "source_executable_mismatch", false, "wrapper render", "Render a new wrapper whose command spelling comes from the exact bundle."),
+		declaredCommandError(fault.KindInvalidInput, "invalid_invocation", false, "help wrapper run", "Use a cataloged command path and deterministic observed long-option grammar."),
+		declaredCommandError(fault.KindNotFound, "command_not_in_surface", false, "help wrapper run", "Use a command present in the compiled tailored surface."),
+		declaredCommandError(fault.KindNotFound, "option_not_in_surface", false, "help wrapper run", "Use only options present in the matched command's tailored option surface."),
+		declaredCommandError(fault.KindContract, "invalid_wrapper_plan", false, "bundle preview", "Inspect the fresh plan and repair incomplete wrapper construction."),
+		declaredCommandError(fault.KindUnsupported, "wrapper_runtime_not_supported", false, "help wrapper run", "Use a transform wrapper and source adapter contract with accepted JSON selector behavior."),
+		declaredCommandError(fault.KindContract, "invalid_source_process_request", false, "bundle preview", "Inspect the exact plan-derived source request before execution."),
+		declaredCommandError(fault.KindUnavailable, "source_process_start_failed", true, "wrapper run", "Retry the exact generated invocation only when the result proves no source process started."),
+		declaredCommandError(fault.KindContract, "source_stdout_too_large", false, "help wrapper run", "Reduce source output within the declared bound; the source was not retried."),
+		declaredCommandError(fault.KindContract, "source_stderr_too_large", false, "help wrapper run", "Reduce source stderr within the declared bound; the source was not retried."),
+		declaredCommandError(fault.KindCanceled, "source_execution_canceled", false, "bundle status", "Reconcile source-owned effects before considering another invocation."),
+		declaredCommandError(fault.KindUnavailable, "source_command_timeout", false, "bundle status", "Reconcile source-owned effects after the timed-out attempt."),
+		declaredCommandError(fault.KindRejected, "source_command_failed", false, "help wrapper run", "Inspect the source command independently; Atsura does not expose raw failure output or retry it."),
+		declaredCommandError(fault.KindUnavailable, "source_process_wait_failed", false, "bundle status", "Reconcile source-owned effects after the unclassified wait outcome."),
+		declaredCommandError(fault.KindContract, "source_stderr_not_supported", false, "help wrapper run", "Use a successful source invocation with empty stderr for this initial transform runtime."),
+		declaredCommandError(fault.KindCanceled, "source_output_processing_canceled", false, "bundle status", "The source already ran; reconcile before considering another invocation."),
+		declaredCommandError(fault.KindContract, "source_json_invalid", false, "bundle preview", "Repair the source output selector or adapter contract; raw output is not a fallback."),
+		declaredCommandError(fault.KindContract, "output_transform_failed", false, "bundle preview", "Repair selected fields and typed transform expectations; raw output is not a fallback."),
+		declaredCommandError(fault.KindContract, "unclassified_source_execution_outcome", false, "bundle status", "Reconcile source-owned effects before considering another invocation."),
+		declaredCommandError(fault.KindContract, "output_contract_exceeded", false, "bundle preview", "Reduce the bounded transformed result; the source was not retried."),
+		declaredCommandError(fault.KindContract, "output_encoding_failed", false, "bundle preview", "Repair deterministic compact wrapper JSON; the source was not retried."),
+		declaredCommandError(fault.KindInternal, "internal_error", false, "bundle status", "Inspect wrapper execution wiring without replaying the source."),
+		declaredCommandError(fault.KindInternal, "execute_output_write_failed", false, "bundle status", "The source completed; reconcile before considering another invocation."),
+		declaredCommandError(fault.KindCanceled, "operation_canceled", true, "wrapper run", "Retry only because cancellation occurred before a source attempt."),
+	)
+}
+
+func wrapperContractOutputSchema() *OutputSchema {
+	return &OutputSchema{ID: "wrapper-contract", Version: 1, Fields: []OutputSchemaField{
+		{Path: "/shell", Type: OutputFieldTypeString, Required: true},
+		{Path: "/version", Type: OutputFieldTypeInteger, Required: true},
+	}}
+}
+
+func wrapperBundleBindingOutputSchema() *OutputSchema {
+	return &OutputSchema{ID: "wrapper-bundle-binding", Version: 1, Fields: []OutputSchemaField{
+		{Path: "/digest", Type: OutputFieldTypeString, Required: true},
+		{Path: "/locator", Type: OutputFieldTypeString, Required: true},
+	}}
+}
+
+func wrapperRuntimeBindingOutputSchema() *OutputSchema {
+	return &OutputSchema{ID: "wrapper-runtime-binding", Version: 1, Fields: []OutputSchemaField{
+		{Path: "/resolved_path", Type: OutputFieldTypeString, Required: true},
+		{Path: "/sha256", Type: OutputFieldTypeString, Required: true},
+		{Path: "/size", Type: OutputFieldTypeInteger, Required: true},
+	}}
 }
 
 func tailoredJSONOutputSchema() *OutputSchema {
@@ -818,6 +924,7 @@ func freshWrapperPlanAuthoritativeOutput() CommandOutput {
 		},
 		JSONShape:     OutputJSONShapeObjectOrArray,
 		JSONRendering: OutputJSONRenderingCompact,
+		JSONFraming:   OutputJSONFramingOneValueLF,
 	}
 }
 
@@ -1185,6 +1292,73 @@ func DefaultCatalog() Catalog {
 				Errors: bundleExecuteErrors(),
 			},
 			handler: runBundleExecute,
+		},
+		CommandSpec{
+			Path:    "wrapper render",
+			Summary: "Render one adopted bundle as a deterministic POSIX function",
+			Args:    "--bundle <absolute-path> [--format text|json]",
+			Effect:  operation.EffectRead,
+			Role:    RoleUtility,
+			Agent: AgentContract{
+				CapabilityID: "tailoring.wrapper.materialize",
+				Outcome:      "Produce fixed POSIX function bytes and a review digest bound to one adopted purpose bundle and the exact current Atsura runtime",
+				Inputs: []CommandInput{
+					{Name: "--bundle", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Use one exact absolute clean path to the bounded canonical JSON document emitted by bundle build.", AllowedValues: []string{}},
+					{Name: "--format", Source: InputSourceFlag, Required: false, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Choose raw sourceable function text or its schema-1 JSON review envelope.", AllowedValues: []string{"text", "json"}, DefaultValue: stringPointer("text")},
+				},
+				Output: CommandOutput{
+					Authority: OutputAuthorityCatalog,
+					Formats:   []OutputFormat{OutputFormatText, OutputFormatJSON}, DefaultFormat: OutputFormatText,
+					Fields: []OutputField{
+						{Name: "source", Type: OutputFieldTypeString, Description: "Exact sourceable POSIX function bytes represented as UTF-8 text."},
+						{Name: "source_sha256", Type: OutputFieldTypeString, Description: "SHA-256 review identity of the exact generated source bytes."},
+						{Name: "command", Type: OutputFieldTypeString, Description: "Ordinary portable POSIX command name derived verbatim from the bundle's requested executable."},
+						{Name: "contract", Type: OutputFieldTypeObject, Description: "Fixed generated-wrapper contract and shell grammar.", Schema: wrapperContractOutputSchema()},
+						{Name: "bundle", Type: OutputFieldTypeObject, Description: "Exact bundle locator and canonical digest embedded by the renderer.", Schema: wrapperBundleBindingOutputSchema()},
+						{Name: "runtime", Type: OutputFieldTypeObject, Description: "Exact current Atsura executable path, SHA-256, and bounded size embedded by the renderer.", Schema: wrapperRuntimeBindingOutputSchema()},
+						{Name: "source_process_attempts", Type: OutputFieldTypeInteger, Description: "Always zero; rendering fingerprints files but starts no source CLI process."},
+					},
+					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable,
+					JSONEnvelope: "wrapper", JSONSchemaVersion: 1,
+				},
+				Prerequisites: []string{
+					"Linux or macOS, one absolute-path schema-2 bundle whose exact digest is user-adopted, and current source plus Atsura executable identities.",
+					"The bundle requested executable must be one portable non-reserved POSIX Name; it is never derived from a path or basename.",
+					"The complete included surface must contain exactly one transforming GitHub CLI issue list or pr list command admitted by the maintained JSON runtime, including every exposed option.",
+					"Text output is fixed product source, not specification-authored code; activation and later modification of those bytes remain caller-owned.",
+				},
+				Errors: wrapperRenderErrors(),
+			},
+			handler: runWrapperRender,
+		},
+		CommandSpec{
+			Path:    "wrapper run",
+			Summary: "Apply one render-bound wrapper invocation through a fresh plan",
+			Args:    "--contract-version=1 --bundle=<absolute-path> --bundle-digest=<sha256> --runtime-path=<absolute-path> --runtime-sha256=<sha256> --runtime-size=<bytes> -- [argv]",
+			Effect:  operation.EffectExecute,
+			Role:    RoleUtility,
+			Agent: AgentContract{
+				CapabilityID: "tailoring.wrapper.materialize",
+				Outcome:      "Verify one render-produced bundle and runtime closure, rebuild its fresh plan, and emit only the plan-declared compact JSON result after at most one exact source attempt",
+				Inputs: []CommandInput{
+					{Name: "--contract-version", Source: InputSourceFlag, Required: true, ValueKind: InputValueInteger, Cardinality: InputCardinalitySingle, Description: "Use the exact generated wrapper binding contract version.", AllowedValues: []string{"1"}, Minimum: int64Pointer(1), Maximum: int64Pointer(1)},
+					{Name: "--bundle", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Pass the exact absolute clean bundle locator emitted by wrapper render.", AllowedValues: []string{}},
+					{Name: "--bundle-digest", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Pass the exact lowercase SHA-256 bundle digest emitted by wrapper render.", AllowedValues: []string{}},
+					{Name: "--runtime-path", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Pass the exact absolute clean Atsura executable path emitted by wrapper render.", AllowedValues: []string{}},
+					{Name: "--runtime-sha256", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Pass the exact lowercase SHA-256 Atsura runtime digest emitted by wrapper render.", AllowedValues: []string{}},
+					{Name: "--runtime-size", Source: InputSourceFlag, Required: true, ValueKind: InputValueInteger, Cardinality: InputCardinalitySingle, Description: "Pass the exact positive bounded Atsura executable size emitted by wrapper render.", AllowedValues: []string{}, Minimum: int64Pointer(1), Maximum: int64Pointer(sourceprocess.MaxExecutableBytes)},
+					{Name: "argv", Source: InputSourceArgument, Required: false, ValueKind: InputValueText, Cardinality: InputCardinalityRepeatable, Description: "Forward zero or more source argv elements byte-for-byte after --; spaces, empty values, Unicode, duplicates, and dash-prefixed values remain distinct.", AllowedValues: []string{}},
+				},
+				Output: freshWrapperPlanAuthoritativeOutput(),
+				Prerequisites: []string{
+					"Use only the complete closure emitted by wrapper render; the source command spelling is derived from the one strictly loaded bundle and is not another input.",
+					"Execution requires the exact bundle to remain adopted and the exact bundle, Atsura runtime, source identity, included surface, invocation, and maintained adapter runtime contract to remain current.",
+					"Success is exactly one plan-declared compact JSON object or array followed by LF, with no maintainer evidence envelope and empty stderr.",
+					"The source starts at most once without a shell; every post-start failure and final output-write failure is non-retryable and exposes no raw source stdout or stderr.",
+				},
+				Errors: wrapperRunErrors(),
+			},
+			handler: runWrapperRun,
 		},
 		CommandSpec{
 			Path:    "bundle trust",
@@ -2118,7 +2292,7 @@ func validateMutationBinding(name string, targetInputs []string, inputs map[stri
 func validateOutputAuthority(output CommandOutput, formats map[OutputFormat]struct{}) error {
 	switch output.Authority {
 	case OutputAuthorityCatalog:
-		if output.PlanSchema != nil || output.JSONShape != OutputJSONShapeUnknown || output.JSONRendering != OutputJSONRenderingUnknown {
+		if output.PlanSchema != nil || output.JSONShape != OutputJSONShapeUnknown || output.JSONRendering != OutputJSONRenderingUnknown || output.JSONFraming != OutputJSONFramingUnknown {
 			return fmt.Errorf("catalog-authoritative output must not declare dynamic output metadata")
 		}
 		_, supportsJSON := formats[OutputFormatJSON]
@@ -2160,6 +2334,9 @@ func validateOutputAuthority(output CommandOutput, formats map[OutputFormat]stru
 		}
 		if output.JSONRendering != OutputJSONRenderingCompact {
 			return fmt.Errorf("fresh-wrapper-plan-authoritative output JSON rendering must be %q", OutputJSONRenderingCompact)
+		}
+		if output.JSONFraming != OutputJSONFramingOneValueLF {
+			return fmt.Errorf("fresh-wrapper-plan-authoritative output JSON framing must be %q", OutputJSONFramingOneValueLF)
 		}
 		return nil
 	default:

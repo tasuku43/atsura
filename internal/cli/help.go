@@ -75,6 +75,7 @@ type agentIOContract struct {
 	ErrorStream                        string `json:"error_stream"`
 	SuccessStatusRequiresCompleteWrite bool   `json:"success_status_requires_complete_write"`
 	PartialOutputIsSuccess             bool   `json:"partial_output_is_success"`
+	DynamicJSONFramingField            string `json:"dynamic_json_framing_field"`
 	ExternalTextTrust                  string `json:"external_text_trust"`
 	ExternalTextProjection             string `json:"external_text_projection"`
 	OpaqueReferencePolicy              string `json:"opaque_reference_policy"`
@@ -438,6 +439,7 @@ func (c *CLI) renderAgentHelp(selector string, exact bool, commands []CommandSpe
 			SuccessStream: "stdout", ErrorStream: "stderr",
 			SuccessStatusRequiresCompleteWrite: true,
 			PartialOutputIsSuccess:             false,
+			DynamicJSONFramingField:            "commands[].contract.output.json_framing",
 			ExternalTextTrust:                  "untrusted_data",
 			ExternalTextProjection:             "visible_escape",
 			OpaqueReferencePolicy:              "validated_exact_bytes",

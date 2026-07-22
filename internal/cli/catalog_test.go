@@ -209,13 +209,19 @@ func TestDefaultCatalogSeparatesDeliveryFromCollectionCoverage(t *testing.T) {
 	}
 }
 
-func TestDefaultCatalogOutputsRemainCatalogAuthoritative(t *testing.T) {
+func TestDefaultCatalogOutputsDeclareOneExclusiveAuthority(t *testing.T) {
 	for _, command := range DefaultCatalog().Commands() {
 		output := command.Agent.Output
+		if command.Path == "wrapper run" {
+			if output.Authority != OutputAuthorityFreshWrapperPlan {
+				t.Errorf("%s output authority = %q, want %q", command.Path, output.Authority, OutputAuthorityFreshWrapperPlan)
+			}
+			continue
+		}
 		if output.Authority != OutputAuthorityCatalog {
 			t.Errorf("%s output authority = %q, want %q", command.Path, output.Authority, OutputAuthorityCatalog)
 		}
-		if output.PlanSchema != nil || output.JSONShape != OutputJSONShapeUnknown || output.JSONRendering != OutputJSONRenderingUnknown {
+		if output.PlanSchema != nil || output.JSONShape != OutputJSONShapeUnknown || output.JSONRendering != OutputJSONRenderingUnknown || output.JSONFraming != OutputJSONFramingUnknown {
 			t.Errorf("%s catalog-authoritative output has dynamic metadata: %+v", command.Path, output)
 		}
 	}
@@ -255,7 +261,7 @@ func TestCatalogAcceptsFreshWrapperPlanAuthoritativeOutput(t *testing.T) {
 		output.DefaultFormat != OutputFormatJSON || len(output.Fields) != 0 ||
 		output.Delivery != OutputDeliveryComplete || output.CollectionCoverage != CollectionCoverageNotApplicable ||
 		output.JSONEnvelope != "" || output.JSONSchemaVersion != 0 ||
-		output.JSONShape != OutputJSONShapeObjectOrArray || output.JSONRendering != OutputJSONRenderingCompact {
+		output.JSONShape != OutputJSONShapeObjectOrArray || output.JSONRendering != OutputJSONRenderingCompact || output.JSONFraming != OutputJSONFramingOneValueLF {
 		t.Fatalf("fresh wrapper output = %+v", output)
 	}
 	wantReference := &OutputSchemaReference{Command: "bundle preview", Field: "plan", ID: "wrapper-plan", Version: 3}
@@ -308,6 +314,7 @@ func TestCatalogRejectsInvalidFreshWrapperPlanOutputAuthority(t *testing.T) {
 		"invalid schema version": func(output *CommandOutput) { output.PlanSchema.Version = 0 },
 		"wrong JSON shape":       func(output *CommandOutput) { output.JSONShape = OutputJSONShapeUnknown },
 		"wrong JSON rendering":   func(output *CommandOutput) { output.JSONRendering = OutputJSONRenderingUnknown },
+		"wrong JSON framing":     func(output *CommandOutput) { output.JSONFraming = OutputJSONFramingUnknown },
 	}
 	for name, mutate := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -353,6 +360,7 @@ func TestCatalogRejectsDynamicMetadataOnCatalogAuthoritativeOutput(t *testing.T)
 		},
 		"JSON shape":     func(output *CommandOutput) { output.JSONShape = OutputJSONShapeObjectOrArray },
 		"JSON rendering": func(output *CommandOutput) { output.JSONRendering = OutputJSONRenderingCompact },
+		"JSON framing":   func(output *CommandOutput) { output.JSONFraming = OutputJSONFramingOneValueLF },
 	} {
 		t.Run(name, func(t *testing.T) {
 			spec := utilitySpec("test")

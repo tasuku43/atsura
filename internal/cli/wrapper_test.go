@@ -1,0 +1,389 @@
+package cli
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/tasuku43/atsura/internal/app/wrapperrender"
+	"github.com/tasuku43/atsura/internal/app/wrapperrun"
+	"github.com/tasuku43/atsura/internal/domain/fault"
+	"github.com/tasuku43/atsura/internal/domain/operation"
+	"github.com/tasuku43/atsura/internal/domain/tailoring"
+	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
+	"github.com/tasuku43/atsura/internal/domain/wrapperbinding"
+)
+
+type cliWrapperRenderStub struct {
+	result wrapperrender.Result
+	err    error
+	calls  int
+	path   string
+}
+
+func (s *cliWrapperRenderStub) Render(_ context.Context, _ operation.Intent, path string) (wrapperrender.Result, error) {
+	s.calls++
+	s.path = path
+	return s.result, s.err
+}
+
+type cliWrapperRunStub struct {
+	result  wrapperrun.Result
+	err     error
+	calls   int
+	binding wrapperbinding.RuntimeInvocation
+	args    []string
+}
+
+func (s *cliWrapperRunStub) Execute(_ context.Context, _ operation.Intent, binding wrapperbinding.RuntimeInvocation, args []string) (wrapperrun.Result, error) {
+	s.calls++
+	s.binding = binding
+	s.args = append([]string{}, args...)
+	return s.result, s.err
+}
+
+func testWrapperRenderResult(t *testing.T) wrapperrender.Result {
+	t.Helper()
+	source := []byte("gh() {\n  : fixed wrapper fixture\n}\n")
+	material, err := wrapperbinding.NewRenderedMaterial(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return wrapperrender.Result{
+		Binding: wrapperbinding.Binding{
+			ContractVersion: wrapperbinding.ContractVersion,
+			BundleLocator:   filepath.Join(t.TempDir(), "purpose bundle.json"),
+			BundleDigest:    strings.Repeat("a", 64),
+			CommandName:     "gh",
+			Runtime: wrapperbinding.RuntimeIdentity{
+				ResolvedPath: filepath.Join(t.TempDir(), "atr"),
+				SHA256:       strings.Repeat("b", 64),
+				Size:         4096,
+			},
+		},
+		Material:              material,
+		SourceProcessAttempts: 0,
+	}
+}
+
+func testWrapperRunResult(shape tailoring.ResultShape) wrapperrun.Result {
+	record := tailoring.NewJSONObject([]tailoring.JSONField{{
+		Name: "name", Value: tailoring.NewJSONString("line\n sep:\u2028 bidi:\u202e slash:\\"),
+	}})
+	return wrapperrun.Result{
+		BundleDigest:   strings.Repeat("a", 64),
+		PlanDigest:     strings.Repeat("c", 64),
+		MatchedCommand: []string{"pr", "list"},
+		WrapperKind:    tailoringbundle.WrapperTransform,
+		Render:         tailoring.RenderCompactJSON,
+		Output: tailoring.OutputResult{
+			Shape: shape, Fields: []string{"name"}, Records: []tailoring.JSONValue{record},
+		},
+		SourceExitCode:        0,
+		SourceProcessAttempts: 1,
+	}
+}
+
+func wrapperRunInvocation(binding wrapperbinding.RuntimeInvocation, argv ...string) []string {
+	args := []string{
+		"wrapper", "run",
+		"--contract-version=1",
+		"--bundle=" + binding.BundleLocator,
+		"--bundle-digest=" + binding.BundleDigest,
+		"--runtime-path=" + binding.Runtime.ResolvedPath,
+		"--runtime-sha256=" + binding.Runtime.SHA256,
+		"--runtime-size=4096",
+		"--",
+	}
+	return append(args, argv...)
+}
+
+func TestWrapperCatalogPublishesExactHostNeutralContracts(t *testing.T) {
+	catalog := DefaultCatalog()
+	render, found := catalog.Lookup("wrapper render")
+	if !found {
+		t.Fatal("wrapper render is missing")
+	}
+	run, found := catalog.Lookup("wrapper run")
+	if !found {
+		t.Fatal("wrapper run is missing")
+	}
+	if render.Role != RoleUtility || render.Effect != operation.EffectRead || run.Role != RoleUtility || run.Effect != operation.EffectExecute ||
+		render.Agent.CapabilityID != "tailoring.wrapper.materialize" || run.Agent.CapabilityID != render.Agent.CapabilityID {
+		t.Fatalf("render/run contracts = %+v / %+v", render, run)
+	}
+	if render.Args != "--bundle <absolute-path> [--format text|json]" || run.Args != "--contract-version=1 --bundle=<absolute-path> --bundle-digest=<sha256> --runtime-path=<absolute-path> --runtime-sha256=<sha256> --runtime-size=<bytes> -- [argv]" {
+		t.Fatalf("render/run grammar = %q / %q", render.Args, run.Args)
+	}
+	wantRenderFields := []string{"source", "source_sha256", "command", "contract", "bundle", "runtime", "source_process_attempts"}
+	gotRenderFields := make([]string, len(render.Agent.Output.Fields))
+	for index, field := range render.Agent.Output.Fields {
+		gotRenderFields[index] = field.Name
+	}
+	if !reflect.DeepEqual(gotRenderFields, wantRenderFields) || render.Agent.Output.JSONEnvelope != "wrapper" || render.Agent.Output.JSONSchemaVersion != 1 {
+		t.Fatalf("render output = %+v", render.Agent.Output)
+	}
+	if run.Agent.Output.Authority != OutputAuthorityFreshWrapperPlan || run.Agent.Output.JSONShape != OutputJSONShapeObjectOrArray ||
+		run.Agent.Output.JSONRendering != OutputJSONRenderingCompact || run.Agent.Output.JSONFraming != OutputJSONFramingOneValueLF ||
+		run.Agent.Output.PlanSchema == nil || *run.Agent.Output.PlanSchema != (OutputSchemaReference{Command: "bundle preview", Field: "plan", ID: "wrapper-plan", Version: 3}) {
+		t.Fatalf("run output = %+v", run.Agent.Output)
+	}
+	if len(run.Agent.Inputs) != 7 || run.Agent.Inputs[6].Name != "argv" || run.Agent.Inputs[6].Required || run.Agent.Inputs[6].Cardinality != InputCardinalityRepeatable {
+		t.Fatalf("run inputs = %+v", run.Agent.Inputs)
+	}
+	if run.Agent.Inputs[5].Minimum == nil || *run.Agent.Inputs[5].Minimum != 1 || run.Agent.Inputs[5].Maximum == nil {
+		t.Fatalf("runtime size input = %+v", run.Agent.Inputs[5])
+	}
+	if err := catalog.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWrapperCatalogDeclaresCompleteFacadeFaultInventories(t *testing.T) {
+	render, _ := DefaultCatalog().Lookup("wrapper render")
+	run, _ := DefaultCatalog().Lookup("wrapper run")
+	wantRender := []string{
+		"invalid_arguments", "bundle_file_not_found", "bundle_file_permission_denied", "unsafe_bundle_file", "bundle_file_too_large", "bundle_file_read_failed", "invalid_bundle_file", "legacy_tailoring_schema", "bundle_digest_mismatch",
+		"invalid_wrapper_binding", "wrapper_platform_not_supported", "invalid_bundle_trust_store", "bundle_not_adopted", "bundle_source_drift", "source_executable_not_found", "source_identity_unavailable", "unsafe_source_executable", "source_identity_changed", "invalid_source_identity", "wrapper_runtime_not_supported", "wrapper_runtime_unavailable", "wrapper_render_failed", "output_contract_exceeded", "output_encoding_failed", "internal_error", "output_write_failed", "operation_canceled",
+	}
+	assertCommandErrorCodes(t, render.Agent.Errors, wantRender)
+
+	wantRun := make([]string, 0, len(bundleExecuteErrors())+4)
+	for _, declared := range bundleExecuteErrors() {
+		wantRun = append(wantRun, declared.Code)
+	}
+	wantRun = append(wantRun, "invalid_wrapper_binding", "wrapper_runtime_unavailable", "wrapper_runtime_drift", "bundle_binding_mismatch")
+	assertCommandErrorCodes(t, run.Agent.Errors, wantRun)
+}
+
+func assertCommandErrorCodes(t *testing.T, declared []CommandError, want []string) {
+	t.Helper()
+	gotSet := make(map[string]struct{}, len(declared))
+	for _, current := range declared {
+		gotSet[current.Code] = struct{}{}
+	}
+	wantSet := make(map[string]struct{}, len(want))
+	for _, current := range want {
+		wantSet[current] = struct{}{}
+	}
+	if !reflect.DeepEqual(gotSet, wantSet) || len(declared) != len(wantSet) {
+		t.Fatalf("fault codes=%v want=%v declared=%d", gotSet, wantSet, len(declared))
+	}
+}
+
+func TestWrapperScopedAgentHelpPinsDynamicFramingAndHasNoHostKeys(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	command := New(strings.NewReader(""), &stdout, &stderr)
+	if code := command.RunContext(context.Background(), []string{"help", "wrapper", "run", "--format=agent"}); code != ExitOK {
+		t.Fatalf("code=%d stderr=%q", code, stderr.String())
+	}
+	var document map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &document); err != nil {
+		t.Fatal(err)
+	}
+	encoded := stdout.String()
+	for _, required := range []string{`"authority":"fresh_wrapper_plan"`, `"json_framing":"one_value_lf"`, `"command":"bundle preview"`, `"id":"wrapper-plan"`, `"version":3`} {
+		if !strings.Contains(encoded, required) {
+			t.Errorf("scoped help lacks %s: %s", required, encoded)
+		}
+	}
+	forbidden := map[string]struct{}{"host": {}, "hook": {}, "permission": {}, "settings": {}, "session": {}, "transcript": {}, "model": {}, "claude": {}, "codex": {}}
+	var walk func(any)
+	walk = func(value any) {
+		switch current := value.(type) {
+		case map[string]any:
+			for key, nested := range current {
+				if _, exists := forbidden[strings.ToLower(key)]; exists {
+					t.Errorf("host-specific key %q in scoped help", key)
+				}
+				walk(nested)
+			}
+		case []any:
+			for _, nested := range current {
+				walk(nested)
+			}
+		}
+	}
+	walk(document)
+}
+
+func TestWrapperRenderRawAndJSONOutputsDescribeIdenticalMaterial(t *testing.T) {
+	result := testWrapperRenderResult(t)
+	rawStub := &cliWrapperRenderStub{result: result}
+	var rawOut, rawErr bytes.Buffer
+	raw := New(strings.NewReader(""), &rawOut, &rawErr)
+	raw.wrapperRenders = rawStub
+	if code := raw.RunContext(context.Background(), []string{"wrapper", "render", "--bundle", result.Binding.BundleLocator}); code != ExitOK {
+		t.Fatalf("raw code=%d stderr=%q", code, rawErr.String())
+	}
+	if !bytes.Equal(rawOut.Bytes(), result.Material.Source) || rawErr.Len() != 0 || rawStub.path != result.Binding.BundleLocator {
+		t.Fatalf("raw output=%q stderr=%q path=%q", rawOut.String(), rawErr.String(), rawStub.path)
+	}
+
+	jsonStub := &cliWrapperRenderStub{result: result}
+	var jsonOut, jsonErr bytes.Buffer
+	review := New(strings.NewReader(""), &jsonOut, &jsonErr)
+	review.wrapperRenders = jsonStub
+	if code := review.RunContext(context.Background(), []string{"wrapper", "render", "--bundle", result.Binding.BundleLocator, "--format=json"}); code != ExitOK {
+		t.Fatalf("JSON code=%d stderr=%q", code, jsonErr.String())
+	}
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(jsonOut.Bytes(), &top); err != nil {
+		t.Fatal(err)
+	}
+	assertJSONKeys(t, top, []string{"schema_version", "wrapper"})
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(top["wrapper"], &payload); err != nil {
+		t.Fatal(err)
+	}
+	assertJSONKeys(t, payload, []string{"bundle", "command", "contract", "runtime", "source", "source_process_attempts", "source_sha256"})
+	var contract, bundle, runtime map[string]json.RawMessage
+	if err := json.Unmarshal(payload["contract"], &contract); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(payload["bundle"], &bundle); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(payload["runtime"], &runtime); err != nil {
+		t.Fatal(err)
+	}
+	assertJSONKeys(t, contract, []string{"shell", "version"})
+	assertJSONKeys(t, bundle, []string{"digest", "locator"})
+	assertJSONKeys(t, runtime, []string{"resolved_path", "sha256", "size"})
+	var source, digest, commandName string
+	var attempts int
+	if err := json.Unmarshal(payload["source"], &source); err != nil {
+		t.Fatal(err)
+	}
+	_ = json.Unmarshal(payload["source_sha256"], &digest)
+	_ = json.Unmarshal(payload["command"], &commandName)
+	_ = json.Unmarshal(payload["source_process_attempts"], &attempts)
+	if source != string(rawOut.Bytes()) || digest != result.Material.SHA256 || commandName != "gh" || attempts != 0 || jsonErr.Len() != 0 {
+		t.Fatalf("review source/digest/command/attempts = %q %q %q %d", source, digest, commandName, attempts)
+	}
+}
+
+func TestWrapperRunAcceptsZeroArgvAndEmitsOneProjectedJSONValueLF(t *testing.T) {
+	render := testWrapperRenderResult(t)
+	binding := render.Binding.RuntimeInvocation()
+	stub := &cliWrapperRunStub{result: testWrapperRunResult(tailoring.ResultShapeObject)}
+	var stdout, stderr bytes.Buffer
+	command := New(strings.NewReader(""), &stdout, &stderr)
+	command.wrapperRuns = stub
+	if code := command.RunContext(context.Background(), wrapperRunInvocation(binding)); code != ExitOK {
+		t.Fatalf("code=%d stderr=%q", code, stderr.String())
+	}
+	want, err := json.Marshal(struct {
+		Name string `json:"name"`
+	}{Name: `line\n sep:\u2028 bidi:\u202E slash:\\`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want = append(want, '\n')
+	if !bytes.Equal(stdout.Bytes(), want) || stderr.Len() != 0 || stub.calls != 1 || len(stub.args) != 0 || stub.binding != binding {
+		t.Fatalf("stdout=%q want=%q stderr=%q calls=%d args=%q binding=%+v", stdout.String(), want, stderr.String(), stub.calls, stub.args, stub.binding)
+	}
+	if bytes.Count(stdout.Bytes(), []byte{'\n'}) != 1 || !json.Valid(bytes.TrimSuffix(stdout.Bytes(), []byte{'\n'})) {
+		t.Fatalf("wrapper framing=%q", stdout.Bytes())
+	}
+}
+
+func TestWrapperRunRequiresExplicitForwardingBoundary(t *testing.T) {
+	binding := testWrapperRenderResult(t).Binding.RuntimeInvocation()
+	stub := &cliWrapperRunStub{result: testWrapperRunResult(tailoring.ResultShapeObject)}
+	var stdout, stderr bytes.Buffer
+	command := New(strings.NewReader(""), &stdout, &stderr)
+	command.wrapperRuns = stub
+	args := wrapperRunInvocation(binding)
+	args = append(args[:len(args)-1], "pr", "list")
+	if code := command.RunContext(context.Background(), args); code != ExitUsage || stdout.Len() != 0 || stub.calls != 0 {
+		t.Fatalf("code=%d stdout=%q stderr=%q calls=%d", code, stdout.String(), stderr.String(), stub.calls)
+	}
+	if !strings.Contains(stderr.String(), "requires the explicit -- boundary") {
+		t.Fatalf("stderr=%q", stderr.String())
+	}
+}
+
+func TestWrapperRunPreservesArrayShapeAndExactArgv(t *testing.T) {
+	binding := testWrapperRenderResult(t).Binding.RuntimeInvocation()
+	stub := &cliWrapperRunStub{result: testWrapperRunResult(tailoring.ResultShapeArray)}
+	var stdout, stderr bytes.Buffer
+	command := New(strings.NewReader(""), &stdout, &stderr)
+	command.wrapperRuns = stub
+	argv := []string{"pr", "list", "", "two words", "--limit=1", "雪", "$(literal)"}
+	if code := command.RunContext(context.Background(), wrapperRunInvocation(binding, argv...)); code != ExitOK {
+		t.Fatalf("code=%d stderr=%q", code, stderr.String())
+	}
+	if !reflect.DeepEqual(stub.args, argv) || !strings.HasPrefix(stdout.String(), "[{\"name\":") || !strings.HasSuffix(stdout.String(), "}]\n") || strings.Contains(stdout.String(), "schema_version") || strings.Contains(stdout.String(), "execution") {
+		t.Fatalf("args=%q stdout=%q", stub.args, stdout.String())
+	}
+}
+
+func TestWrapperRunFailureUsesStructuredStderrAndNoStdout(t *testing.T) {
+	binding := testWrapperRenderResult(t).Binding.RuntimeInvocation()
+	stub := &cliWrapperRunStub{err: fault.New(
+		fault.KindRejected,
+		"wrapper_runtime_drift",
+		"The current Atsura runtime does not match the exact generated wrapper binding.",
+		false,
+		fault.NextAction{Command: "wrapper render", Reason: "Render a new wrapper binding from the exact current bundle and Atsura runtime."},
+	)}
+	var stdout, stderr bytes.Buffer
+	command := New(strings.NewReader(""), &stdout, &stderr)
+	command.wrapperRuns = stub
+	args := append([]string{"--error-format=json"}, wrapperRunInvocation(binding, "pr", "list")...)
+	if code := command.RunContext(context.Background(), args); code != ExitRejected || stdout.Len() != 0 {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	var document map[string]json.RawMessage
+	if err := json.Unmarshal(stderr.Bytes(), &document); err != nil {
+		t.Fatal(err)
+	}
+	assertJSONKeys(t, document, []string{"error", "schema_version"})
+	var public struct {
+		Code      string `json:"code"`
+		Retryable bool   `json:"retryable"`
+	}
+	if err := json.Unmarshal(document["error"], &public); err != nil {
+		t.Fatal(err)
+	}
+	if public.Code != "wrapper_runtime_drift" || public.Retryable {
+		t.Fatalf("structured fault=%+v", public)
+	}
+}
+
+func TestWrapperRunFinalWriteFailureIsNonRetryable(t *testing.T) {
+	binding := testWrapperRenderResult(t).Binding.RuntimeInvocation()
+	stub := &cliWrapperRunStub{result: testWrapperRunResult(tailoring.ResultShapeObject)}
+	var stderr bytes.Buffer
+	command := New(strings.NewReader(""), shortWriter{}, &stderr)
+	command.wrapperRuns = stub
+	args := append([]string{"--error-format=json"}, wrapperRunInvocation(binding, "pr", "list")...)
+	if code := command.RunContext(context.Background(), args); code != ExitInternal || stub.calls != 1 {
+		t.Fatalf("code=%d calls=%d stderr=%q", code, stub.calls, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), `"code":"execute_output_write_failed"`) || !strings.Contains(stderr.String(), `"retryable":false`) {
+		t.Fatalf("stderr=%q", stderr.String())
+	}
+}
+
+func TestEncodeWrapperPlanResultRejectsInvalidSuccessFraming(t *testing.T) {
+	result := testWrapperRunResult(tailoring.ResultShapeObject)
+	for name, mutate := range map[string]func(*wrapperrun.Result){
+		"wrong render":   func(value *wrapperrun.Result) { value.Render = "pretty_json" },
+		"zero attempts":  func(value *wrapperrun.Result) { value.SourceProcessAttempts = 0 },
+		"invalid output": func(value *wrapperrun.Result) { value.Output.Records = nil },
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := result
+			mutate(&candidate)
+			if encoded, err := encodeWrapperPlanResult(candidate.Output, candidate.Render, candidate.SourceProcessAttempts); err == nil || encoded != nil {
+				t.Fatalf("encoded=%q err=%v", encoded, err)
+			}
+		})
+	}
+}

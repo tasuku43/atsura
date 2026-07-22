@@ -199,6 +199,7 @@ func TestScopedAgentHelpIsACompleteProjectionOfEveryCatalogCommand(t *testing.T)
 			}
 			if document.IOContract.SuccessStream != "stdout" || document.IOContract.ErrorStream != "stderr" ||
 				!document.IOContract.SuccessStatusRequiresCompleteWrite || document.IOContract.PartialOutputIsSuccess ||
+				document.IOContract.DynamicJSONFramingField != "commands[].contract.output.json_framing" ||
 				document.IOContract.ExternalTextTrust != "untrusted_data" ||
 				document.IOContract.ExternalTextProjection != "visible_escape" ||
 				document.IOContract.OpaqueReferencePolicy != "validated_exact_bytes" {
@@ -216,7 +217,7 @@ func TestScopedAgentHelpIsACompleteProjectionOfEveryCatalogCommand(t *testing.T)
 				t.Errorf("agent command = %+v, want catalog %+v", got, spec)
 			}
 			if got.Contract.Output.DefaultFormat == OutputFormatUnknown ||
-				(containsOutputFormat(got.Contract.Output.Formats, OutputFormatJSON) && got.Contract.Output.JSONSchemaVersion <= 0) {
+				(got.Contract.Output.Authority == OutputAuthorityCatalog && containsOutputFormat(got.Contract.Output.Formats, OutputFormatJSON) && got.Contract.Output.JSONSchemaVersion <= 0) {
 				t.Errorf("agent command %q has incomplete output metadata: %+v", got.Path, got.Contract.Output)
 			}
 		})
@@ -250,12 +251,13 @@ func TestScopedAgentHelpPublishesFreshWrapperPlanOutputAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertJSONKeys(t, output, []string{
-		"authority", "collection_coverage", "default_format", "delivery", "fields", "formats", "json_rendering", "json_shape", "plan_schema",
+		"authority", "collection_coverage", "default_format", "delivery", "fields", "formats", "json_framing", "json_rendering", "json_shape", "plan_schema",
 	})
 	var authority OutputAuthority
 	var reference OutputSchemaReference
 	var shape OutputJSONShape
 	var rendering OutputJSONRendering
+	var framing OutputJSONFraming
 	if err := json.Unmarshal(output["authority"], &authority); err != nil {
 		t.Fatal(err)
 	}
@@ -268,10 +270,13 @@ func TestScopedAgentHelpPublishesFreshWrapperPlanOutputAuthority(t *testing.T) {
 	if err := json.Unmarshal(output["json_rendering"], &rendering); err != nil {
 		t.Fatal(err)
 	}
+	if err := json.Unmarshal(output["json_framing"], &framing); err != nil {
+		t.Fatal(err)
+	}
 	if authority != OutputAuthorityFreshWrapperPlan ||
 		reference != (OutputSchemaReference{Command: "bundle preview", Field: "plan", ID: "wrapper-plan", Version: 3}) ||
-		shape != OutputJSONShapeObjectOrArray || rendering != OutputJSONRenderingCompact {
-		t.Fatalf("dynamic output authority = %q %+v %q %q", authority, reference, shape, rendering)
+		shape != OutputJSONShapeObjectOrArray || rendering != OutputJSONRenderingCompact || framing != OutputJSONFramingOneValueLF {
+		t.Fatalf("dynamic output authority = %q %+v %q %q %q", authority, reference, shape, rendering, framing)
 	}
 }
 
@@ -329,7 +334,7 @@ func TestAgentHelpRootAndScopedShapeSnapshots(t *testing.T) {
 	if err := json.Unmarshal(scoped["io_contract"], &ioContract); err != nil {
 		t.Fatal(err)
 	}
-	assertJSONKeys(t, ioContract, []string{"error_stream", "external_text_projection", "external_text_trust", "opaque_reference_policy", "partial_output_is_success", "success_status_requires_complete_write", "success_stream"})
+	assertJSONKeys(t, ioContract, []string{"dynamic_json_framing_field", "error_stream", "external_text_projection", "external_text_trust", "opaque_reference_policy", "partial_output_is_success", "success_status_requires_complete_write", "success_stream"})
 	var scopedCommands []map[string]json.RawMessage
 	if err := json.Unmarshal(scoped["commands"], &scopedCommands); err != nil {
 		t.Fatal(err)

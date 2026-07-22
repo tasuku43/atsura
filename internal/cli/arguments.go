@@ -10,9 +10,10 @@ import (
 // from the catalog default. Callers must not reconstruct that distinction from
 // a zero value.
 type ParsedInputs struct {
-	values   map[string][]string
-	provided map[string]bool
-	defaults map[string]bool
+	values             map[string][]string
+	provided           map[string]bool
+	defaults           map[string]bool
+	positionalOnlyUsed bool
 }
 
 // Values returns a detached copy of every effective value for name.
@@ -39,6 +40,13 @@ func (p ParsedInputs) Provided(name string) bool {
 // Defaulted reports whether the effective value came from DefaultValue.
 func (p ParsedInputs) Defaulted(name string) bool {
 	return p.defaults[name]
+}
+
+// PositionalOnlyMarkerUsed reports whether argv contained the exact `--`
+// boundary. Commands whose public contract requires an explicit forwarding
+// boundary use this fact instead of reconstructing it from parsed values.
+func (p ParsedInputs) PositionalOnlyMarkerUsed() bool {
+	return p.positionalOnlyUsed
 }
 
 // Integer returns the validated base-10 integer value when present.
@@ -93,6 +101,7 @@ func parseCommandInputs(command CommandSpec, args []string) (ParsedInputs, error
 		argument := args[index]
 		if !positionalOnly && argument == "--" {
 			positionalOnly = true
+			parsed.positionalOnlyUsed = true
 			continue
 		}
 		if !positionalOnly && strings.HasPrefix(argument, "--") {
