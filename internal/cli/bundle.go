@@ -198,15 +198,36 @@ func runBundleExecute(ctx context.Context, c *CLI, _ CommandSpec, intent operati
 	if err != nil {
 		return c.fail(ctx, err)
 	}
-	records := make([]tailoring.JSONValue, len(result.Output.Records))
-	for index := range result.Output.Records {
-		records[index] = projectExternalJSON(result.Output.Records[index])
+	if validationErr := validateTransformedJSONEnvelope(result); validationErr != nil {
+		return c.fail(ctx, fault.Wrap(
+			fault.KindContract,
+			"output_contract_exceeded",
+			"Bundle execution returned a result outside its transformed-JSON contract.",
+			false,
+			validationErr,
+			fault.NextAction{Command: "bundle preview", Reason: "Inspect the fresh transformed-JSON plan; the source was not retried."},
+		))
+	}
+	transformed := result.TransformedJSON
+	if validationErr := transformed.Output.Validate(); validationErr != nil {
+		return c.fail(ctx, fault.Wrap(
+			fault.KindContract,
+			"output_encoding_failed",
+			"The canonical transformed-JSON output could not be encoded.",
+			false,
+			validationErr,
+			fault.NextAction{Command: "bundle preview", Reason: "Repair deterministic schema-2 execution JSON; the source was not retried."},
+		))
+	}
+	records := make([]tailoring.JSONValue, len(transformed.Output.Records))
+	for index := range transformed.Output.Records {
+		records[index] = projectExternalJSON(transformed.Output.Records[index])
 	}
 	document := bundleExecutionDocument{SchemaVersion: 2, Execution: bundleExecutionPayload{
 		BundleDigest: result.BundleDigest, PlanDigest: result.PlanDigest,
 		MatchedCommand: append([]string{}, result.MatchedCommand...), WrapperKind: result.WrapperKind,
-		Output: bundleExecutionOutput{Render: result.Render, Shape: result.Output.Shape, Fields: append([]string{}, result.Output.Fields...), Records: records},
-		Source: bundleExecutionSource{ExitCode: result.SourceExitCode}, SourceProcessAttempts: result.SourceProcessAttempts,
+		Output: bundleExecutionOutput{Render: transformed.Render, Shape: transformed.Output.Shape, Fields: append([]string{}, transformed.Output.Fields...), Records: records},
+		Source: bundleExecutionSource{ExitCode: transformed.ExitCode}, SourceProcessAttempts: result.SourceProcessAttempts,
 	}}
 	return c.emitJSONDocument(ctx, document, "bundle execute")
 }

@@ -221,7 +221,7 @@ func TestDefaultCatalogOutputsDeclareOneExclusiveAuthority(t *testing.T) {
 		if output.Authority != OutputAuthorityCatalog {
 			t.Errorf("%s output authority = %q, want %q", command.Path, output.Authority, OutputAuthorityCatalog)
 		}
-		if output.PlanSchema != nil || output.JSONShape != OutputJSONShapeUnknown || output.JSONRendering != OutputJSONRenderingUnknown || output.JSONFraming != OutputJSONFramingUnknown {
+		if output.PlanSchema != nil || output.JSONShape != OutputJSONShapeUnknown || output.JSONRendering != OutputJSONRenderingUnknown || output.JSONFraming != OutputJSONFramingUnknown || len(output.PlanResultModes) != 0 {
 			t.Errorf("%s catalog-authoritative output has dynamic metadata: %+v", command.Path, output)
 		}
 	}
@@ -257,14 +257,15 @@ func TestCatalogAcceptsFreshWrapperPlanAuthoritativeOutput(t *testing.T) {
 	}
 	output := wrapper.Agent.Output
 	if output.Authority != OutputAuthorityFreshWrapperPlan ||
-		!reflect.DeepEqual(output.Formats, []OutputFormat{OutputFormatJSON}) ||
-		output.DefaultFormat != OutputFormatJSON || len(output.Fields) != 0 ||
+		!reflect.DeepEqual(output.Formats, []OutputFormat{OutputFormatPlanResult}) ||
+		output.DefaultFormat != OutputFormatPlanResult || len(output.Fields) != 0 ||
 		output.Delivery != OutputDeliveryComplete || output.CollectionCoverage != CollectionCoverageNotApplicable ||
 		output.JSONEnvelope != "" || output.JSONSchemaVersion != 0 ||
-		output.JSONShape != OutputJSONShapeObjectOrArray || output.JSONRendering != OutputJSONRenderingCompact || output.JSONFraming != OutputJSONFramingOneValueLF {
+		output.JSONShape != OutputJSONShapeUnknown || output.JSONRendering != OutputJSONRenderingUnknown || output.JSONFraming != OutputJSONFramingUnknown ||
+		!reflect.DeepEqual(output.PlanResultModes, freshPlanResultModes()) {
 		t.Fatalf("fresh wrapper output = %+v", output)
 	}
-	wantReference := &OutputSchemaReference{Command: "bundle preview", Field: "plan", ID: "wrapper-plan", Version: 3}
+	wantReference := &OutputSchemaReference{Command: "bundle preview", Field: "plan", ID: "wrapper-plan", Version: 4}
 	if !reflect.DeepEqual(output.PlanSchema, wantReference) {
 		t.Fatalf("plan schema = %+v, want %+v", output.PlanSchema, wantReference)
 	}
@@ -289,16 +290,21 @@ func TestCatalogAcceptsFreshWrapperPlanAuthoritativeOutput(t *testing.T) {
 
 	output.PlanSchema.Version = 99
 	fresh, found := catalog.Lookup("wrapper run")
-	if !found || fresh.Agent.Output.PlanSchema.Version != 3 {
+	if !found || fresh.Agent.Output.PlanSchema.Version != 4 {
 		t.Fatal("catalog lookup returned an aliased output plan schema")
+	}
+	output.PlanResultModes[0].Stdout = PlanResultStreamEmpty
+	fresh, found = catalog.Lookup("wrapper run")
+	if !found || !reflect.DeepEqual(fresh.Agent.Output.PlanResultModes, freshPlanResultModes()) {
+		t.Fatal("catalog lookup returned aliased plan result modes")
 	}
 }
 
 func TestCatalogRejectsInvalidFreshWrapperPlanOutputAuthority(t *testing.T) {
 	tests := map[string]func(*CommandOutput){
 		"unknown authority": func(output *CommandOutput) { output.Authority = OutputAuthorityUnknown },
-		"extra format":      func(output *CommandOutput) { output.Formats = []OutputFormat{OutputFormatJSON, OutputFormatText} },
-		"non JSON default":  func(output *CommandOutput) { output.DefaultFormat = OutputFormatText },
+		"extra format":      func(output *CommandOutput) { output.Formats = []OutputFormat{OutputFormatPlanResult, OutputFormatJSON} },
+		"non plan default":  func(output *CommandOutput) { output.DefaultFormat = OutputFormatJSON },
 		"unknown fields":    func(output *CommandOutput) { output.Fields = nil },
 		"static field": func(output *CommandOutput) {
 			output.Fields = []OutputField{{Name: "result", Type: OutputFieldTypeObject, Description: "Static result."}}
@@ -312,9 +318,14 @@ func TestCatalogRejectsInvalidFreshWrapperPlanOutputAuthority(t *testing.T) {
 		"wrong schema field":     func(output *CommandOutput) { output.PlanSchema.Field = "preview" },
 		"wrong schema ID":        func(output *CommandOutput) { output.PlanSchema.ID = "other-plan" },
 		"invalid schema version": func(output *CommandOutput) { output.PlanSchema.Version = 0 },
-		"wrong JSON shape":       func(output *CommandOutput) { output.JSONShape = OutputJSONShapeUnknown },
-		"wrong JSON rendering":   func(output *CommandOutput) { output.JSONRendering = OutputJSONRenderingUnknown },
-		"wrong JSON framing":     func(output *CommandOutput) { output.JSONFraming = OutputJSONFramingUnknown },
+		"static JSON shape":      func(output *CommandOutput) { output.JSONShape = OutputJSONShapeObjectOrArray },
+		"static JSON rendering":  func(output *CommandOutput) { output.JSONRendering = OutputJSONRenderingCompact },
+		"static JSON framing":    func(output *CommandOutput) { output.JSONFraming = OutputJSONFramingOneValueLF },
+		"missing result modes":   func(output *CommandOutput) { output.PlanResultModes = nil },
+		"reordered result modes": func(output *CommandOutput) {
+			output.PlanResultModes[0], output.PlanResultModes[1] = output.PlanResultModes[1], output.PlanResultModes[0]
+		},
+		"changed result mode": func(output *CommandOutput) { output.PlanResultModes[1].Projection = PlanResultProjectionVisibleJSON },
 	}
 	for name, mutate := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -358,9 +369,10 @@ func TestCatalogRejectsDynamicMetadataOnCatalogAuthoritativeOutput(t *testing.T)
 		"authority schema": func(output *CommandOutput) {
 			output.PlanSchema = &OutputSchemaReference{Command: "bundle preview", Field: "plan", ID: "wrapper-plan", Version: 3}
 		},
-		"JSON shape":     func(output *CommandOutput) { output.JSONShape = OutputJSONShapeObjectOrArray },
-		"JSON rendering": func(output *CommandOutput) { output.JSONRendering = OutputJSONRenderingCompact },
-		"JSON framing":   func(output *CommandOutput) { output.JSONFraming = OutputJSONFramingOneValueLF },
+		"JSON shape":        func(output *CommandOutput) { output.JSONShape = OutputJSONShapeObjectOrArray },
+		"JSON rendering":    func(output *CommandOutput) { output.JSONRendering = OutputJSONRenderingCompact },
+		"JSON framing":      func(output *CommandOutput) { output.JSONFraming = OutputJSONFramingOneValueLF },
+		"plan result modes": func(output *CommandOutput) { output.PlanResultModes = freshPlanResultModes() },
 	} {
 		t.Run(name, func(t *testing.T) {
 			spec := utilitySpec("test")
@@ -709,7 +721,7 @@ func TestBundlePreviewCatalogDeclaresPurePlanOutcome(t *testing.T) {
 		}
 	}
 	planSchema := spec.Agent.Output.Fields[1].Schema
-	if planSchema == nil || planSchema.ID != "wrapper-plan" || planSchema.Version != 3 || len(planSchema.Fields) < 63 {
+	if planSchema == nil || planSchema.ID != "wrapper-plan" || planSchema.Version != 4 || len(planSchema.Fields) < 64 {
 		t.Fatalf("plan schema=%+v", planSchema)
 	}
 	paths := make(map[string]OutputSchemaField, len(planSchema.Fields))

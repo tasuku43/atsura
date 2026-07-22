@@ -346,7 +346,7 @@ func TestBundlePreviewReturnsCompleteSchemaTwoPlanWithoutSourceAttempt(t *testin
 		t.Fatal(err)
 	}
 	assertJSONKeys(t, planObject, []string{
-		"bundle_digest", "catalog_digest", "matched_command", "mode", "options", "original_argv", "reason",
+		"bundle_digest", "catalog_digest", "matched_command", "mode", "options", "original_argv", "reason", "result_mode",
 		"schema_version", "source", "specification_digest", "specification_entry", "stages", "surface_origin",
 		"transformed_argv", "wrapper_kind",
 	})
@@ -370,7 +370,7 @@ func TestBundlePreviewReturnsCompleteSchemaTwoPlanWithoutSourceAttempt(t *testin
 		t.Fatal(err)
 	}
 	preview := document.Preview
-	if document.SchemaVersion != 2 || len(preview.PlanDigest) != 64 || preview.SourceProcessAttempts != 0 || preview.Plan.SchemaVersion != 3 {
+	if document.SchemaVersion != 2 || len(preview.PlanDigest) != 64 || preview.SourceProcessAttempts != 0 || preview.Plan.SchemaVersion != tailoringplan.SchemaVersion {
 		t.Fatalf("preview=%+v", preview)
 	}
 	if preview.Plan.Source.ResolvedPath == "" || preview.Plan.WrapperKind != "transform" || preview.Plan.SpecificationEntry == nil || preview.Plan.Stages.Invoke.MaxAttempts != 1 {

@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/tasuku43/atsura/internal/app/bundleexecute"
+	"github.com/tasuku43/atsura/internal/app/planapply"
 	"github.com/tasuku43/atsura/internal/app/planpreview"
 	"github.com/tasuku43/atsura/internal/domain/bundletrust"
 	"github.com/tasuku43/atsura/internal/domain/fault"
@@ -116,12 +117,16 @@ func (s *corruptingRecoveryExecutionService) Execute(ctx context.Context, intent
 	if err != nil {
 		return result, err
 	}
-	result.Output = tailoring.OutputResult{
-		Shape:  tailoring.ResultShapeArray,
-		Fields: []string{"id"},
-		Records: []tailoring.JSONValue{tailoring.NewJSONObject([]tailoring.JSONField{{
-			Name: "id", Value: tailoring.NewJSONNumber("NaN"),
-		}})},
+	result.TransformedJSON = &planapply.TransformedJSONResult{
+		Render: tailoring.RenderCompactJSON,
+		Output: tailoring.OutputResult{
+			Shape:  tailoring.ResultShapeArray,
+			Fields: []string{"id"},
+			Records: []tailoring.JSONValue{tailoring.NewJSONObject([]tailoring.JSONField{{
+				Name: "id", Value: tailoring.NewJSONNumber("NaN"),
+			}})},
+		},
+		ExitCode: 0,
 	}
 	return result, nil
 }

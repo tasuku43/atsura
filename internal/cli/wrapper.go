@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/tasuku43/atsura/internal/app/planapply"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
 	"github.com/tasuku43/atsura/internal/domain/tailoring"
+	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
+	"github.com/tasuku43/atsura/internal/domain/tailoringplan"
 	"github.com/tasuku43/atsura/internal/domain/wrapperbinding"
 )
 
@@ -84,7 +87,7 @@ func runWrapperRender(ctx context.Context, c *CLI, _ CommandSpec, intent operati
 	return c.emitJSONDocument(ctx, document, "wrapper render")
 }
 
-func runWrapperRun(ctx context.Context, c *CLI, _ CommandSpec, intent operation.Intent, inputs ParsedInputs) int {
+func runWrapperRun(ctx context.Context, c *CLI, spec CommandSpec, intent operation.Intent, inputs ParsedInputs) int {
 	if !inputs.PositionalOnlyMarkerUsed() {
 		return c.failUsage(
 			ctx,
@@ -109,17 +112,27 @@ func runWrapperRun(ctx context.Context, c *CLI, _ CommandSpec, intent operation.
 	if err != nil {
 		return c.fail(ctx, err)
 	}
-	if err := validateWrapperPlanResult(result.Output, result.Render, result.SourceProcessAttempts); err != nil {
-		return c.fail(ctx, fault.Wrap(
+	switch result.ResultMode {
+	case tailoringplan.ResultModeSourceStreamPassthrough:
+		if err := result.Validate(); err != nil {
+			return c.fail(ctx, invalidWrapperPlanResult(err))
+		}
+		return c.emitSourceStreamResult(ctx, spec, result.SourceStream.Stdout, result.SourceStream.Stderr, result.SourceStream.ExitCode)
+	case tailoringplan.ResultModeTransformedJSON:
+		if err := validateTransformedJSONEnvelope(result); err != nil {
+			return c.fail(ctx, invalidWrapperPlanResult(err))
+		}
+	default:
+		return c.fail(ctx, fault.New(
 			fault.KindContract,
 			"output_contract_exceeded",
-			"The fresh wrapper plan returned a result outside its declared compact JSON contract.",
+			"The fresh wrapper plan returned an unknown result mode.",
 			false,
-			err,
-			fault.NextAction{Command: "bundle preview", Reason: "Reduce the bounded transformed result; the source was not retried."},
+			fault.NextAction{Command: "bundle preview", Reason: "Inspect the fresh wrapper plan; the source was not retried."},
 		))
 	}
-	encoded, err := encodeWrapperPlanResult(result.Output, result.Render, result.SourceProcessAttempts)
+
+	encoded, err := encodeWrapperPlanResult(result.TransformedJSON.Output, result.TransformedJSON.Render, result.SourceProcessAttempts)
 	if err != nil {
 		return c.fail(ctx, fault.Wrap(
 			fault.KindContract,
@@ -140,6 +153,28 @@ func runWrapperRun(ctx context.Context, c *CLI, _ CommandSpec, intent operation.
 		))
 	}
 	return c.emitResult(ctx, append(encoded, '\n'))
+}
+
+func invalidWrapperPlanResult(err error) error {
+	return fault.Wrap(
+		fault.KindContract,
+		"output_contract_exceeded",
+		"The fresh wrapper plan returned a result outside its declared result-mode contract.",
+		false,
+		err,
+		fault.NextAction{Command: "bundle preview", Reason: "Inspect the bounded fresh-plan result; the source was not retried."},
+	)
+}
+
+func validateTransformedJSONEnvelope(result planapply.Result) error {
+	if result.SourceProcessAttempts != 1 || result.ResultMode != tailoringplan.ResultModeTransformedJSON ||
+		result.TransformedJSON == nil || result.SourceStream != nil || result.WrapperKind != tailoringbundle.WrapperTransform {
+		return fmt.Errorf("transformed JSON result envelope is incomplete or contradictory")
+	}
+	if result.TransformedJSON.ExitCode != 0 || result.TransformedJSON.Render != tailoring.RenderCompactJSON {
+		return fmt.Errorf("transformed JSON result framing is invalid")
+	}
+	return nil
 }
 
 func encodeWrapperPlanResult(output tailoring.OutputResult, render tailoring.RenderFormat, attempts int) ([]byte, error) {

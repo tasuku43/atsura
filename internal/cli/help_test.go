@@ -150,7 +150,7 @@ func TestRootAgentHelpIsACompactProjectionOfTheCatalog(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &document); err != nil {
 		t.Fatalf("agent help is not JSON: %v\n%s", err, stdout.String())
 	}
-	if document.SchemaVersion != 9 || agentHelpSchemaVersion != 9 || document.View != "index" || document.Program != ProgramName {
+	if document.SchemaVersion != 10 || agentHelpSchemaVersion != 10 || document.View != "index" || document.Program != ProgramName {
 		t.Fatalf("agent document header = %+v", document)
 	}
 	if document.ScopeRequest.InvocationTemplate != "atr help <command-or-namespace> --format agent" ||
@@ -199,9 +199,9 @@ func TestScopedAgentHelpIsACompleteProjectionOfEveryCatalogCommand(t *testing.T)
 			}
 			if document.IOContract.SuccessStream != "stdout" || document.IOContract.ErrorStream != "stderr" ||
 				!document.IOContract.SuccessStatusRequiresCompleteWrite || document.IOContract.PartialOutputIsSuccess ||
-				document.IOContract.DynamicJSONFramingField != "commands[].contract.output.json_framing" ||
+				document.IOContract.DynamicPlanResultModesField != "commands[].contract.output.plan_result_modes" ||
 				document.IOContract.ExternalTextTrust != "untrusted_data" ||
-				document.IOContract.ExternalTextProjection != "visible_escape" ||
+				document.IOContract.ExternalTextProjection != "atsura_owned_visible_escape_with_plan_declared_source_stream_exception" ||
 				document.IOContract.OpaqueReferencePolicy != "validated_exact_bytes" {
 				t.Fatalf("I/O contract = %+v", document.IOContract)
 			}
@@ -251,32 +251,24 @@ func TestScopedAgentHelpPublishesFreshWrapperPlanOutputAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertJSONKeys(t, output, []string{
-		"authority", "collection_coverage", "default_format", "delivery", "fields", "formats", "json_framing", "json_rendering", "json_shape", "plan_schema",
+		"authority", "collection_coverage", "default_format", "delivery", "fields", "formats", "plan_result_modes", "plan_schema",
 	})
 	var authority OutputAuthority
 	var reference OutputSchemaReference
-	var shape OutputJSONShape
-	var rendering OutputJSONRendering
-	var framing OutputJSONFraming
+	var modes []PlanResultModeContract
 	if err := json.Unmarshal(output["authority"], &authority); err != nil {
 		t.Fatal(err)
 	}
 	if err := json.Unmarshal(output["plan_schema"], &reference); err != nil {
 		t.Fatal(err)
 	}
-	if err := json.Unmarshal(output["json_shape"], &shape); err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(output["json_rendering"], &rendering); err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(output["json_framing"], &framing); err != nil {
+	if err := json.Unmarshal(output["plan_result_modes"], &modes); err != nil {
 		t.Fatal(err)
 	}
 	if authority != OutputAuthorityFreshWrapperPlan ||
-		reference != (OutputSchemaReference{Command: "bundle preview", Field: "plan", ID: "wrapper-plan", Version: 3}) ||
-		shape != OutputJSONShapeObjectOrArray || rendering != OutputJSONRenderingCompact || framing != OutputJSONFramingOneValueLF {
-		t.Fatalf("dynamic output authority = %q %+v %q %q %q", authority, reference, shape, rendering, framing)
+		reference != (OutputSchemaReference{Command: "bundle preview", Field: "plan", ID: "wrapper-plan", Version: 4}) ||
+		!reflect.DeepEqual(modes, freshPlanResultModes()) {
+		t.Fatalf("dynamic output authority = %q %+v %+v", authority, reference, modes)
 	}
 }
 
@@ -334,7 +326,7 @@ func TestAgentHelpRootAndScopedShapeSnapshots(t *testing.T) {
 	if err := json.Unmarshal(scoped["io_contract"], &ioContract); err != nil {
 		t.Fatal(err)
 	}
-	assertJSONKeys(t, ioContract, []string{"dynamic_json_framing_field", "error_stream", "external_text_projection", "external_text_trust", "opaque_reference_policy", "partial_output_is_success", "success_status_requires_complete_write", "success_stream"})
+	assertJSONKeys(t, ioContract, []string{"dynamic_plan_result_modes_field", "error_stream", "external_text_projection", "external_text_trust", "opaque_reference_policy", "partial_output_is_success", "success_status_requires_complete_write", "success_stream"})
 	var scopedCommands []map[string]json.RawMessage
 	if err := json.Unmarshal(scoped["commands"], &scopedCommands); err != nil {
 		t.Fatal(err)
@@ -875,7 +867,7 @@ func TestDerivedScaleScopedAgentHelpFitsWholeResponseBudget(t *testing.T) {
 	if err := json.Unmarshal(encoded, &document); err != nil {
 		t.Fatal(err)
 	}
-	if document.SchemaVersion != 9 || len(document.Commands) != len(selected) || len(document.Workflows) != 1 ||
+	if document.SchemaVersion != 10 || len(document.Commands) != len(selected) || len(document.Workflows) != 1 ||
 		len(document.Workflows[0].Producers) != 18 || len(document.Workflows[0].Consumers) != 18 {
 		t.Fatalf("derived-scale grouped document = schema %d commands %d workflows %+v", document.SchemaVersion, len(document.Commands), document.Workflows)
 	}

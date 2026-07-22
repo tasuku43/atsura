@@ -16,7 +16,7 @@ type helpFormat uint8
 const (
 	helpFormatText helpFormat = iota
 	helpFormatAgent
-	agentHelpSchemaVersion = 9
+	agentHelpSchemaVersion = 10
 )
 
 type agentIndexDocument struct {
@@ -75,7 +75,7 @@ type agentIOContract struct {
 	ErrorStream                        string `json:"error_stream"`
 	SuccessStatusRequiresCompleteWrite bool   `json:"success_status_requires_complete_write"`
 	PartialOutputIsSuccess             bool   `json:"partial_output_is_success"`
-	DynamicJSONFramingField            string `json:"dynamic_json_framing_field"`
+	DynamicPlanResultModesField        string `json:"dynamic_plan_result_modes_field"`
 	ExternalTextTrust                  string `json:"external_text_trust"`
 	ExternalTextProjection             string `json:"external_text_projection"`
 	OpaqueReferencePolicy              string `json:"opaque_reference_policy"`
@@ -439,9 +439,9 @@ func (c *CLI) renderAgentHelp(selector string, exact bool, commands []CommandSpe
 			SuccessStream: "stdout", ErrorStream: "stderr",
 			SuccessStatusRequiresCompleteWrite: true,
 			PartialOutputIsSuccess:             false,
-			DynamicJSONFramingField:            "commands[].contract.output.json_framing",
+			DynamicPlanResultModesField:        "commands[].contract.output.plan_result_modes",
 			ExternalTextTrust:                  "untrusted_data",
-			ExternalTextProjection:             "visible_escape",
+			ExternalTextProjection:             "atsura_owned_visible_escape_with_plan_declared_source_stream_exception",
 			OpaqueReferencePolicy:              "validated_exact_bytes",
 		},
 		Commands:  make([]agentCommand, 0, len(commands)),

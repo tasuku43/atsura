@@ -14,6 +14,7 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
 	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
+	"github.com/tasuku43/atsura/internal/domain/tailoringplan"
 )
 
 const (
@@ -184,16 +185,17 @@ type CommandInput struct {
 type OutputFormat string
 
 const (
-	OutputFormatUnknown OutputFormat = ""
-	OutputFormatNone    OutputFormat = "none"
-	OutputFormatText    OutputFormat = "text"
-	OutputFormatTSV     OutputFormat = "tsv"
-	OutputFormatJSON    OutputFormat = "json"
+	OutputFormatUnknown    OutputFormat = ""
+	OutputFormatNone       OutputFormat = "none"
+	OutputFormatText       OutputFormat = "text"
+	OutputFormatTSV        OutputFormat = "tsv"
+	OutputFormatJSON       OutputFormat = "json"
+	OutputFormatPlanResult OutputFormat = "plan_result"
 )
 
 func (f OutputFormat) validate() error {
 	switch f {
-	case OutputFormatNone, OutputFormatText, OutputFormatTSV, OutputFormatJSON:
+	case OutputFormatNone, OutputFormatText, OutputFormatTSV, OutputFormatJSON, OutputFormatPlanResult:
 		return nil
 	default:
 		return fmt.Errorf("output format is missing or invalid: %q", f)
@@ -253,9 +255,9 @@ type OutputSchemaField struct {
 // OutputAuthority identifies the exclusive contract that governs how one
 // command interprets and presents a successful result. Catalog authority
 // publishes static fields and, for JSON, a versioned envelope. Fresh-wrapper-
-// plan authority applies the selection, rename, and rendering rules in the
-// freshly rebuilt plan; source JSON still supplies the container and value
-// types admitted by that plan.
+// plan authority applies the result mode in the freshly rebuilt plan. That
+// mode either governs JSON selection/rendering or deliberately returns bounded
+// source streams and conventional status.
 type OutputAuthority string
 
 const (
@@ -311,6 +313,73 @@ const (
 	OutputJSONFramingOneValueLF OutputJSONFraming = "one_value_lf"
 )
 
+// PlanResultStream describes one stream of a fresh-plan-authoritative result.
+// These values describe bytes, not caller-selectable presentation formats.
+type PlanResultStream string
+
+const (
+	PlanResultStreamUnknown          PlanResultStream = ""
+	PlanResultStreamCompactJSON      PlanResultStream = "compact_json"
+	PlanResultStreamEmpty            PlanResultStream = "empty"
+	PlanResultStreamExactSourceBytes PlanResultStream = "exact_bounded_source_bytes"
+)
+
+// PlanResultExitStatus identifies which authority supplies a successful
+// wrapper process status.
+type PlanResultExitStatus string
+
+const (
+	PlanResultExitStatusUnknown            PlanResultExitStatus = ""
+	PlanResultExitStatusZero               PlanResultExitStatus = "zero"
+	PlanResultExitStatusSourceConventional PlanResultExitStatus = "source_conventional"
+)
+
+type PlanResultFraming string
+
+const (
+	PlanResultFramingUnknown    PlanResultFraming = ""
+	PlanResultFramingOneValueLF PlanResultFraming = "one_value_lf"
+	PlanResultFramingNone       PlanResultFraming = "none"
+)
+
+type PlanResultProjection string
+
+const (
+	PlanResultProjectionUnknown     PlanResultProjection = ""
+	PlanResultProjectionVisibleJSON PlanResultProjection = "visible_json"
+	PlanResultProjectionNone        PlanResultProjection = "none"
+)
+
+type PlanResultDelivery string
+
+const (
+	PlanResultDeliveryUnknown                 PlanResultDelivery = ""
+	PlanResultDeliveryBufferedAfterCompletion PlanResultDelivery = "buffered_after_completion"
+)
+
+type PlanResultCrossStreamOrder string
+
+const (
+	PlanResultCrossStreamOrderUnknown       PlanResultCrossStreamOrder = ""
+	PlanResultCrossStreamOrderNotApplicable PlanResultCrossStreamOrder = "not_applicable"
+	PlanResultCrossStreamOrderNotPreserved  PlanResultCrossStreamOrder = "not_preserved"
+)
+
+// PlanResultModeContract is the complete finite success contract for one
+// result_mode declared by the freshly rebuilt wrapper plan.
+type PlanResultModeContract struct {
+	Mode             tailoringplan.ResultMode   `json:"mode"`
+	Stdout           PlanResultStream           `json:"stdout"`
+	Stderr           PlanResultStream           `json:"stderr"`
+	ExitStatus       PlanResultExitStatus       `json:"exit_status"`
+	Framing          PlanResultFraming          `json:"framing"`
+	Projection       PlanResultProjection       `json:"projection"`
+	Delivery         PlanResultDelivery         `json:"delivery"`
+	CrossStreamOrder PlanResultCrossStreamOrder `json:"cross_stream_order"`
+	StdoutLimitBytes int                        `json:"stdout_limit_bytes"`
+	StderrLimitBytes int                        `json:"stderr_limit_bytes"`
+}
+
 // OutputDelivery states whether one invocation returns its complete selected
 // result or one page in a public cursor protocol. It makes no claim about how
 // much of an external collection the task selected.
@@ -357,23 +426,25 @@ func (c CollectionCoverage) validate() error {
 // CommandOutput is the stable logical result and its supported presentations.
 // Catalog-authoritative Fields describe values inside JSONEnvelope, never
 // top-level metadata. Fresh-wrapper-plan-authoritative output has no static
-// fields or JSON envelope; the schema of its governing plan is referenced
-// through PlanSchema. Help remains a deliberate selector-dependent command:
+// fields or maintainer envelope; its finite dynamic result modes are declared
+// through PlanResultModes and its governing plan through PlanSchema. Help
+// remains a deliberate selector-dependent command:
 // its catalog fields describe the root index while scoped help projects the
 // selected catalog contract.
 type CommandOutput struct {
-	Authority          OutputAuthority        `json:"authority"`
-	Formats            []OutputFormat         `json:"formats"`
-	DefaultFormat      OutputFormat           `json:"default_format"`
-	Fields             []OutputField          `json:"fields"`
-	Delivery           OutputDelivery         `json:"delivery"`
-	CollectionCoverage CollectionCoverage     `json:"collection_coverage"`
-	JSONEnvelope       string                 `json:"json_envelope,omitempty"`
-	JSONSchemaVersion  int                    `json:"json_schema_version,omitempty"`
-	PlanSchema         *OutputSchemaReference `json:"plan_schema,omitempty"`
-	JSONShape          OutputJSONShape        `json:"json_shape,omitempty"`
-	JSONRendering      OutputJSONRendering    `json:"json_rendering,omitempty"`
-	JSONFraming        OutputJSONFraming      `json:"json_framing,omitempty"`
+	Authority          OutputAuthority          `json:"authority"`
+	Formats            []OutputFormat           `json:"formats"`
+	DefaultFormat      OutputFormat             `json:"default_format"`
+	Fields             []OutputField            `json:"fields"`
+	Delivery           OutputDelivery           `json:"delivery"`
+	CollectionCoverage CollectionCoverage       `json:"collection_coverage"`
+	JSONEnvelope       string                   `json:"json_envelope,omitempty"`
+	JSONSchemaVersion  int                      `json:"json_schema_version,omitempty"`
+	PlanSchema         *OutputSchemaReference   `json:"plan_schema,omitempty"`
+	JSONShape          OutputJSONShape          `json:"json_shape,omitempty"`
+	JSONRendering      OutputJSONRendering      `json:"json_rendering,omitempty"`
+	JSONFraming        OutputJSONFraming        `json:"json_framing,omitempty"`
+	PlanResultModes    []PlanResultModeContract `json:"plan_result_modes,omitempty"`
 }
 
 // PaginationCompletion states the one machine-readable condition that marks
@@ -830,6 +901,7 @@ func wrapperPlanOutputSchema() *OutputSchema {
 		array("/options/include", OutputFieldTypeString),
 		array("/original_argv", OutputFieldTypeString),
 		field("/reason", OutputFieldTypeString),
+		field("/result_mode", OutputFieldTypeString),
 		field("/schema_version", OutputFieldTypeInteger),
 		field("/source", OutputFieldTypeObject),
 		field("/source/adapter_contract_version", OutputFieldTypeInteger),
@@ -900,19 +972,47 @@ func wrapperPlanOutputSchema() *OutputSchema {
 		}
 	}
 	sort.Slice(fields, func(i, j int) bool { return fields[i].Path < fields[j].Path })
-	return &OutputSchema{ID: "wrapper-plan", Version: 3, Fields: fields}
+	return &OutputSchema{ID: "wrapper-plan", Version: tailoringplan.SchemaVersion, Fields: fields}
 }
 
-// freshWrapperPlanAuthoritativeOutput declares the one dynamic success-output
-// variant currently supported by the catalog. Its bytes are the compact JSON
-// value produced by the freshly rebuilt plan, so the static catalog does not
-// duplicate a field list, envelope, or result schema version.
+func freshPlanResultModes() []PlanResultModeContract {
+	return []PlanResultModeContract{
+		{
+			Mode:             tailoringplan.ResultModeTransformedJSON,
+			Stdout:           PlanResultStreamCompactJSON,
+			Stderr:           PlanResultStreamEmpty,
+			ExitStatus:       PlanResultExitStatusZero,
+			Framing:          PlanResultFramingOneValueLF,
+			Projection:       PlanResultProjectionVisibleJSON,
+			Delivery:         PlanResultDeliveryBufferedAfterCompletion,
+			CrossStreamOrder: PlanResultCrossStreamOrderNotApplicable,
+			StdoutLimitBytes: maxBundleOutputBytes,
+			StderrLimitBytes: 0,
+		},
+		{
+			Mode:             tailoringplan.ResultModeSourceStreamPassthrough,
+			Stdout:           PlanResultStreamExactSourceBytes,
+			Stderr:           PlanResultStreamExactSourceBytes,
+			ExitStatus:       PlanResultExitStatusSourceConventional,
+			Framing:          PlanResultFramingNone,
+			Projection:       PlanResultProjectionNone,
+			Delivery:         PlanResultDeliveryBufferedAfterCompletion,
+			CrossStreamOrder: PlanResultCrossStreamOrderNotPreserved,
+			StdoutLimitBytes: sourceprocess.MaxStdoutBytes,
+			StderrLimitBytes: sourceprocess.MaxStderrBytes,
+		},
+	}
+}
+
+// freshWrapperPlanAuthoritativeOutput declares the finite dynamic result union
+// governed by the freshly rebuilt plan. The static catalog publishes result
+// modes and their byte/status contracts without duplicating plan fields.
 func freshWrapperPlanAuthoritativeOutput() CommandOutput {
 	planSchema := wrapperPlanOutputSchema()
 	return CommandOutput{
 		Authority:          OutputAuthorityFreshWrapperPlan,
-		Formats:            []OutputFormat{OutputFormatJSON},
-		DefaultFormat:      OutputFormatJSON,
+		Formats:            []OutputFormat{OutputFormatPlanResult},
+		DefaultFormat:      OutputFormatPlanResult,
 		Fields:             []OutputField{},
 		Delivery:           OutputDeliveryComplete,
 		CollectionCoverage: CollectionCoverageNotApplicable,
@@ -922,9 +1022,7 @@ func freshWrapperPlanAuthoritativeOutput() CommandOutput {
 			ID:      planSchema.ID,
 			Version: planSchema.Version,
 		},
-		JSONShape:     OutputJSONShapeObjectOrArray,
-		JSONRendering: OutputJSONRenderingCompact,
-		JSONFraming:   OutputJSONFramingOneValueLF,
+		PlanResultModes: freshPlanResultModes(),
 	}
 }
 
@@ -1030,7 +1128,7 @@ func DefaultCatalog() Catalog {
 					Delivery:           OutputDeliveryComplete,
 					CollectionCoverage: CollectionCoverageExhaustive,
 					JSONEnvelope:       "commands",
-					JSONSchemaVersion:  9,
+					JSONSchemaVersion:  agentHelpSchemaVersion,
 				},
 				Prerequisites: []string{},
 				Errors: []CommandError{
@@ -1324,7 +1422,7 @@ func DefaultCatalog() Catalog {
 				Prerequisites: []string{
 					"Linux or macOS, one absolute-path schema-2 bundle whose exact digest is user-adopted, and current source plus Atsura executable identities.",
 					"The bundle requested executable must be one portable non-reserved POSIX Name; it is never derived from a path or basename.",
-					"The complete included surface must contain exactly one transforming GitHub CLI issue list or pr list command admitted by the maintained JSON runtime, including every exposed option.",
+					"The complete included surface must contain exactly one GitHub CLI issue list or pr list command and result mode admitted by the maintained runtime, including every exposed option.",
 					"Text output is fixed product source, not specification-authored code; activation and later modification of those bytes remain caller-owned.",
 				},
 				Errors: wrapperRenderErrors(),
@@ -1339,7 +1437,7 @@ func DefaultCatalog() Catalog {
 			Role:    RoleUtility,
 			Agent: AgentContract{
 				CapabilityID: "tailoring.wrapper.materialize",
-				Outcome:      "Verify one render-produced bundle and runtime closure, rebuild its fresh plan, and emit only the plan-declared compact JSON result after at most one exact source attempt",
+				Outcome:      "Verify one render-produced bundle and runtime closure, rebuild its fresh plan, and emit only its declared transformed-JSON or source-stream result after at most one exact source attempt",
 				Inputs: []CommandInput{
 					{Name: "--contract-version", Source: InputSourceFlag, Required: true, ValueKind: InputValueInteger, Cardinality: InputCardinalitySingle, Description: "Use the exact generated wrapper binding contract version.", AllowedValues: []string{"1"}, Minimum: int64Pointer(1), Maximum: int64Pointer(1)},
 					{Name: "--bundle", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Pass the exact absolute clean bundle locator emitted by wrapper render.", AllowedValues: []string{}},
@@ -1353,8 +1451,8 @@ func DefaultCatalog() Catalog {
 				Prerequisites: []string{
 					"Use only the complete closure emitted by wrapper render; the source command spelling is derived from the one strictly loaded bundle and is not another input.",
 					"Execution requires the exact bundle to remain adopted and the exact bundle, Atsura runtime, source identity, included surface, invocation, and maintained adapter runtime contract to remain current.",
-					"Success is exactly one plan-declared compact JSON object or array followed by LF, with no maintainer evidence envelope and empty stderr.",
-					"The source starts at most once without a shell; every post-start failure and final output-write failure is non-retryable and exposes no raw source stdout or stderr.",
+					"A transformed_json result is one compact object or array plus LF with empty stderr and status zero; source_stream_passthrough returns exact bounded source stdout/stderr and conventional status without framing, projection, timing, or interleaving claims.",
+					"The source starts at most once without a shell; uncertain post-start and final output-write failures are non-retryable, expose no captured streams through a fault, and never recommend replay.",
 				},
 				Errors: wrapperRunErrors(),
 			},
@@ -2292,7 +2390,7 @@ func validateMutationBinding(name string, targetInputs []string, inputs map[stri
 func validateOutputAuthority(output CommandOutput, formats map[OutputFormat]struct{}) error {
 	switch output.Authority {
 	case OutputAuthorityCatalog:
-		if output.PlanSchema != nil || output.JSONShape != OutputJSONShapeUnknown || output.JSONRendering != OutputJSONRenderingUnknown || output.JSONFraming != OutputJSONFramingUnknown {
+		if output.PlanSchema != nil || output.JSONShape != OutputJSONShapeUnknown || output.JSONRendering != OutputJSONRenderingUnknown || output.JSONFraming != OutputJSONFramingUnknown || len(output.PlanResultModes) != 0 {
 			return fmt.Errorf("catalog-authoritative output must not declare dynamic output metadata")
 		}
 		_, supportsJSON := formats[OutputFormatJSON]
@@ -2308,8 +2406,8 @@ func validateOutputAuthority(output CommandOutput, formats map[OutputFormat]stru
 		}
 		return nil
 	case OutputAuthorityFreshWrapperPlan:
-		if len(output.Formats) != 1 || output.Formats[0] != OutputFormatJSON || output.DefaultFormat != OutputFormatJSON {
-			return fmt.Errorf("fresh-wrapper-plan-authoritative output must support only JSON and use JSON as its default format")
+		if len(output.Formats) != 1 || output.Formats[0] != OutputFormatPlanResult || output.DefaultFormat != OutputFormatPlanResult {
+			return fmt.Errorf("fresh-wrapper-plan-authoritative output must support only plan_result and use it as its default format")
 		}
 		if len(output.Fields) != 0 {
 			return fmt.Errorf("fresh-wrapper-plan-authoritative output must not declare static fields")
@@ -2320,8 +2418,8 @@ func validateOutputAuthority(output CommandOutput, formats map[OutputFormat]stru
 		if output.CollectionCoverage != CollectionCoverageNotApplicable {
 			return fmt.Errorf("fresh-wrapper-plan-authoritative output requires collection coverage %q", CollectionCoverageNotApplicable)
 		}
-		if output.JSONEnvelope != "" || output.JSONSchemaVersion != 0 {
-			return fmt.Errorf("fresh-wrapper-plan-authoritative output must not declare a static JSON envelope or schema version")
+		if output.JSONEnvelope != "" || output.JSONSchemaVersion != 0 || output.JSONShape != OutputJSONShapeUnknown || output.JSONRendering != OutputJSONRenderingUnknown || output.JSONFraming != OutputJSONFramingUnknown {
+			return fmt.Errorf("fresh-wrapper-plan-authoritative output must not declare static JSON metadata")
 		}
 		if output.PlanSchema == nil {
 			return fmt.Errorf("fresh-wrapper-plan-authoritative output must reference the bundle preview wrapper-plan schema")
@@ -2329,19 +2427,26 @@ func validateOutputAuthority(output CommandOutput, formats map[OutputFormat]stru
 		if output.PlanSchema.Command != "bundle preview" || output.PlanSchema.Field != "plan" || output.PlanSchema.ID != "wrapper-plan" || output.PlanSchema.Version <= 0 {
 			return fmt.Errorf("fresh-wrapper-plan-authoritative output must reference bundle preview field plan with a positive wrapper-plan schema version")
 		}
-		if output.JSONShape != OutputJSONShapeObjectOrArray {
-			return fmt.Errorf("fresh-wrapper-plan-authoritative output JSON shape must be %q", OutputJSONShapeObjectOrArray)
-		}
-		if output.JSONRendering != OutputJSONRenderingCompact {
-			return fmt.Errorf("fresh-wrapper-plan-authoritative output JSON rendering must be %q", OutputJSONRenderingCompact)
-		}
-		if output.JSONFraming != OutputJSONFramingOneValueLF {
-			return fmt.Errorf("fresh-wrapper-plan-authoritative output JSON framing must be %q", OutputJSONFramingOneValueLF)
+		if err := validatePlanResultModes(output.PlanResultModes); err != nil {
+			return err
 		}
 		return nil
 	default:
 		return nil // Authority validation reports the governing error.
 	}
+}
+
+func validatePlanResultModes(got []PlanResultModeContract) error {
+	want := freshPlanResultModes()
+	if len(got) != len(want) {
+		return fmt.Errorf("fresh-wrapper-plan-authoritative output must declare exactly %d plan result modes", len(want))
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			return fmt.Errorf("fresh-wrapper-plan-authoritative result mode %d is incomplete or out of order", index)
+		}
+	}
+	return nil
 }
 
 func validatePaginationContract(output CommandOutput, pagination *PaginationContract, inputs map[string]CommandInput) error {
@@ -3141,6 +3246,7 @@ func cloneAgentContract(contract AgentContract) AgentContract {
 	}
 	contract.Output.Formats = cloneSlice(contract.Output.Formats)
 	contract.Output.Fields = cloneSlice(contract.Output.Fields)
+	contract.Output.PlanResultModes = cloneSlice(contract.Output.PlanResultModes)
 	for index := range contract.Output.Fields {
 		if contract.Output.Fields[index].Schema != nil {
 			schema := *contract.Output.Fields[index].Schema
