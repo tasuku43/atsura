@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -19,8 +21,10 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/tailoringplan"
 	"github.com/tasuku43/atsura/internal/infra/bundlejson"
 	"github.com/tasuku43/atsura/internal/infra/githubcli"
+	"github.com/tasuku43/atsura/internal/infra/gocli"
 	"github.com/tasuku43/atsura/internal/infra/sourceexec"
 	"github.com/tasuku43/atsura/internal/infra/sourcejson"
+	"github.com/tasuku43/atsura/internal/infra/trustfile"
 )
 
 func TestMain(m *testing.M) {
@@ -31,6 +35,11 @@ func TestMain(m *testing.M) {
 			os.Exit(2)
 		}
 		_, _ = fmt.Fprint(os.Stdout, `[{"number":101,"title":"Review policy","state":"OPEN","ignored":"secret-canary"}]`)
+		os.Exit(0)
+	}
+	if len(os.Args) == 2 && os.Args[1] == "test" {
+		_, _ = fmt.Fprintln(os.Stdout, "synthetic go test stdout")
+		_, _ = fmt.Fprintln(os.Stderr, "synthetic go test stderr")
 		os.Exit(0)
 	}
 	os.Exit(m.Run())
@@ -92,7 +101,7 @@ func installProductionTrustedBundleExecution(command *CLI) {
 	store := &cliTrustStore{state: bundletrust.StateAdopted}
 	command.authority = bundleauthority.New(loader, runner, store, cliConfirmation{})
 	command.previews = planpreview.New(loader, store, runner)
-	command.executions = bundleexecute.New(loader, store, runner, githubcli.NewRuntimeVerifier(), runner, sourcejson.New())
+	command.executions = bundleexecute.New(loader, store, runner, newRuntimeCompatibility(), runner, sourcejson.New())
 }
 
 func installGitHubCompatibilityExecution(command *CLI, process *cliBoundProcess) {
@@ -229,6 +238,64 @@ commands:
           - from: number
             to: id
         render: compact_json
+      after: []
+`, digest)
+	if err := os.WriteFile(specificationPath, []byte(specification), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return catalogPath, specificationPath
+}
+
+func goRuntimeBundleArtifactPaths(t *testing.T) (string, string) {
+	t.Helper()
+	identity, err := sourceexec.New().Identify(context.Background(), os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog := sourcecatalog.Sort(sourcecatalog.Catalog{
+		SchemaVersion: sourcecatalog.SchemaVersion,
+		Adapter:       sourcecatalog.Adapter{Kind: gocli.AdapterKind, ContractVersion: gocli.ContractVersion},
+		Source: sourcecatalog.Source{
+			RequestedExecutable: "go", ResolvedPath: identity.ResolvedPath, SHA256: identity.SHA256, Size: identity.Size, Version: runtime.Version(),
+		},
+		Probe: sourcecatalog.Probe{IDs: []string{"version", "help", "test_help"}, Attempts: 3},
+		Commands: []sourcecatalog.Command{{
+			Path: []string{"test"}, Summary: "test packages", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin,
+			Options: []sourcecatalog.Option{}, StructuredOutput: []sourcecatalog.StructuredOutput{},
+		}},
+	})
+	digest, err := catalog.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory := t.TempDir()
+	catalogPath := filepath.Join(directory, "catalog.json")
+	catalogDocument := sourceInspectionDocument{SchemaVersion: 1, Inspection: sourceInspectionPayload{CatalogDigest: digest, Catalog: catalog, SourceProcessAttempts: 3}}
+	raw, err := json.Marshal(catalogDocument)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(catalogPath, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	specificationPath := filepath.Join(directory, "spec.yaml")
+	specification := fmt.Sprintf(`schema_version: 3
+catalog_digest: %s
+surface:
+  default: exclude
+commands:
+  - command: [test]
+    presence: include
+    reason: Run the current package tests without added arguments.
+    options:
+      default: inherit
+      include: []
+      exclude: []
+    wrapper:
+      kind: identity
+      before: []
+      invoke:
+        append_args: []
       after: []
 `, digest)
 	if err := os.WriteFile(specificationPath, []byte(specification), 0o600); err != nil {
@@ -500,6 +567,71 @@ func TestBundleExecuteProductionCompositionRunsSyntheticGitHubFixture(t *testing
 	record := execution.Output.Records[0]
 	if record["id"] != float64(101) || record["title"] != "Review policy" || record["state"] != "OPEN" {
 		t.Fatalf("record=%+v", record)
+	}
+}
+
+func TestProductionCompositionRendersAndRunsSyntheticGoWrapper(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX wrapper materialization is intentionally unsupported on Windows")
+	}
+	catalogPath, specificationPath := goRuntimeBundleArtifactPaths(t)
+	bundlePath := bundleArtifactPath(t, catalogPath, specificationPath)
+	bundle, bundleDigest, err := bundlejson.New().Load(context.Background(), bundlePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	configRoot := t.TempDir()
+	configDirectory := filepath.Join(configRoot, "config")
+	if runtime.GOOS == "darwin" {
+		configDirectory = filepath.Join(configRoot, "Library", "Application Support")
+	}
+	if err := os.MkdirAll(configDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", configRoot)
+	t.Setenv("USERPROFILE", configRoot)
+	t.Setenv("XDG_CONFIG_HOME", configDirectory)
+	t.Setenv("APPDATA", configDirectory)
+	t.Setenv("LOCALAPPDATA", configDirectory)
+	trustPath, err := trustfile.DefaultPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := trustfile.New(trustPath).Add(context.Background(), bundleDigest); err != nil || !changed {
+		t.Fatalf("adopt Go bundle changed=%v error=%v", changed, err)
+	}
+
+	var renderOut, renderErr bytes.Buffer
+	renderCommand := New(strings.NewReader(""), &renderOut, &renderErr)
+	if code := renderCommand.RunContext(context.Background(), []string{"wrapper", "render", "--bundle", bundlePath, "--format=json"}); code != ExitOK {
+		t.Fatalf("render code=%d stderr=%q", code, renderErr.String())
+	}
+	var rendered wrapperRenderDocument
+	if err := json.Unmarshal(renderOut.Bytes(), &rendered); err != nil {
+		t.Fatal(err)
+	}
+	if rendered.Wrapper.Bundle.Digest != bundleDigest || rendered.Wrapper.Command != filepath.Base(bundle.Catalog.Source.RequestedExecutable) || rendered.Wrapper.SourceProcessAttempts != 0 {
+		t.Fatalf("rendered Go wrapper=%+v", rendered.Wrapper)
+	}
+
+	var runOut, runErr bytes.Buffer
+	runCommand := New(strings.NewReader(""), &runOut, &runErr)
+	runArgs := []string{
+		"wrapper", "run",
+		"--contract-version=" + strconv.Itoa(rendered.Wrapper.Contract.Version),
+		"--bundle=" + rendered.Wrapper.Bundle.Locator,
+		"--bundle-digest=" + rendered.Wrapper.Bundle.Digest,
+		"--runtime-path=" + rendered.Wrapper.Runtime.ResolvedPath,
+		"--runtime-sha256=" + rendered.Wrapper.Runtime.SHA256,
+		"--runtime-size=" + strconv.FormatInt(rendered.Wrapper.Runtime.Size, 10),
+		"--", "test",
+	}
+	if code := runCommand.RunContext(context.Background(), runArgs); code != ExitOK {
+		t.Fatalf("wrapper run code=%d stdout=%q stderr=%q", code, runOut.String(), runErr.String())
+	}
+	if runOut.String() != "synthetic go test stdout\n" || runErr.String() != "synthetic go test stderr\n" {
+		t.Fatalf("Go source streams stdout=%q stderr=%q", runOut.String(), runErr.String())
 	}
 }
 

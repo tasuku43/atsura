@@ -408,9 +408,13 @@ func TestTailoringExactAgentHelpPublishesSelfContainedAuthoringContracts(t *test
 	}
 
 	inspect := command("source", "inspect")
-	if inspect.Usage != "atr source inspect --adapter=github-cli --executable <path-or-name>" ||
-		!reflect.DeepEqual(inspect.Contract.Inputs[0].AllowedValues, []string{"github-cli"}) {
+	if inspect.Usage != "atr source inspect --adapter=github-cli|go-cli --executable <path-or-name>" ||
+		!reflect.DeepEqual(inspect.Contract.Inputs[0].AllowedValues, []string{"github-cli", "go-cli"}) {
 		t.Fatalf("source inspect help=%+v", inspect)
+	}
+	if len(inspect.Contract.Output.Fields) != 3 ||
+		inspect.Contract.Output.Fields[2].Description != "Exact bounded offline probe attempts: four for github-cli contract 2 and three for go-cli contract 1." {
+		t.Fatalf("source inspect attempt help=%+v", inspect.Contract.Output.Fields)
 	}
 	if schema := inspect.Contract.Output.Fields[1].Schema; schema == nil || schema.ID != "source-command-catalog" || schema.Version != 1 || len(schema.Fields) < 24 {
 		t.Fatalf("source inspect schema=%+v", schema)

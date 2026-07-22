@@ -14,6 +14,7 @@ import (
 	"github.com/tasuku43/atsura/internal/app/doctorcmd"
 	"github.com/tasuku43/atsura/internal/app/planapply"
 	"github.com/tasuku43/atsura/internal/app/planpreview"
+	"github.com/tasuku43/atsura/internal/app/runtimecompat"
 	"github.com/tasuku43/atsura/internal/app/samplecmd"
 	"github.com/tasuku43/atsura/internal/app/sourceinspect"
 	"github.com/tasuku43/atsura/internal/app/specinit"
@@ -26,6 +27,7 @@ import (
 	"github.com/tasuku43/atsura/internal/infra/bundlejson"
 	"github.com/tasuku43/atsura/internal/infra/catalogjson"
 	"github.com/tasuku43/atsura/internal/infra/githubcli"
+	"github.com/tasuku43/atsura/internal/infra/gocli"
 	"github.com/tasuku43/atsura/internal/infra/posixwrapper"
 	"github.com/tasuku43/atsura/internal/infra/sampledata"
 	"github.com/tasuku43/atsura/internal/infra/selfexec"
@@ -99,7 +101,7 @@ func newCLIWithSamples(
 	bundleLoader := bundlejson.New()
 	sourceRunner := sourceexec.New()
 	trustStore := trustfile.New(trustPath)
-	runtimeVerifier := githubcli.NewRuntimeVerifier()
+	runtimeVerifier := newRuntimeCompatibility()
 	planApplier := planapply.New(bundleLoader, trustStore, sourceRunner, runtimeVerifier, sourceRunner, sourcejson.New())
 	currentExecutable := selfexec.New()
 	return &CLI{
@@ -110,6 +112,7 @@ func newCLIWithSamples(
 		samples: samplecmd.New(repository),
 		sources: sourceinspect.New(map[string]sourceinspect.InspectorPort{
 			"github-cli": githubcli.New(sourceexec.New()),
+			"go-cli":     gocli.New(sourceexec.New()),
 		}),
 		bundles:        bundlebuild.New(catalogjson.New(), specyaml.New()),
 		drafts:         specinit.New(catalogjson.New()),
@@ -119,6 +122,13 @@ func newCLIWithSamples(
 		wrapperRenders: wrapperrender.New(runtime.GOOS, bundleLoader, trustStore, sourceRunner, currentExecutable, runtimeVerifier, posixwrapper.New()),
 		wrapperRuns:    wrapperrun.New(currentExecutable, sourceRunner, planApplier),
 	}
+}
+
+func newRuntimeCompatibility() *runtimecompat.Registry {
+	return runtimecompat.New(
+		runtimecompat.Registration{AdapterKind: githubcli.AdapterKind, Verifier: githubcli.NewRuntimeVerifier()},
+		runtimecompat.Registration{AdapterKind: gocli.AdapterKind, Verifier: gocli.NewRuntimeVerifier()},
+	)
 }
 
 // RunContext validates global options and the catalog, resolves one command,

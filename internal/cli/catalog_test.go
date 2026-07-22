@@ -850,12 +850,16 @@ func TestSourceInspectCatalogPublishesExactAdapterAndNestedCatalogSchema(t *test
 	if !found {
 		t.Fatal("source inspect is missing from the catalog")
 	}
-	if spec.Args != "--adapter=github-cli --executable <path-or-name>" || len(spec.Agent.Inputs) != 2 {
+	if spec.Args != "--adapter=github-cli|go-cli --executable <path-or-name>" || len(spec.Agent.Inputs) != 2 {
 		t.Fatalf("source inspect grammar=%q inputs=%+v", spec.Args, spec.Agent.Inputs)
 	}
 	adapter := spec.Agent.Inputs[0]
-	if adapter.Name != "--adapter" || !adapter.Required || !equalStrings(adapter.AllowedValues, []string{"github-cli"}) {
+	if adapter.Name != "--adapter" || !adapter.Required || !equalStrings(adapter.AllowedValues, []string{"github-cli", "go-cli"}) {
 		t.Fatalf("adapter input=%+v", adapter)
+	}
+	if len(spec.Agent.Output.Fields) != 3 || spec.Agent.Output.Fields[2].Name != "source_process_attempts" ||
+		spec.Agent.Output.Fields[2].Description != "Exact bounded offline probe attempts: four for github-cli contract 2 and three for go-cli contract 1." {
+		t.Fatalf("source inspection attempt contract=%+v", spec.Agent.Output.Fields)
 	}
 	var catalogField OutputField
 	for _, field := range spec.Agent.Output.Fields {

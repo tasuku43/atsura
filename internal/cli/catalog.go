@@ -1626,14 +1626,14 @@ func DefaultCatalog() Catalog {
 		CommandSpec{
 			Path:    "source inspect",
 			Summary: "Inspect one installed CLI through a bounded source adapter",
-			Args:    "--adapter=github-cli --executable <path-or-name>",
+			Args:    "--adapter=github-cli|go-cli --executable <path-or-name>",
 			Effect:  operation.EffectExecute,
 			Role:    RoleUtility,
 			Agent: AgentContract{
 				CapabilityID: "tailoring.catalog.inspect",
 				Outcome:      "Produce a deterministic provenance-bearing catalog for one supported installed source CLI by requesting only the adapter's declared offline probes",
 				Inputs: []CommandInput{
-					{Name: "--adapter", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Select the registered GitHub CLI source-inspection adapter.", AllowedValues: []string{"github-cli"}},
+					{Name: "--adapter", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Select one registered source-inspection adapter.", AllowedValues: []string{"github-cli", "go-cli"}},
 					{Name: "--executable", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Resolve and inspect this source executable path or PATH name.", AllowedValues: []string{}},
 				},
 				Output: CommandOutput{
@@ -1642,7 +1642,7 @@ func DefaultCatalog() Catalog {
 					Fields: []OutputField{
 						{Name: "catalog_digest", Type: OutputFieldTypeString, Description: "SHA-256 identity of the canonical catalog bytes."},
 						{Name: "catalog", Type: OutputFieldTypeObject, Description: "Vendor-neutral source identity, adapter, provenance, probe, command, option, and structured-output evidence with a complete versioned field inventory.", Schema: sourceCatalogOutputSchema()},
-						{Name: "source_process_attempts", Type: OutputFieldTypeInteger, Description: "Exact bounded offline probe attempts; four for GitHub CLI adapter contract 2."},
+						{Name: "source_process_attempts", Type: OutputFieldTypeInteger, Description: "Exact bounded offline probe attempts: four for github-cli contract 2 and three for go-cli contract 1."},
 					},
 					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageExhaustive,
 					JSONEnvelope: "inspection", JSONSchemaVersion: 1,
