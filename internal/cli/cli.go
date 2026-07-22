@@ -30,6 +30,7 @@ import (
 	"github.com/tasuku43/atsura/internal/infra/catalogjson"
 	"github.com/tasuku43/atsura/internal/infra/githubcli"
 	"github.com/tasuku43/atsura/internal/infra/gocli"
+	"github.com/tasuku43/atsura/internal/infra/gotestjson"
 	"github.com/tasuku43/atsura/internal/infra/posixwrapper"
 	"github.com/tasuku43/atsura/internal/infra/processorexec"
 	"github.com/tasuku43/atsura/internal/infra/processorjson"
@@ -115,7 +116,11 @@ func newCLIWithSamples(
 	processorCompatibility := processorcompat.New()
 	trustStore := trustfile.New(trustPath)
 	runtimeVerifier := newRuntimeCompatibility()
-	planApplier := planapply.New(bundleLoader, trustStore, sourceRunner, runtimeVerifier, sourceRunner, sourcejson.New())
+	processorSupport := planapply.ProcessorSupport{
+		Identity: processorRunner, Processes: processorRunner,
+		Compatibility: processorCompatibility, Admission: gotestjson.NewAnalyzer(),
+	}
+	planApplier := planapply.New(bundleLoader, trustStore, sourceRunner, runtimeVerifier, sourceRunner, sourcejson.New(), processorSupport)
 	currentExecutable := selfexec.New()
 	return &CLI{
 		In: in, Out: out, Err: errOut,
@@ -136,11 +141,13 @@ func newCLIWithSamples(
 		drafts: specinit.New(catalogjson.New(), specinit.ProcessorSupport{
 			Observations: processorObservations, Compatibility: processorCompatibility,
 		}),
-		authority:      bundleauthority.New(bundleLoader, sourceRunner, trustStore, terminalconfirm.New(), processorRunner),
-		previews:       planpreview.New(bundleLoader, trustStore, sourceRunner),
-		executions:     bundleexecute.NewWithApplier(planApplier),
-		wrapperRenders: wrapperrender.New(runtime.GOOS, bundleLoader, trustStore, sourceRunner, currentExecutable, runtimeVerifier, posixwrapper.New()),
-		wrapperRuns:    wrapperrun.New(currentExecutable, sourceRunner, planApplier),
+		authority:  bundleauthority.New(bundleLoader, sourceRunner, trustStore, terminalconfirm.New(), processorRunner),
+		previews:   planpreview.New(bundleLoader, trustStore, sourceRunner),
+		executions: bundleexecute.NewWithApplier(planApplier),
+		wrapperRenders: wrapperrender.New(runtime.GOOS, bundleLoader, trustStore, sourceRunner, currentExecutable, runtimeVerifier, posixwrapper.New(), wrapperrender.ProcessorPorts{
+			Identity: processorRunner, Compatibility: processorCompatibility,
+		}),
+		wrapperRuns: wrapperrun.New(currentExecutable, sourceRunner, planApplier),
 	}
 }
 

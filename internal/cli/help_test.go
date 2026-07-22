@@ -154,7 +154,7 @@ func TestRootAgentHelpIsACompactProjectionOfTheCatalog(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &document); err != nil {
 		t.Fatalf("agent help is not JSON: %v\n%s", err, stdout.String())
 	}
-	if document.SchemaVersion != 11 || agentHelpSchemaVersion != 11 || document.View != "index" || document.Program != ProgramName {
+	if document.SchemaVersion != 12 || agentHelpSchemaVersion != 12 || document.View != "index" || document.Program != ProgramName {
 		t.Fatalf("agent document header = %+v", document)
 	}
 	if document.ScopeRequest.InvocationTemplate != "atr help <command-or-namespace> --format agent" ||
@@ -205,7 +205,7 @@ func TestScopedAgentHelpIsACompleteProjectionOfEveryCatalogCommand(t *testing.T)
 				!document.IOContract.SuccessStatusRequiresCompleteWrite || document.IOContract.PartialOutputIsSuccess ||
 				document.IOContract.DynamicPlanResultModesField != "commands[].contract.output.plan_result_modes" ||
 				document.IOContract.ExternalTextTrust != "untrusted_data" ||
-				document.IOContract.ExternalTextProjection != "atsura_owned_visible_escape_with_plan_declared_source_stream_exception" ||
+				document.IOContract.ExternalTextProjection != "atsura_owned_visible_escape_with_plan_declared_exact_byte_result_exceptions" ||
 				document.IOContract.OpaqueReferencePolicy != "validated_exact_bytes" {
 				t.Fatalf("I/O contract = %+v", document.IOContract)
 			}
@@ -920,7 +920,7 @@ func TestDerivedScaleScopedAgentHelpFitsWholeResponseBudget(t *testing.T) {
 	if err := json.Unmarshal(encoded, &document); err != nil {
 		t.Fatal(err)
 	}
-	if document.SchemaVersion != 11 || len(document.Commands) != len(selected) || len(document.Workflows) != 1 ||
+	if document.SchemaVersion != 12 || len(document.Commands) != len(selected) || len(document.Workflows) != 1 ||
 		len(document.Workflows[0].Producers) != 18 || len(document.Workflows[0].Consumers) != 18 {
 		t.Fatalf("derived-scale grouped document = schema %d commands %d workflows %+v", document.SchemaVersion, len(document.Commands), document.Workflows)
 	}

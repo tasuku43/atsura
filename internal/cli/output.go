@@ -73,28 +73,28 @@ func (c *CLI) emitExecuteResult(ctx context.Context, command CommandSpec, output
 	return ExitOK
 }
 
-// emitSourceStreamResult performs the plan-declared buffered two-stream
-// delivery. The writes cannot be atomic: stdout is completed once before
-// stderr is attempted, and the conventional source status is returned only
-// after both writes complete.
-func (c *CLI) emitSourceStreamResult(ctx context.Context, command CommandSpec, stdout, stderr []byte, sourceStatus int) int {
+// emitBufferedPlanResult performs plan-declared buffered two-stream delivery.
+// The writes cannot be atomic: stdout is completed once before stderr is
+// attempted, and the declared conventional status is returned only after both
+// writes complete.
+func (c *CLI) emitBufferedPlanResult(ctx context.Context, command CommandSpec, stdout, stderr []byte, status int) int {
 	recovery, ok := executeOutputWriteRecovery(command)
-	if !ok || sourceStatus < 0 {
+	if !ok || status < 0 {
 		return c.fail(ctx, fault.New(
 			fault.KindContract,
 			"invalid_catalog",
-			"The source-stream output contract is invalid.",
+			"The buffered plan-result output contract is invalid.",
 			false,
-			fault.NextAction{Command: "help " + command.Path, Reason: "Declare bounded source-stream result and non-retryable final-write recovery."},
+			fault.NextAction{Command: "help " + command.Path, Reason: "Declare bounded plan-result bytes, status, and non-retryable final-write recovery."},
 		))
 	}
 	if _, err := writeOnce(c.Out, stdout); err != nil {
-		return c.failExecuteOutputWrite(ctx, "The source completed, but its plan-declared stdout could not be written completely; partial caller-visible output may already exist.", err, recovery)
+		return c.failExecuteOutputWrite(ctx, "The plan-declared execution completed, but its stdout could not be written completely; partial caller-visible output may already exist.", err, recovery)
 	}
 	if _, err := writeOnce(c.Err, stderr); err != nil {
-		return c.failExecuteOutputWrite(ctx, "The source completed, but its plan-declared stderr could not be written completely; partial caller-visible output may already exist.", err, recovery)
+		return c.failExecuteOutputWrite(ctx, "The plan-declared execution completed, but its stderr could not be written completely; partial caller-visible output may already exist.", err, recovery)
 	}
-	return sourceStatus
+	return status
 }
 
 func executeOutputWriteRecovery(command CommandSpec) ([]fault.NextAction, bool) {

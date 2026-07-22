@@ -573,10 +573,22 @@ func classifyProcessorIdentity(err error, command CommandContext, afterSource bo
 		}
 		return fault.Wrap(fault.KindCanceled, "processor_execution_canceled", "Processor identity revalidation was canceled after the source completed; replay is not known to be safe.", false, err, command.StatusAction)
 	}
-	if public, ok := fault.PublicCopy(err); ok && public.Code == "processor_identity_changed" {
-		return processorIdentityChanged(command)
+	if public, ok := fault.PublicCopy(err); ok {
+		if public.Code == "processor_identity_changed" {
+			return processorIdentityChanged(command)
+		}
+		if !afterSource {
+			return fault.New(public.Kind, public.Code, public.Message, public.Retryable, command.StatusAction)
+		}
+		if public.Code == "processor_identity_unavailable" {
+			return fault.New(fault.KindUnavailable, "processor_identity_unavailable_after_source", "The bundle-bound processor identity became unavailable after the source completed; replay is not known to be safe.", false, command.StatusAction)
+		}
+		return fault.New(public.Kind, public.Code, public.Message, false, command.StatusAction)
 	}
-	return fault.Wrap(fault.KindUnavailable, "processor_identity_unavailable", "The bundle-bound processor identity could not be assessed.", false, err, command.StatusAction)
+	if afterSource {
+		return fault.Wrap(fault.KindUnavailable, "processor_identity_unavailable_after_source", "The bundle-bound processor identity became unavailable after the source completed; replay is not known to be safe.", false, err, command.StatusAction)
+	}
+	return fault.Wrap(fault.KindUnavailable, "processor_identity_unavailable", "The bundle-bound processor identity could not be assessed before the source started.", true, err, command.StatusAction)
 }
 
 func processorIdentityChanged(command CommandContext) error {
@@ -588,50 +600,50 @@ func classifyProcessorProcess(err error, attempts int, command CommandContext) e
 	if !ok {
 		return unclassifiedProcessor(err, command)
 	}
-	kind, message, safe := safeProcessorFault(attempts, public.Code)
+	kind, code, message, safe := safeProcessorFault(attempts, public.Code)
 	if !safe {
 		return unclassifiedProcessor(err, command)
 	}
-	return fault.New(kind, public.Code, message, false, command.StatusAction)
+	return fault.New(kind, code, message, false, command.StatusAction)
 }
 
-func safeProcessorFault(attempts int, code string) (fault.Kind, string, bool) {
+func safeProcessorFault(attempts int, code string) (fault.Kind, string, string, bool) {
 	if attempts == 0 {
 		switch code {
 		case "processor_identity_changed":
-			return fault.KindRejected, "The processor identity changed before it could be started after the source completed.", true
+			return fault.KindRejected, code, "The processor identity changed before it could be started after the source completed.", true
 		case "processor_identity_unavailable":
-			return fault.KindUnavailable, "The processor identity became unavailable after the source completed.", true
+			return fault.KindUnavailable, "processor_identity_unavailable_after_source", "The processor identity became unavailable after the source completed.", true
 		case "invalid_processor_executable", "unsafe_processor_executable":
-			return fault.KindInvalidInput, "The bundle-bound processor executable no longer satisfies its executable contract.", true
+			return fault.KindInvalidInput, code, "The bundle-bound processor executable no longer satisfies its executable contract.", true
 		case "invalid_processor_identity":
-			return fault.KindContract, "The bundle-bound processor identity no longer satisfies its identity contract.", true
+			return fault.KindContract, code, "The bundle-bound processor identity no longer satisfies its identity contract.", true
 		case "processor_environment_setup_failed":
-			return fault.KindUnavailable, "The isolated processor environment could not be prepared after the source completed.", true
+			return fault.KindUnavailable, "processor_environment_setup_failed_after_source", "The isolated processor environment could not be prepared after the source completed.", true
 		case "processor_process_start_failed":
-			return fault.KindUnavailable, "The processor could not be started after the source completed.", true
+			return fault.KindUnavailable, "processor_process_start_failed_after_source", "The processor could not be started after the source completed.", true
 		case "processor_cleanup_failed":
-			return fault.KindUnavailable, "The isolated processor environment could not be cleaned up after the source completed.", true
+			return fault.KindUnavailable, code, "The isolated processor environment could not be cleaned up after the source completed.", true
 		}
-		return "", "", false
+		return "", "", "", false
 	}
 	switch code {
 	case "processor_identity_changed":
-		return fault.KindRejected, "The processor identity changed during execution.", true
+		return fault.KindRejected, code, "The processor identity changed during execution.", true
 	case "processor_stdout_too_large", "processor_stderr_too_large":
-		return fault.KindContract, "The processor exceeded its declared output bounds.", true
+		return fault.KindContract, code, "The processor exceeded its declared output bounds.", true
 	case "processor_execution_canceled":
-		return fault.KindCanceled, "The processor was canceled after it started; replay is not known to be safe.", true
+		return fault.KindCanceled, code, "The processor was canceled after it started; replay is not known to be safe.", true
 	case "processor_timeout":
-		return fault.KindUnavailable, "The processor exceeded its declared timeout after the source completed.", true
+		return fault.KindUnavailable, code, "The processor exceeded its declared timeout after the source completed.", true
 	case "processor_command_failed":
-		return fault.KindRejected, "The processor exited without an admitted result after the source completed.", true
+		return fault.KindRejected, code, "The processor exited without an admitted result after the source completed.", true
 	case "processor_process_wait_failed":
-		return fault.KindUnavailable, "The processor result could not be collected after it started.", true
+		return fault.KindUnavailable, code, "The processor result could not be collected after it started.", true
 	case "processor_cleanup_failed":
-		return fault.KindUnavailable, "The isolated processor environment could not be cleaned up after execution.", true
+		return fault.KindUnavailable, code, "The isolated processor environment could not be cleaned up after execution.", true
 	default:
-		return "", "", false
+		return "", "", "", false
 	}
 }
 

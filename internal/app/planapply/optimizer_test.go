@@ -249,7 +249,10 @@ func TestOptimizerProcessorPreflightAndCompatibilityFailBeforeSource(t *testing.
 		processor := &optimizerProcessStub{}
 		compatibility := &optimizerCompatibilityStub{}
 		result, err := optimizerService(fixture, source, identity, processor, compatibility, &optimizerAdmissionStub{}).Apply(context.Background(), optimizerRequest(true))
-		assertOptimizerFault(t, result, err, "processor_identity_unavailable", 0, 0)
+		public, ok := fault.PublicCopy(err)
+		if !ok || public.Code != "processor_identity_unavailable" || !public.Retryable || result.SourceProcessAttempts != 0 || result.ProcessorProcessAttempts != 0 {
+			t.Fatalf("result/error/public = %+v/%v/%+v", result, err, public)
+		}
 		if source.calls != 0 || len(identity.paths) != 1 || processor.calls != 0 || compatibility.calls != 1 || strings.Contains(err.Error(), "private path") {
 			t.Fatalf("result/error = %+v/%v, calls source/identity/processor/compatibility = %d/%d/%d/%d", result, err, source.calls, len(identity.paths), processor.calls, compatibility.calls)
 		}
@@ -392,6 +395,28 @@ func TestOptimizerRechecksIdentityAfterEligibleSourceBeforeProcessor(t *testing.
 	}
 }
 
+func TestOptimizerPostSourceIdentityUnavailableUsesDistinctNonRetryableCode(t *testing.T) {
+	fixture := newOptimizerFixture(t)
+	input := optimizerSourceBytes()
+	source := &processStub{result: sourceprocess.Result{Attempts: 1, ExitCode: 0, Stdout: input, Identity: fixture.sourceIdentity}}
+	identity := &optimizerIdentityStub{
+		values: []processorprocess.Identity{fixture.processorIdentity, fixture.processorIdentity},
+		errs: []error{nil, fault.New(
+			fault.KindUnavailable, "processor_identity_unavailable", "private identity detail", true,
+			testCommandContext().RuntimeHelpAction,
+		)},
+	}
+	processor := &optimizerProcessStub{}
+	admission := &optimizerAdmissionStub{summary: "Go test: 1 passed in 1 packages", eligible: true}
+
+	result, err := optimizerService(fixture, source, identity, processor, &optimizerCompatibilityStub{}, admission).Apply(context.Background(), optimizerRequest(true))
+	assertOptimizerFault(t, result, err, "processor_identity_unavailable_after_source", 1, 0)
+	assertNoOptimizerBytes(t, result, err)
+	if source.calls != 1 || len(identity.paths) != 2 || processor.calls != 0 || admission.calls != 1 || strings.Contains(err.Error(), "private identity detail") {
+		t.Fatalf("result/error = %+v/%v, calls source/identity/processor/admission = %d/%d/%d/%d", result, err, source.calls, len(identity.paths), processor.calls, admission.calls)
+	}
+}
+
 func TestOptimizerPostSourceIdentityCancellationIsNonRetryableAndSuppressesBytes(t *testing.T) {
 	fixture := newOptimizerFixture(t)
 	input := optimizerSourceBytes()
@@ -447,9 +472,19 @@ func TestOptimizerSuppressesBytesForUncertainSourceAndProcessorFailures(t *testi
 			err:    fault.New(fault.KindRejected, "processor_command_failed", "private processor detail", false, testCommandContext().RuntimeHelpAction),
 		},
 		{
-			name: "processor start failure", wantAttempts: 0, code: "processor_process_start_failed",
+			name: "processor start failure", wantAttempts: 0, code: "processor_process_start_failed_after_source",
 			result: processorprocess.Result{ExitCode: -1},
 			err:    fault.New(fault.KindUnavailable, "processor_process_start_failed", "private processor detail", true, testCommandContext().RuntimeHelpAction),
+		},
+		{
+			name: "processor environment setup failure", wantAttempts: 0, code: "processor_environment_setup_failed_after_source",
+			result: processorprocess.Result{ExitCode: -1},
+			err:    fault.New(fault.KindUnavailable, "processor_environment_setup_failed", "private processor detail", true, testCommandContext().RuntimeHelpAction),
+		},
+		{
+			name: "processor identity unavailable during start", wantAttempts: 0, code: "processor_identity_unavailable_after_source",
+			result: processorprocess.Result{ExitCode: -1},
+			err:    fault.New(fault.KindUnavailable, "processor_identity_unavailable", "private processor detail", true, testCommandContext().RuntimeHelpAction),
 		},
 		{
 			name: "cleanup failure after processor completion", wantAttempts: 1, code: "processor_cleanup_failed",

@@ -297,7 +297,7 @@ func TestCatalogAcceptsFreshWrapperPlanAuthoritativeOutput(t *testing.T) {
 	if !found || fresh.Agent.Output.PlanSchema.Version != tailoringplan.SchemaVersion {
 		t.Fatal("catalog lookup returned an aliased output plan schema")
 	}
-	output.PlanResultModes[0].Stdout = PlanResultStreamEmpty
+	output.PlanResultModes[0].SuccessVariants[0].Stdout = PlanResultStreamEmpty
 	fresh, found = catalog.Lookup("wrapper run")
 	if !found || !reflect.DeepEqual(fresh.Agent.Output.PlanResultModes, freshPlanResultModes()) {
 		t.Fatal("catalog lookup returned aliased plan result modes")
@@ -329,7 +329,9 @@ func TestCatalogRejectsInvalidFreshWrapperPlanOutputAuthority(t *testing.T) {
 		"reordered result modes": func(output *CommandOutput) {
 			output.PlanResultModes[0], output.PlanResultModes[1] = output.PlanResultModes[1], output.PlanResultModes[0]
 		},
-		"changed result mode": func(output *CommandOutput) { output.PlanResultModes[1].Projection = PlanResultProjectionVisibleJSON },
+		"changed result mode": func(output *CommandOutput) {
+			output.PlanResultModes[1].SuccessVariants[0].Projection = PlanResultProjectionVisibleJSON
+		},
 	}
 	for name, mutate := range tests {
 		t.Run(name, func(t *testing.T) {

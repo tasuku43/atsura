@@ -19,13 +19,14 @@ type wrapperRenderDocument struct {
 }
 
 type wrapperRenderPayload struct {
-	Source                string                         `json:"source"`
-	SourceSHA256          string                         `json:"source_sha256"`
-	Command               string                         `json:"command"`
-	Contract              wrapperRenderContract          `json:"contract"`
-	Bundle                wrapperRenderBundle            `json:"bundle"`
-	Runtime               wrapperbinding.RuntimeIdentity `json:"runtime"`
-	SourceProcessAttempts int                            `json:"source_process_attempts"`
+	Source                   string                         `json:"source"`
+	SourceSHA256             string                         `json:"source_sha256"`
+	Command                  string                         `json:"command"`
+	Contract                 wrapperRenderContract          `json:"contract"`
+	Bundle                   wrapperRenderBundle            `json:"bundle"`
+	Runtime                  wrapperbinding.RuntimeIdentity `json:"runtime"`
+	SourceProcessAttempts    int                            `json:"source_process_attempts"`
+	ProcessorProcessAttempts int                            `json:"processor_process_attempts"`
 }
 
 type wrapperRenderContract struct {
@@ -63,13 +64,13 @@ func runWrapperRender(ctx context.Context, c *CLI, _ CommandSpec, intent operati
 			fault.NextAction{Command: "help wrapper render", Reason: "Reduce the bounded generated wrapper output."},
 		))
 	}
-	if result.SourceProcessAttempts != 0 {
+	if result.SourceProcessAttempts != 0 || result.ProcessorProcessAttempts != 0 {
 		return c.fail(ctx, fault.Wrap(
 			fault.KindContract,
 			"output_contract_exceeded",
 			"The wrapper renderer returned material outside its bounded zero-execution contract.",
 			false,
-			fmt.Errorf("source_process_attempts is %d", result.SourceProcessAttempts),
+			fmt.Errorf("source_process_attempts is %d and processor_process_attempts is %d", result.SourceProcessAttempts, result.ProcessorProcessAttempts),
 			fault.NextAction{Command: "help wrapper render", Reason: "Reduce the bounded generated wrapper output."},
 		))
 	}
@@ -77,12 +78,13 @@ func runWrapperRender(ctx context.Context, c *CLI, _ CommandSpec, intent operati
 	if inputs.One("--format") == "text" {
 		return c.emitResult(ctx, result.Material.Clone().Source)
 	}
-	document := wrapperRenderDocument{SchemaVersion: 1, Wrapper: wrapperRenderPayload{
+	document := wrapperRenderDocument{SchemaVersion: 2, Wrapper: wrapperRenderPayload{
 		Source: string(result.Material.Source), SourceSHA256: result.Material.SHA256,
 		Command:  result.Binding.CommandName,
 		Contract: wrapperRenderContract{Version: result.Binding.ContractVersion, Shell: "posix"},
 		Bundle:   wrapperRenderBundle{Locator: result.Binding.BundleLocator, Digest: result.Binding.BundleDigest},
 		Runtime:  result.Binding.Runtime, SourceProcessAttempts: result.SourceProcessAttempts,
+		ProcessorProcessAttempts: result.ProcessorProcessAttempts,
 	}}
 	return c.emitJSONDocument(ctx, document, "wrapper render")
 }
@@ -117,7 +119,12 @@ func runWrapperRun(ctx context.Context, c *CLI, spec CommandSpec, intent operati
 		if err := result.Validate(); err != nil {
 			return c.fail(ctx, invalidWrapperPlanResult(err))
 		}
-		return c.emitSourceStreamResult(ctx, spec, result.SourceStream.Stdout, result.SourceStream.Stderr, result.SourceStream.ExitCode)
+		return c.emitBufferedPlanResult(ctx, spec, result.SourceStream.Stdout, result.SourceStream.Stderr, result.SourceStream.ExitCode)
+	case tailoringplan.ResultModeOriginalPreservingOptimizer:
+		if err := result.Validate(); err != nil {
+			return c.fail(ctx, invalidWrapperPlanResult(err))
+		}
+		return c.emitBufferedPlanResult(ctx, spec, result.Optimizer.Stdout, result.Optimizer.Stderr, result.Optimizer.ExitCode)
 	case tailoringplan.ResultModeTransformedJSON:
 		if err := validateTransformedJSONEnvelope(result); err != nil {
 			return c.fail(ctx, invalidWrapperPlanResult(err))

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -322,10 +323,12 @@ const (
 type PlanResultStream string
 
 const (
-	PlanResultStreamUnknown          PlanResultStream = ""
-	PlanResultStreamCompactJSON      PlanResultStream = "compact_json"
-	PlanResultStreamEmpty            PlanResultStream = "empty"
-	PlanResultStreamExactSourceBytes PlanResultStream = "exact_bounded_source_bytes"
+	PlanResultStreamUnknown                   PlanResultStream = ""
+	PlanResultStreamCompactJSON               PlanResultStream = "compact_json"
+	PlanResultStreamEmpty                     PlanResultStream = "empty"
+	PlanResultStreamExactSourceBytes          PlanResultStream = "exact_bounded_source_bytes"
+	PlanResultStreamExactAdmittedInputBytes   PlanResultStream = "byte_identical_admitted_input"
+	PlanResultStreamValidatedOptimizerSummary PlanResultStream = "validated_newline_free_utf8_optimizer_summary"
 )
 
 // PlanResultExitStatus identifies which authority supplies a successful
@@ -369,19 +372,41 @@ const (
 	PlanResultCrossStreamOrderNotPreserved  PlanResultCrossStreamOrder = "not_preserved"
 )
 
-// PlanResultModeContract is the complete finite success contract for one
+// PlanResultDisposition identifies the exact successful optimizer branch.
+// Non-optimizer modes use not_applicable so every mode has the same finite
+// success-variant shape.
+type PlanResultDisposition string
+
+const (
+	PlanResultDispositionUnknown                  PlanResultDisposition = ""
+	PlanResultDispositionNotApplicable            PlanResultDisposition = "not_applicable"
+	PlanResultDispositionPreservedBeforeProcessor PlanResultDisposition = "preserved_before_processor"
+	PlanResultDispositionPreservedAfterProcessor  PlanResultDisposition = "preserved_after_processor"
+	PlanResultDispositionOptimized                PlanResultDisposition = "optimized"
+)
+
+// PlanResultSuccessContract is one complete successful byte, status, and
+// attempt variant of a fresh plan result mode.
+type PlanResultSuccessContract struct {
+	Disposition              PlanResultDisposition      `json:"disposition"`
+	Stdout                   PlanResultStream           `json:"stdout"`
+	Stderr                   PlanResultStream           `json:"stderr"`
+	ExitStatus               PlanResultExitStatus       `json:"exit_status"`
+	Framing                  PlanResultFraming          `json:"framing"`
+	Projection               PlanResultProjection       `json:"projection"`
+	Delivery                 PlanResultDelivery         `json:"delivery"`
+	CrossStreamOrder         PlanResultCrossStreamOrder `json:"cross_stream_order"`
+	StdoutLimitBytes         int                        `json:"stdout_limit_bytes"`
+	StderrLimitBytes         int                        `json:"stderr_limit_bytes"`
+	SourceProcessAttempts    int                        `json:"source_process_attempts"`
+	ProcessorProcessAttempts int                        `json:"processor_process_attempts"`
+}
+
+// PlanResultModeContract is the complete finite success union for one
 // result_mode declared by the freshly rebuilt wrapper plan.
 type PlanResultModeContract struct {
-	Mode             tailoringplan.ResultMode   `json:"mode"`
-	Stdout           PlanResultStream           `json:"stdout"`
-	Stderr           PlanResultStream           `json:"stderr"`
-	ExitStatus       PlanResultExitStatus       `json:"exit_status"`
-	Framing          PlanResultFraming          `json:"framing"`
-	Projection       PlanResultProjection       `json:"projection"`
-	Delivery         PlanResultDelivery         `json:"delivery"`
-	CrossStreamOrder PlanResultCrossStreamOrder `json:"cross_stream_order"`
-	StdoutLimitBytes int                        `json:"stdout_limit_bytes"`
-	StderrLimitBytes int                        `json:"stderr_limit_bytes"`
+	Mode            tailoringplan.ResultMode    `json:"mode"`
+	SuccessVariants []PlanResultSuccessContract `json:"success_variants"`
 }
 
 // OutputDelivery states whether one invocation returns its complete selected
@@ -727,6 +752,12 @@ func wrapperRenderErrors() []CommandError {
 		declaredCommandError(fault.KindInvalidInput, "unsafe_source_executable", false, "bundle status", "Select and inspect a supported regular source executable."),
 		declaredCommandError(fault.KindRejected, "source_identity_changed", false, "bundle status", "Rebuild from stable current source identity evidence."),
 		declaredCommandError(fault.KindContract, "invalid_source_identity", false, "bundle status", "Repair invalid source identity evidence."),
+		declaredCommandError(fault.KindInvalidInput, "invalid_processor_executable", false, "bundle status", "Reconcile the exact bundle-bound processor executable."),
+		declaredCommandError(fault.KindInvalidInput, "unsafe_processor_executable", false, "bundle status", "Replace or re-inspect the bundle-bound processor as a supported regular executable."),
+		declaredCommandError(fault.KindUnavailable, "processor_identity_unavailable", true, "bundle status", "Retry only after the exact bundle-bound processor identity can be read."),
+		declaredCommandError(fault.KindRejected, "processor_identity_changed", false, "bundle status", "Rebuild and adopt current processor identity evidence."),
+		declaredCommandError(fault.KindContract, "invalid_processor_identity", false, "bundle status", "Repair invalid processor identity evidence."),
+		declaredCommandError(fault.KindRejected, "bundle_processor_drift", false, "bundle status", "Rebuild and adopt current processor identity evidence before rendering a wrapper."),
 		declaredCommandError(fault.KindUnsupported, "wrapper_runtime_not_supported", false, "help wrapper render", "Review the exact adopted-bundle, runtime, surface, and POSIX wrapper requirements."),
 		declaredCommandError(fault.KindUnavailable, "wrapper_runtime_unavailable", false, "help wrapper render", "Retry only after the current Atsura executable identity is readable and stable."),
 		declaredCommandError(fault.KindContract, "wrapper_render_failed", false, "help wrapper render", "Repair the fixed POSIX renderer or its validated product binding."),
@@ -774,6 +805,24 @@ func wrapperRunErrors() []CommandError {
 		declaredCommandError(fault.KindContract, "source_json_invalid", false, "bundle preview", "Repair the source output selector or adapter contract; raw output is not a fallback."),
 		declaredCommandError(fault.KindContract, "output_transform_failed", false, "bundle preview", "Repair selected fields and typed transform expectations; raw output is not a fallback."),
 		declaredCommandError(fault.KindContract, "unclassified_source_execution_outcome", false, "bundle status", "Reconcile source-owned effects before considering another invocation."),
+		declaredCommandError(fault.KindUnavailable, "processor_identity_unavailable", true, "wrapper run", "Retry only because the processor identity could not be read before any source attempt."),
+		declaredCommandError(fault.KindUnavailable, "processor_identity_unavailable_after_source", false, "bundle status", "Reconcile the exact bundle-bound processor identity after the source completed; replay is not known to be safe."),
+		declaredCommandError(fault.KindRejected, "processor_identity_changed", false, "bundle status", "Rebuild and adopt current processor evidence; do not replay a source attempt that may already have completed."),
+		declaredCommandError(fault.KindInvalidInput, "invalid_processor_executable", false, "bundle status", "Reconcile the bundle-bound processor executable after the completed source attempt."),
+		declaredCommandError(fault.KindInvalidInput, "unsafe_processor_executable", false, "bundle status", "Replace or re-inspect the unsafe bundle-bound processor without replaying the completed source attempt."),
+		declaredCommandError(fault.KindContract, "invalid_processor_identity", false, "bundle status", "Repair invalid processor identity evidence without replaying the completed source attempt."),
+		declaredCommandError(fault.KindContract, "invalid_processor_process_request", false, "bundle preview", "Repair the exact plan-derived processor request; the source was not retried."),
+		declaredCommandError(fault.KindUnavailable, "processor_environment_setup_failed_after_source", false, "bundle status", "Reconcile source-owned effects and the isolated processor environment before another invocation."),
+		declaredCommandError(fault.KindUnavailable, "processor_process_start_failed_after_source", false, "bundle status", "Reconcile source-owned effects before another invocation; no fallback bytes were published."),
+		declaredCommandError(fault.KindContract, "processor_stdout_too_large", false, "bundle status", "Reconcile source-owned effects and reduce processor output within its declared bound."),
+		declaredCommandError(fault.KindContract, "processor_stderr_too_large", false, "bundle status", "Reconcile source-owned effects and reduce processor stderr within its declared bound."),
+		declaredCommandError(fault.KindCanceled, "processor_execution_canceled", false, "help wrapper run", "Review the exact optimizer runtime outcome; replay is not known to be safe."),
+		declaredCommandError(fault.KindUnavailable, "processor_timeout", false, "bundle status", "Reconcile source-owned effects after the processor timed out."),
+		declaredCommandError(fault.KindRejected, "processor_command_failed", false, "bundle status", "Reconcile source-owned effects and inspect the processor independently; no fallback bytes were published."),
+		declaredCommandError(fault.KindUnavailable, "processor_process_wait_failed", false, "bundle status", "Reconcile source-owned effects after the processor result could not be collected."),
+		declaredCommandError(fault.KindUnavailable, "processor_cleanup_failed", false, "bundle status", "Reconcile source-owned effects and the isolated processor environment before another invocation."),
+		declaredCommandError(fault.KindContract, "processor_output_not_admitted", false, "bundle status", "Reconcile source-owned effects and the rejected optimizer result; no fallback bytes were published."),
+		declaredCommandError(fault.KindContract, "unclassified_processor_execution_outcome", false, "bundle status", "Reconcile source-owned effects after the processor result could not be classified."),
 		declaredCommandError(fault.KindContract, "output_contract_exceeded", false, resultRecovery.Command, resultRecovery.Reason),
 		declaredCommandError(fault.KindContract, "output_encoding_failed", false, "bundle preview", "Repair deterministic compact wrapper JSON; the source was not retried."),
 		declaredCommandError(fault.KindInternal, "internal_error", false, "bundle status", "Inspect wrapper execution wiring without replaying the source."),
@@ -1083,30 +1132,63 @@ func wrapperPlanOutputSchema() *OutputSchema {
 }
 
 func freshPlanResultModes() []PlanResultModeContract {
+	success := func(
+		disposition PlanResultDisposition,
+		stdout, stderr PlanResultStream,
+		exitStatus PlanResultExitStatus,
+		framing PlanResultFraming,
+		projection PlanResultProjection,
+		crossStreamOrder PlanResultCrossStreamOrder,
+		stdoutLimitBytes, stderrLimitBytes, sourceAttempts, processorAttempts int,
+	) PlanResultSuccessContract {
+		return PlanResultSuccessContract{
+			Disposition: disposition, Stdout: stdout, Stderr: stderr, ExitStatus: exitStatus,
+			Framing: framing, Projection: projection, Delivery: PlanResultDeliveryBufferedAfterCompletion,
+			CrossStreamOrder: crossStreamOrder, StdoutLimitBytes: stdoutLimitBytes, StderrLimitBytes: stderrLimitBytes,
+			SourceProcessAttempts: sourceAttempts, ProcessorProcessAttempts: processorAttempts,
+		}
+	}
 	return []PlanResultModeContract{
 		{
-			Mode:             tailoringplan.ResultModeTransformedJSON,
-			Stdout:           PlanResultStreamCompactJSON,
-			Stderr:           PlanResultStreamEmpty,
-			ExitStatus:       PlanResultExitStatusZero,
-			Framing:          PlanResultFramingOneValueLF,
-			Projection:       PlanResultProjectionVisibleJSON,
-			Delivery:         PlanResultDeliveryBufferedAfterCompletion,
-			CrossStreamOrder: PlanResultCrossStreamOrderNotApplicable,
-			StdoutLimitBytes: maxBundleOutputBytes,
-			StderrLimitBytes: 0,
+			Mode: tailoringplan.ResultModeTransformedJSON,
+			SuccessVariants: []PlanResultSuccessContract{success(
+				PlanResultDispositionNotApplicable,
+				PlanResultStreamCompactJSON, PlanResultStreamEmpty, PlanResultExitStatusZero,
+				PlanResultFramingOneValueLF, PlanResultProjectionVisibleJSON, PlanResultCrossStreamOrderNotApplicable,
+				maxBundleOutputBytes, 0, 1, 0,
+			)},
 		},
 		{
-			Mode:             tailoringplan.ResultModeSourceStreamPassthrough,
-			Stdout:           PlanResultStreamExactSourceBytes,
-			Stderr:           PlanResultStreamExactSourceBytes,
-			ExitStatus:       PlanResultExitStatusSourceConventional,
-			Framing:          PlanResultFramingNone,
-			Projection:       PlanResultProjectionNone,
-			Delivery:         PlanResultDeliveryBufferedAfterCompletion,
-			CrossStreamOrder: PlanResultCrossStreamOrderNotPreserved,
-			StdoutLimitBytes: sourceprocess.MaxStdoutBytes,
-			StderrLimitBytes: sourceprocess.MaxStderrBytes,
+			Mode: tailoringplan.ResultModeSourceStreamPassthrough,
+			SuccessVariants: []PlanResultSuccessContract{success(
+				PlanResultDispositionNotApplicable,
+				PlanResultStreamExactSourceBytes, PlanResultStreamExactSourceBytes, PlanResultExitStatusSourceConventional,
+				PlanResultFramingNone, PlanResultProjectionNone, PlanResultCrossStreamOrderNotPreserved,
+				sourceprocess.MaxStdoutBytes, sourceprocess.MaxStderrBytes, 1, 0,
+			)},
+		},
+		{
+			Mode: tailoringplan.ResultModeOriginalPreservingOptimizer,
+			SuccessVariants: []PlanResultSuccessContract{
+				success(
+					PlanResultDispositionPreservedBeforeProcessor,
+					PlanResultStreamExactSourceBytes, PlanResultStreamExactSourceBytes, PlanResultExitStatusSourceConventional,
+					PlanResultFramingNone, PlanResultProjectionNone, PlanResultCrossStreamOrderNotPreserved,
+					sourceprocess.MaxStdoutBytes, sourceprocess.MaxStderrBytes, 1, 0,
+				),
+				success(
+					PlanResultDispositionPreservedAfterProcessor,
+					PlanResultStreamExactAdmittedInputBytes, PlanResultStreamEmpty, PlanResultExitStatusZero,
+					PlanResultFramingNone, PlanResultProjectionNone, PlanResultCrossStreamOrderNotApplicable,
+					sourceprocess.MaxStdoutBytes, 0, 1, 1,
+				),
+				success(
+					PlanResultDispositionOptimized,
+					PlanResultStreamValidatedOptimizerSummary, PlanResultStreamEmpty, PlanResultExitStatusZero,
+					PlanResultFramingNone, PlanResultProjectionNone, PlanResultCrossStreamOrderNotApplicable,
+					processorprocess.MaxStdoutBytes, 0, 1, 1,
+				),
+			},
 		},
 	}
 }
@@ -1521,10 +1603,10 @@ func DefaultCatalog() Catalog {
 			Role:    RoleUtility,
 			Agent: AgentContract{
 				CapabilityID: "tailoring.wrapper.materialize",
-				Outcome:      "Produce fixed POSIX function bytes and a review digest bound to one adopted purpose bundle and the exact current Atsura runtime",
+				Outcome:      "Produce fixed POSIX function bytes and a review digest bound to one adopted purpose bundle, every exact external processor, and the exact current Atsura runtime",
 				Inputs: []CommandInput{
 					{Name: "--bundle", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Use one exact absolute clean path to the bounded canonical JSON document emitted by bundle build.", AllowedValues: []string{}},
-					{Name: "--format", Source: InputSourceFlag, Required: false, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Choose raw sourceable function text or its schema-1 JSON review envelope.", AllowedValues: []string{"text", "json"}, DefaultValue: stringPointer("text")},
+					{Name: "--format", Source: InputSourceFlag, Required: false, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Choose raw sourceable function text or its schema-2 JSON review envelope.", AllowedValues: []string{"text", "json"}, DefaultValue: stringPointer("text")},
 				},
 				Output: CommandOutput{
 					Authority: OutputAuthorityCatalog,
@@ -1537,14 +1619,15 @@ func DefaultCatalog() Catalog {
 						{Name: "bundle", Type: OutputFieldTypeObject, Description: "Exact bundle locator and canonical digest embedded by the renderer.", Schema: wrapperBundleBindingOutputSchema()},
 						{Name: "runtime", Type: OutputFieldTypeObject, Description: "Exact current Atsura executable path, SHA-256, and bounded size embedded by the renderer.", Schema: wrapperRuntimeBindingOutputSchema()},
 						{Name: "source_process_attempts", Type: OutputFieldTypeInteger, Description: "Always zero; rendering fingerprints files but starts no source CLI process."},
+						{Name: "processor_process_attempts", Type: OutputFieldTypeInteger, Description: "Always zero; rendering may fingerprint bundle-bound processors but starts no processor process."},
 					},
 					Delivery: OutputDeliveryComplete, CollectionCoverage: CollectionCoverageNotApplicable,
-					JSONEnvelope: "wrapper", JSONSchemaVersion: 1,
+					JSONEnvelope: "wrapper", JSONSchemaVersion: 2,
 				},
 				Prerequisites: []string{
-					"Linux or macOS, one absolute-path schema-2 bundle whose exact digest is user-adopted, and current source plus Atsura executable identities.",
+					"Linux or macOS, one absolute-path current-schema bundle whose exact digest is user-adopted, and current source, processor, plus Atsura executable identities.",
 					"The bundle requested executable must be one portable non-reserved POSIX Name; it is never derived from a path or basename.",
-					"The complete included surface must contain exactly one GitHub CLI issue list or pr list command and result mode admitted by the maintained runtime, including every exposed option.",
+					"The complete included surface and any exact processor tuple must be admitted by the maintained source and processor runtime contracts, including every exposed option.",
 					"Text output is fixed product source, not specification-authored code; activation and later modification of those bytes remain caller-owned.",
 				},
 				Errors: wrapperRenderErrors(),
@@ -1559,7 +1642,7 @@ func DefaultCatalog() Catalog {
 			Role:    RoleUtility,
 			Agent: AgentContract{
 				CapabilityID: "tailoring.wrapper.materialize",
-				Outcome:      "Verify one render-produced bundle and runtime closure, rebuild its fresh plan, and emit only its declared transformed-JSON or source-stream result after at most one exact source attempt",
+				Outcome:      "Verify one render-produced bundle and runtime closure, rebuild its fresh plan, and emit only its declared transformed-JSON, source-stream, or original-preserving optimizer result after at most one exact source and one exact processor attempt",
 				Inputs: []CommandInput{
 					{Name: "--contract-version", Source: InputSourceFlag, Required: true, ValueKind: InputValueInteger, Cardinality: InputCardinalitySingle, Description: "Use the exact generated wrapper binding contract version.", AllowedValues: []string{"1"}, Minimum: int64Pointer(1), Maximum: int64Pointer(1)},
 					{Name: "--bundle", Source: InputSourceFlag, Required: true, ValueKind: InputValueText, Cardinality: InputCardinalitySingle, Description: "Pass the exact absolute clean bundle locator emitted by wrapper render.", AllowedValues: []string{}},
@@ -1572,9 +1655,10 @@ func DefaultCatalog() Catalog {
 				Output: freshWrapperPlanAuthoritativeOutput(),
 				Prerequisites: []string{
 					"Use only the complete closure emitted by wrapper render; the source command spelling is derived from the one strictly loaded bundle and is not another input.",
-					"Execution requires the exact bundle to remain adopted and the exact bundle, Atsura runtime, source identity, included surface, invocation, and maintained adapter runtime contract to remain current.",
+					"Execution requires the exact bundle to remain adopted and the exact bundle, Atsura runtime, source and processor identities, included surface, invocation, and maintained runtime contracts to remain current.",
 					"A transformed_json result is one compact object or array plus LF with empty stderr and status zero; source_stream_passthrough returns exact bounded source stdout/stderr and conventional status without framing, projection, timing, or interleaving claims.",
-					"The source starts at most once without a shell; uncertain post-start and final output-write failures are non-retryable, expose no captured streams through a fault, and never recommend replay.",
+					"An original_preserving_optimizer result has exactly one declared disposition: preserved_before_processor returns the exact conventional source result with zero processor attempts; preserved_after_processor returns a byte-identical admitted input; optimized returns the validated newline-free optimizer summary. The latter two use status zero, empty stderr, and one processor attempt.",
+					"The source and processor each start at most once without a shell; a processor fault never falls back to source bytes. Uncertain post-start and final output-write failures are non-retryable, expose no captured streams through a fault, and never recommend replay.",
 				},
 				Errors: wrapperRunErrors(),
 			},
@@ -2628,7 +2712,7 @@ func validatePlanResultModes(got []PlanResultModeContract) error {
 		return fmt.Errorf("fresh-wrapper-plan-authoritative output must declare exactly %d plan result modes", len(want))
 	}
 	for index := range want {
-		if got[index] != want[index] {
+		if !reflect.DeepEqual(got[index], want[index]) {
 			return fmt.Errorf("fresh-wrapper-plan-authoritative result mode %d is incomplete or out of order", index)
 		}
 	}
@@ -3433,6 +3517,9 @@ func cloneAgentContract(contract AgentContract) AgentContract {
 	contract.Output.Formats = cloneSlice(contract.Output.Formats)
 	contract.Output.Fields = cloneSlice(contract.Output.Fields)
 	contract.Output.PlanResultModes = cloneSlice(contract.Output.PlanResultModes)
+	for index := range contract.Output.PlanResultModes {
+		contract.Output.PlanResultModes[index].SuccessVariants = cloneSlice(contract.Output.PlanResultModes[index].SuccessVariants)
+	}
 	for index := range contract.Output.Fields {
 		if contract.Output.Fields[index].Schema != nil {
 			schema := *contract.Output.Fields[index].Schema

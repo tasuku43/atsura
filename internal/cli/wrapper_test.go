@@ -136,6 +136,19 @@ func testWrapperSourceStreamResult(stdout, stderr []byte, status int, kind tailo
 	}
 }
 
+func testWrapperOptimizerResult(stdout, stderr []byte, status int, disposition planapply.OptimizerDisposition, processorAttempts int) wrapperrun.Result {
+	return wrapperrun.Result{
+		BundleDigest:             strings.Repeat("a", 64),
+		PlanDigest:               strings.Repeat("c", 64),
+		MatchedCommand:           []string{"test"},
+		WrapperKind:              tailoringbundle.WrapperTransform,
+		ResultMode:               tailoringplan.ResultModeOriginalPreservingOptimizer,
+		Optimizer:                &planapply.OptimizerResult{Stdout: append([]byte(nil), stdout...), Stderr: append([]byte(nil), stderr...), ExitCode: status, Disposition: disposition},
+		SourceProcessAttempts:    1,
+		ProcessorProcessAttempts: processorAttempts,
+	}
+}
+
 func wrapperRunInvocation(binding wrapperbinding.RuntimeInvocation, argv ...string) []string {
 	args := []string{
 		"wrapper", "run",
@@ -144,7 +157,7 @@ func wrapperRunInvocation(binding wrapperbinding.RuntimeInvocation, argv ...stri
 		"--bundle-digest=" + binding.BundleDigest,
 		"--runtime-path=" + binding.Runtime.ResolvedPath,
 		"--runtime-sha256=" + binding.Runtime.SHA256,
-		"--runtime-size=4096",
+		"--runtime-size=" + strconv.FormatInt(binding.Runtime.Size, 10),
 		"--",
 	}
 	return append(args, argv...)
@@ -167,12 +180,12 @@ func TestWrapperCatalogPublishesExactHostNeutralContracts(t *testing.T) {
 	if render.Args != "--bundle <absolute-path> [--format text|json]" || run.Args != "--contract-version=1 --bundle=<absolute-path> --bundle-digest=<sha256> --runtime-path=<absolute-path> --runtime-sha256=<sha256> --runtime-size=<bytes> -- [argv]" {
 		t.Fatalf("render/run grammar = %q / %q", render.Args, run.Args)
 	}
-	wantRenderFields := []string{"source", "source_sha256", "command", "contract", "bundle", "runtime", "source_process_attempts"}
+	wantRenderFields := []string{"source", "source_sha256", "command", "contract", "bundle", "runtime", "source_process_attempts", "processor_process_attempts"}
 	gotRenderFields := make([]string, len(render.Agent.Output.Fields))
 	for index, field := range render.Agent.Output.Fields {
 		gotRenderFields[index] = field.Name
 	}
-	if !reflect.DeepEqual(gotRenderFields, wantRenderFields) || render.Agent.Output.JSONEnvelope != "wrapper" || render.Agent.Output.JSONSchemaVersion != 1 {
+	if !reflect.DeepEqual(gotRenderFields, wantRenderFields) || render.Agent.Output.JSONEnvelope != "wrapper" || render.Agent.Output.JSONSchemaVersion != 2 {
 		t.Fatalf("render output = %+v", render.Agent.Output)
 	}
 	if run.Agent.Output.Authority != OutputAuthorityFreshWrapperPlan ||
@@ -192,12 +205,56 @@ func TestWrapperCatalogPublishesExactHostNeutralContracts(t *testing.T) {
 	}
 }
 
+func TestFreshPlanResultModesPublishExactOptimizerSuccessUnion(t *testing.T) {
+	modes := freshPlanResultModes()
+	if len(modes) != 3 || modes[2].Mode != tailoringplan.ResultModeOriginalPreservingOptimizer || len(modes[2].SuccessVariants) != 3 {
+		t.Fatalf("plan result modes = %+v", modes)
+	}
+	want := []PlanResultSuccessContract{
+		{
+			Disposition: PlanResultDispositionPreservedBeforeProcessor,
+			Stdout:      PlanResultStreamExactSourceBytes, Stderr: PlanResultStreamExactSourceBytes,
+			ExitStatus: PlanResultExitStatusSourceConventional, Framing: PlanResultFramingNone, Projection: PlanResultProjectionNone,
+			Delivery: PlanResultDeliveryBufferedAfterCompletion, CrossStreamOrder: PlanResultCrossStreamOrderNotPreserved,
+			StdoutLimitBytes: 4 * 1024 * 1024, StderrLimitBytes: 256 * 1024,
+			SourceProcessAttempts: 1, ProcessorProcessAttempts: 0,
+		},
+		{
+			Disposition: PlanResultDispositionPreservedAfterProcessor,
+			Stdout:      PlanResultStreamExactAdmittedInputBytes, Stderr: PlanResultStreamEmpty,
+			ExitStatus: PlanResultExitStatusZero, Framing: PlanResultFramingNone, Projection: PlanResultProjectionNone,
+			Delivery: PlanResultDeliveryBufferedAfterCompletion, CrossStreamOrder: PlanResultCrossStreamOrderNotApplicable,
+			StdoutLimitBytes: 4 * 1024 * 1024, StderrLimitBytes: 0,
+			SourceProcessAttempts: 1, ProcessorProcessAttempts: 1,
+		},
+		{
+			Disposition: PlanResultDispositionOptimized,
+			Stdout:      PlanResultStreamValidatedOptimizerSummary, Stderr: PlanResultStreamEmpty,
+			ExitStatus: PlanResultExitStatusZero, Framing: PlanResultFramingNone, Projection: PlanResultProjectionNone,
+			Delivery: PlanResultDeliveryBufferedAfterCompletion, CrossStreamOrder: PlanResultCrossStreamOrderNotApplicable,
+			StdoutLimitBytes: 4 * 1024 * 1024, StderrLimitBytes: 0,
+			SourceProcessAttempts: 1, ProcessorProcessAttempts: 1,
+		},
+	}
+	if !reflect.DeepEqual(modes[2].SuccessVariants, want) {
+		t.Fatalf("optimizer success variants = %+v, want %+v", modes[2].SuccessVariants, want)
+	}
+	for index, mode := range modes[:2] {
+		if len(mode.SuccessVariants) != 1 || mode.SuccessVariants[0].Disposition != PlanResultDispositionNotApplicable ||
+			mode.SuccessVariants[0].SourceProcessAttempts != 1 || mode.SuccessVariants[0].ProcessorProcessAttempts != 0 {
+			t.Fatalf("non-optimizer mode %d = %+v", index, mode)
+		}
+	}
+}
+
 func TestWrapperCatalogDeclaresCompleteFacadeFaultInventories(t *testing.T) {
 	render, _ := DefaultCatalog().Lookup("wrapper render")
 	run, _ := DefaultCatalog().Lookup("wrapper run")
 	wantRender := []string{
 		"invalid_arguments", "bundle_file_not_found", "bundle_file_permission_denied", "unsafe_bundle_file", "bundle_file_too_large", "bundle_file_read_failed", "invalid_bundle_file", "legacy_tailoring_schema", "bundle_digest_mismatch",
-		"invalid_wrapper_binding", "wrapper_platform_not_supported", "invalid_bundle_trust_store", "bundle_not_adopted", "bundle_source_drift", "source_executable_not_found", "source_identity_unavailable", "unsafe_source_executable", "source_identity_changed", "invalid_source_identity", "wrapper_runtime_not_supported", "wrapper_runtime_unavailable", "wrapper_render_failed", "output_contract_exceeded", "output_encoding_failed", "internal_error", "output_write_failed", "operation_canceled",
+		"invalid_wrapper_binding", "wrapper_platform_not_supported", "invalid_bundle_trust_store", "bundle_not_adopted", "bundle_source_drift", "source_executable_not_found", "source_identity_unavailable", "unsafe_source_executable", "source_identity_changed", "invalid_source_identity",
+		"invalid_processor_executable", "unsafe_processor_executable", "processor_identity_unavailable", "processor_identity_changed", "invalid_processor_identity", "bundle_processor_drift",
+		"wrapper_runtime_not_supported", "wrapper_runtime_unavailable", "wrapper_render_failed", "output_contract_exceeded", "output_encoding_failed", "internal_error", "output_write_failed", "operation_canceled",
 	}
 	assertCommandErrorCodes(t, render.Agent.Errors, wantRender)
 
@@ -205,7 +262,11 @@ func TestWrapperCatalogDeclaresCompleteFacadeFaultInventories(t *testing.T) {
 	for _, declared := range bundleExecuteErrors() {
 		wantRun = append(wantRun, declared.Code)
 	}
-	wantRun = append(wantRun, "invalid_wrapper_binding", "wrapper_runtime_unavailable", "wrapper_runtime_drift", "bundle_binding_mismatch")
+	wantRun = append(wantRun,
+		"invalid_wrapper_binding", "wrapper_runtime_unavailable", "wrapper_runtime_drift", "bundle_binding_mismatch",
+		"processor_identity_unavailable", "processor_identity_unavailable_after_source", "processor_identity_changed", "invalid_processor_executable", "unsafe_processor_executable", "invalid_processor_identity", "invalid_processor_process_request",
+		"processor_environment_setup_failed_after_source", "processor_process_start_failed_after_source", "processor_stdout_too_large", "processor_stderr_too_large", "processor_execution_canceled", "processor_timeout", "processor_command_failed", "processor_process_wait_failed", "processor_cleanup_failed", "processor_output_not_admitted", "unclassified_processor_execution_outcome",
+	)
 	assertCommandErrorCodes(t, run.Agent.Errors, wantRun)
 }
 
@@ -263,7 +324,7 @@ func TestWrapperScopedAgentHelpPinsDynamicFramingAndHasNoHostKeys(t *testing.T) 
 		t.Fatal(err)
 	}
 	encoded := stdout.String()
-	for _, required := range []string{`"authority":"fresh_wrapper_plan"`, `"plan_result_modes"`, `"mode":"transformed_json"`, `"mode":"source_stream_passthrough"`, `"command":"bundle preview"`, `"id":"wrapper-plan"`, `"version":` + strconv.Itoa(tailoringplan.SchemaVersion)} {
+	for _, required := range []string{`"authority":"fresh_wrapper_plan"`, `"plan_result_modes"`, `"mode":"transformed_json"`, `"mode":"source_stream_passthrough"`, `"mode":"original_preserving_optimizer"`, `"disposition":"preserved_before_processor"`, `"disposition":"preserved_after_processor"`, `"disposition":"optimized"`, `"command":"bundle preview"`, `"id":"wrapper-plan"`, `"version":` + strconv.Itoa(tailoringplan.SchemaVersion)} {
 		if !strings.Contains(encoded, required) {
 			t.Errorf("scoped help lacks %s: %s", required, encoded)
 		}
@@ -317,7 +378,7 @@ func TestWrapperRenderRawAndJSONOutputsDescribeIdenticalMaterial(t *testing.T) {
 	if err := json.Unmarshal(top["wrapper"], &payload); err != nil {
 		t.Fatal(err)
 	}
-	assertJSONKeys(t, payload, []string{"bundle", "command", "contract", "runtime", "source", "source_process_attempts", "source_sha256"})
+	assertJSONKeys(t, payload, []string{"bundle", "command", "contract", "runtime", "source", "source_process_attempts", "processor_process_attempts", "source_sha256"})
 	var contract, bundle, runtime map[string]json.RawMessage
 	if err := json.Unmarshal(payload["contract"], &contract); err != nil {
 		t.Fatal(err)
@@ -332,15 +393,16 @@ func TestWrapperRenderRawAndJSONOutputsDescribeIdenticalMaterial(t *testing.T) {
 	assertJSONKeys(t, bundle, []string{"digest", "locator"})
 	assertJSONKeys(t, runtime, []string{"resolved_path", "sha256", "size"})
 	var source, digest, commandName string
-	var attempts int
+	var sourceAttempts, processorAttempts int
 	if err := json.Unmarshal(payload["source"], &source); err != nil {
 		t.Fatal(err)
 	}
 	_ = json.Unmarshal(payload["source_sha256"], &digest)
 	_ = json.Unmarshal(payload["command"], &commandName)
-	_ = json.Unmarshal(payload["source_process_attempts"], &attempts)
-	if source != string(rawOut.Bytes()) || digest != result.Material.SHA256 || commandName != "gh" || attempts != 0 || jsonErr.Len() != 0 {
-		t.Fatalf("review source/digest/command/attempts = %q %q %q %d", source, digest, commandName, attempts)
+	_ = json.Unmarshal(payload["source_process_attempts"], &sourceAttempts)
+	_ = json.Unmarshal(payload["processor_process_attempts"], &processorAttempts)
+	if source != string(rawOut.Bytes()) || digest != result.Material.SHA256 || commandName != "gh" || sourceAttempts != 0 || processorAttempts != 0 || jsonErr.Len() != 0 {
+		t.Fatalf("review source/digest/command/attempts = %q %q %q %d/%d", source, digest, commandName, sourceAttempts, processorAttempts)
 	}
 }
 
@@ -398,6 +460,87 @@ func TestWrapperRunSourceStreamAllowsZeroStatusWithNonemptyStderr(t *testing.T) 
 	}
 	if !bytes.Equal(stdout.Bytes(), []byte("ok")) || !bytes.Equal(stderr.Bytes(), []byte("warning\n")) {
 		t.Fatalf("stdout=%q stderr=%q", stdout.Bytes(), stderr.Bytes())
+	}
+}
+
+func TestWrapperRunEmitsExactOptimizerSuccessVariants(t *testing.T) {
+	binding := testWrapperRenderResult(t).Binding.RuntimeInvocation()
+	tests := []struct {
+		name              string
+		stdout            []byte
+		stderr            []byte
+		status            int
+		disposition       planapply.OptimizerDisposition
+		processorAttempts int
+	}{
+		{
+			name: "preserved before processor", stdout: []byte{'{', 0, 0xff, '}', '\n'}, stderr: []byte("source warning\n"), status: 23,
+			disposition: planapply.OptimizerPreservedBeforeProcessor, processorAttempts: 0,
+		},
+		{
+			name: "preserved after processor", stdout: []byte("exact admitted input\n"), status: 0,
+			disposition: planapply.OptimizerPreservedAfterProcessor, processorAttempts: 1,
+		},
+		{
+			name: "optimized", stdout: []byte("Go test: 2 passed in 1 packages"), status: 0,
+			disposition: planapply.OptimizerOptimized, processorAttempts: 1,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			stub := &cliWrapperRunStub{result: testWrapperOptimizerResult(test.stdout, test.stderr, test.status, test.disposition, test.processorAttempts)}
+			order := []string{}
+			stdout := &orderedWriter{label: "stdout", order: &order}
+			stderr := &orderedWriter{label: "stderr", order: &order}
+			command := New(strings.NewReader(""), stdout, stderr)
+			command.wrapperRuns = stub
+			if code := command.RunContext(context.Background(), wrapperRunInvocation(binding, "test")); code != test.status {
+				t.Fatalf("code=%d stdout=%x stderr=%x", code, stdout.buffer.Bytes(), stderr.buffer.Bytes())
+			}
+			if !bytes.Equal(stdout.buffer.Bytes(), test.stdout) || !bytes.Equal(stderr.buffer.Bytes(), test.stderr) ||
+				!reflect.DeepEqual(order, []string{"stdout", "stderr"}) || stub.calls != 1 {
+				t.Fatalf("stdout=%x stderr=%x order=%v calls=%d", stdout.buffer.Bytes(), stderr.buffer.Bytes(), order, stub.calls)
+			}
+		})
+	}
+}
+
+func TestWrapperRunRejectsMalformedOptimizerResultWithoutPublishingBytes(t *testing.T) {
+	binding := testWrapperRenderResult(t).Binding.RuntimeInvocation()
+	result := testWrapperOptimizerResult([]byte("ATSURA_MALFORMED_OPTIMIZER_STDOUT"), nil, 0, planapply.OptimizerOptimized, 0)
+	stub := &cliWrapperRunStub{result: result}
+	var stdout, stderr bytes.Buffer
+	command := New(strings.NewReader(""), &stdout, &stderr)
+	command.wrapperRuns = stub
+	args := append([]string{"--error-format=json"}, wrapperRunInvocation(binding, "test")...)
+	if code := command.RunContext(context.Background(), args); code != ExitContract || stdout.Len() != 0 || stub.calls != 1 {
+		t.Fatalf("code=%d stdout=%q stderr=%q calls=%d", code, stdout.String(), stderr.String(), stub.calls)
+	}
+	if !strings.Contains(stderr.String(), `"code":"output_contract_exceeded"`) || bytes.Contains(stderr.Bytes(), result.Optimizer.Stdout) {
+		t.Fatalf("stderr=%q", stderr.String())
+	}
+}
+
+func TestWrapperRunProcessorFailurePublishesNoFallbackOrIntermediateBytes(t *testing.T) {
+	binding := testWrapperRenderResult(t).Binding.RuntimeInvocation()
+	result := testWrapperOptimizerResult([]byte("ATSURA_SOURCE_FALLBACK_SECRET"), []byte("ATSURA_PROCESSOR_STDERR_SECRET"), 0, planapply.OptimizerPreservedBeforeProcessor, 0)
+	stub := &cliWrapperRunStub{result: result, err: fault.New(
+		fault.KindRejected,
+		"processor_command_failed",
+		"The processor exited without an admitted result after the source completed.",
+		false,
+		fault.NextAction{Command: "bundle status", Reason: "Reconcile source-owned effects and processor state."},
+	)}
+	var stdout, stderr bytes.Buffer
+	command := New(strings.NewReader(""), &stdout, &stderr)
+	command.wrapperRuns = stub
+	args := append([]string{"--error-format=json"}, wrapperRunInvocation(binding, "test")...)
+	if code := command.RunContext(context.Background(), args); code != ExitRejected || stdout.Len() != 0 || stub.calls != 1 {
+		t.Fatalf("code=%d stdout=%q stderr=%q calls=%d", code, stdout.String(), stderr.String(), stub.calls)
+	}
+	if !strings.Contains(stderr.String(), `"code":"processor_command_failed"`) || !strings.Contains(stderr.String(), `"retryable":false`) ||
+		bytes.Contains(stderr.Bytes(), result.Optimizer.Stdout) || bytes.Contains(stderr.Bytes(), result.Optimizer.Stderr) {
+		t.Fatalf("stderr=%q", stderr.String())
 	}
 }
 

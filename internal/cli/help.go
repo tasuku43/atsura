@@ -16,7 +16,7 @@ type helpFormat uint8
 const (
 	helpFormatText helpFormat = iota
 	helpFormatAgent
-	agentHelpSchemaVersion = 11
+	agentHelpSchemaVersion = 12
 )
 
 type agentIndexDocument struct {
@@ -441,7 +441,7 @@ func (c *CLI) renderAgentHelp(selector string, exact bool, commands []CommandSpe
 			PartialOutputIsSuccess:             false,
 			DynamicPlanResultModesField:        "commands[].contract.output.plan_result_modes",
 			ExternalTextTrust:                  "untrusted_data",
-			ExternalTextProjection:             "atsura_owned_visible_escape_with_plan_declared_source_stream_exception",
+			ExternalTextProjection:             "atsura_owned_visible_escape_with_plan_declared_exact_byte_result_exceptions",
 			OpaqueReferencePolicy:              "validated_exact_bytes",
 		},
 		Commands:  make([]agentCommand, 0, len(commands)),
