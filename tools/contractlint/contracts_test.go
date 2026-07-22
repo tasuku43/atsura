@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/tasuku43/atsura/internal/cli"
+	"github.com/tasuku43/atsura/tools/internal/processormanifest"
 )
 
 func TestRepositoryContractsMatchDefaultCatalog(t *testing.T) {
@@ -112,7 +113,7 @@ func TestStrictManifestParsingRejectsUnknownDuplicateAndTrailingJSON(t *testing.
 			case schemasPath:
 				_, err = loadStrictArray[schemaFixture](root, test.path)
 			case processorsPath:
-				_, err = loadStrictObject[processorManifest](root, test.path)
+				_, err = processormanifest.Load(root)
 			}
 			if err == nil {
 				t.Fatal("strict manifest parsing succeeded")
@@ -162,7 +163,7 @@ func TestManifestsMustBeRegularFilesWithoutSymbolicLinks(t *testing.T) {
 		if err := os.MkdirAll(path, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := loadStrictObject[processorManifest](root, processorsPath); err == nil || !strings.Contains(err.Error(), "regular file") {
+		if _, err := processormanifest.Load(root); err == nil || !strings.Contains(err.Error(), "regular file") {
 			t.Fatalf("error = %v, want regular-file rejection", err)
 		}
 	})
@@ -271,44 +272,54 @@ func TestProcessorManifestAcceptsExactADR0012Provenance(t *testing.T) {
 func TestProcessorManifestRejectsEveryUnpinnedContractDimension(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*processorManifest)
+		mutate func(*processormanifest.Manifest)
 	}{
-		{name: "schema", mutate: func(value *processorManifest) { value.SchemaVersion++ }},
-		{name: "missing processor", mutate: func(value *processorManifest) { value.Processors = nil }},
-		{name: "extra processor", mutate: func(value *processorManifest) { value.Processors = append(value.Processors, expectedRTKProcessor()) }},
-		{name: "contract", mutate: func(value *processorManifest) { value.Processors[0].ContractID = "atsura.output.other.v1" }},
-		{name: "kind", mutate: func(value *processorManifest) { value.Processors[0].Kind = "atsura.processor.other" }},
-		{name: "version", mutate: func(value *processorManifest) { value.Processors[0].Version = "0.43.1" }},
-		{name: "commit", mutate: func(value *processorManifest) { value.Processors[0].UpstreamCommit = strings.Repeat("0", 40) }},
-		{name: "release", mutate: func(value *processorManifest) { value.Processors[0].ReleaseURL = "https://example.com/release" }},
-		{name: "checksums URL", mutate: func(value *processorManifest) {
+		{name: "schema", mutate: func(value *processormanifest.Manifest) { value.SchemaVersion++ }},
+		{name: "missing processor", mutate: func(value *processormanifest.Manifest) { value.Processors = nil }},
+		{name: "extra processor", mutate: func(value *processormanifest.Manifest) {
+			value.Processors = append(value.Processors, expectedRTKProcessor())
+		}},
+		{name: "contract", mutate: func(value *processormanifest.Manifest) { value.Processors[0].ContractID = "atsura.output.other.v1" }},
+		{name: "kind", mutate: func(value *processormanifest.Manifest) { value.Processors[0].Kind = "atsura.processor.other" }},
+		{name: "version", mutate: func(value *processormanifest.Manifest) { value.Processors[0].Version = "0.43.1" }},
+		{name: "commit", mutate: func(value *processormanifest.Manifest) { value.Processors[0].UpstreamCommit = strings.Repeat("0", 40) }},
+		{name: "release", mutate: func(value *processormanifest.Manifest) {
+			value.Processors[0].ReleaseURL = "https://example.com/release"
+		}},
+		{name: "checksums URL", mutate: func(value *processormanifest.Manifest) {
 			value.Processors[0].Checksums.URL = "https://example.com/checksums.txt"
 		}},
-		{name: "checksums digest", mutate: func(value *processorManifest) { value.Processors[0].Checksums.SHA256 = strings.Repeat("0", 64) }},
-		{name: "license", mutate: func(value *processorManifest) { value.Processors[0].License.SPDX = "MIT" }},
-		{name: "license URL", mutate: func(value *processorManifest) { value.Processors[0].License.URL = "https://example.com/LICENSE" }},
-		{name: "license digest", mutate: func(value *processorManifest) { value.Processors[0].License.SHA256 = strings.Repeat("0", 64) }},
-		{name: "notice", mutate: func(value *processorManifest) { value.Processors[0].Notice.Status = "present" }},
-		{name: "distribution", mutate: func(value *processorManifest) { value.Processors[0].Distribution = "bundled" }},
-		{name: "SBOM review", mutate: func(value *processorManifest) { value.Processors[0].SBOMReview = "complete" }},
-		{name: "missing target", mutate: func(value *processorManifest) { value.Processors[0].Artifacts = value.Processors[0].Artifacts[:3] }},
-		{name: "Windows target", mutate: func(value *processorManifest) { value.Processors[0].Artifacts[0].Target = "windows/amd64" }},
-		{name: "target order", mutate: func(value *processorManifest) {
+		{name: "checksums digest", mutate: func(value *processormanifest.Manifest) {
+			value.Processors[0].Checksums.SHA256 = strings.Repeat("0", 64)
+		}},
+		{name: "license", mutate: func(value *processormanifest.Manifest) { value.Processors[0].License.SPDX = "MIT" }},
+		{name: "license URL", mutate: func(value *processormanifest.Manifest) {
+			value.Processors[0].License.URL = "https://example.com/LICENSE"
+		}},
+		{name: "license digest", mutate: func(value *processormanifest.Manifest) { value.Processors[0].License.SHA256 = strings.Repeat("0", 64) }},
+		{name: "notice", mutate: func(value *processormanifest.Manifest) { value.Processors[0].Notice.Status = "present" }},
+		{name: "distribution", mutate: func(value *processormanifest.Manifest) { value.Processors[0].Distribution = "bundled" }},
+		{name: "SBOM review", mutate: func(value *processormanifest.Manifest) { value.Processors[0].SBOMReview = "complete" }},
+		{name: "missing target", mutate: func(value *processormanifest.Manifest) {
+			value.Processors[0].Artifacts = value.Processors[0].Artifacts[:3]
+		}},
+		{name: "Windows target", mutate: func(value *processormanifest.Manifest) { value.Processors[0].Artifacts[0].Target = "windows/amd64" }},
+		{name: "target order", mutate: func(value *processormanifest.Manifest) {
 			value.Processors[0].Artifacts[0], value.Processors[0].Artifacts[1] = value.Processors[0].Artifacts[1], value.Processors[0].Artifacts[0]
 		}},
-		{name: "archive name", mutate: func(value *processorManifest) { value.Processors[0].Artifacts[0].ArchiveName = "rtk.tar.gz" }},
-		{name: "archive URL", mutate: func(value *processorManifest) {
+		{name: "archive name", mutate: func(value *processormanifest.Manifest) { value.Processors[0].Artifacts[0].ArchiveName = "rtk.tar.gz" }},
+		{name: "archive URL", mutate: func(value *processormanifest.Manifest) {
 			value.Processors[0].Artifacts[0].ArchiveURL = "https://example.com/rtk.tar.gz"
 		}},
-		{name: "archive digest", mutate: func(value *processorManifest) {
+		{name: "archive digest", mutate: func(value *processormanifest.Manifest) {
 			value.Processors[0].Artifacts[0].ArchiveSHA256 = strings.Repeat("0", 64)
 		}},
-		{name: "archive size", mutate: func(value *processorManifest) { value.Processors[0].Artifacts[0].ArchiveSize++ }},
-		{name: "binary member", mutate: func(value *processorManifest) { value.Processors[0].Artifacts[0].BinaryMember = "bin/rtk" }},
-		{name: "binary digest", mutate: func(value *processorManifest) {
+		{name: "archive size", mutate: func(value *processormanifest.Manifest) { value.Processors[0].Artifacts[0].ArchiveSize++ }},
+		{name: "binary member", mutate: func(value *processormanifest.Manifest) { value.Processors[0].Artifacts[0].BinaryMember = "bin/rtk" }},
+		{name: "binary digest", mutate: func(value *processormanifest.Manifest) {
 			value.Processors[0].Artifacts[0].BinarySHA256 = strings.Repeat("0", 64)
 		}},
-		{name: "binary size", mutate: func(value *processorManifest) { value.Processors[0].Artifacts[0].BinarySize++ }},
+		{name: "binary size", mutate: func(value *processormanifest.Manifest) { value.Processors[0].Artifacts[0].BinarySize++ }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -330,10 +341,10 @@ func writeJSON(t *testing.T, root, relative string, value any) {
 	writeFile(t, root, relative, append(data, '\n'))
 }
 
-func validProcessorManifest() processorManifest {
-	return processorManifest{
-		SchemaVersion: processorManifestSchemaVersion,
-		Processors:    []processorProvenance{expectedRTKProcessor()},
+func validProcessorManifest() processormanifest.Manifest {
+	return processormanifest.Manifest{
+		SchemaVersion: processormanifest.SchemaVersion,
+		Processors:    []processormanifest.Processor{expectedRTKProcessor()},
 	}
 }
 
