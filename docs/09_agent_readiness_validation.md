@@ -281,7 +281,7 @@ and persists no raw help. The runtime contract admits only `test`; this
 alternate artifact path does not imply that arbitrary Go commands or arguments
 are executable. Scenario G owns the one admitted no-argument runtime.
 
-The static [schema-3 example](../examples/tailoring-spec.schema3.yaml) is
+The static [schema-4 example](../examples/tailoring-spec.schema4.yaml) is
 structural evidence only: its placeholder digest is deliberately not silently
 rebound. `spec init` is the executable route to a catalog-bound draft.
 
@@ -474,7 +474,7 @@ receive only the configured selected and renamed typed JSON fields.
 
 Start with the catalog from Scenario C. Replace the `spec init` identity
 wrapper with the transform shown in
-[the schema-3 example](../examples/tailoring-spec.schema3.yaml), preserving the
+[the schema-4 example](../examples/tailoring-spec.schema4.yaml), preserving the
 generated catalog digest, then validate, build, and adopt the resulting bundle.
 The user invocation deliberately omits `--json`; Atsura's wrapper appends the
 exact selector:

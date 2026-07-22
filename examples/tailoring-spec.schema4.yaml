@@ -1,7 +1,7 @@
-# Structural schema-3 example only. Replace this placeholder with the exact
+# Structural schema-4 example only. Replace this placeholder with the exact
 # catalog_digest emitted by source inspect, or create a bound draft with
 # `atr spec init --catalog <catalog.json> -- pr list`.
-schema_version: 3
+schema_version: 4
 catalog_digest: "0000000000000000000000000000000000000000000000000000000000000000"
 surface:
   default: exclude
@@ -19,10 +19,12 @@ commands:
       invoke:
         append_args: ["--json=number,title,state"]
       output:
-        input: json
-        select: [number, title, state]
-        rename:
-          - from: number
-            to: id
-        render: compact_json
+        kind: projection
+        projection:
+          input: json
+          select: [number, title, state]
+          rename:
+            - from: number
+              to: id
+          render: compact_json
       after: []

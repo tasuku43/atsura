@@ -10,8 +10,10 @@ coding-agent hosts consume an already generated host-neutral wrapper and are
 not Atsura adapters. ADR 0010 admits plan-declared source-stream results for
 finite identity and argv-only ordinary wrappers. ADR 0011 adds Go CLI as a
 second source contract and replaces direct single-adapter composition with one
-finite application compatibility registry. The vendor-neutral, compiled-bundle
-architecture remains authoritative.
+finite application compatibility registry. ADR 0012 admits the first exact
+external output-processor tuple: strict pass-only `go test -json` through an
+explicitly inspected RTK v0.43.0 artifact. The vendor-neutral,
+compiled-bundle architecture remains authoritative.
 
 ## North star
 
@@ -43,6 +45,11 @@ adopted bundle + attempted source invocation
      source invocation and its plan-declared result mode
        -> transformed_json: typed projection
        -> source_stream_passthrough: bounded exact source streams and status
+       -> original_preserving_optimizer:
+            -> ineligible conventional result: exact source streams and status
+               with no processor attempt
+            -> eligible result: one admitted processor attempt yielding either
+               exact admitted input or independently validated optimized bytes
 
 adopted bundle + explicit purpose binding
   -> `wrapper render` produces a deterministic host-neutral POSIX function
@@ -99,11 +106,12 @@ evidence and one purpose-specific wrapper surface. It may describe:
 
 The implemented schema may support these dimensions incrementally. Unsupported
 actions remain explicit unknowns rather than generic strings or embedded code.
-A specification may eventually select one finite compatibility contract for an
-external output processor from Atsura's maintained registry. It never embeds an
-arbitrary command, shell fragment, RTK program, plugin, or script. An authoring default is
-materialized into the reviewed specification before compilation; neither the
-compiler nor runtime inserts an ambient tool implicitly. Arbitrary shell,
+Schema 4 may select the one finite external-output-processor compatibility
+contract maintained for strict passing Go test output. It never embeds an
+executable path, arbitrary command, shell fragment, RTK program or argv,
+plugin, or script. The authoring workflow materializes that default only from
+an explicit compatible processor observation before review; neither the
+compiler nor runtime discovers or inserts an ambient tool. Arbitrary shell,
 arbitrary scripts, and a runtime language model are not part of the initial
 specification.
 
@@ -164,6 +172,7 @@ A complete plan identifies at least:
 
 - the matched tailored command;
 - bundle, catalog, specification, source, and adapter identity;
+- the exact processor binding when the selected output stage requires one;
 - original and transformed argv;
 - the exact applied specification entry, or explicit `null` when the surface
   entry was inherited, plus its reason;
@@ -198,9 +207,12 @@ same constructor and process boundary after validating the render-produced
 bundle digest and exact current `atr` path/hash/size. It derives the ordinary
 source spelling from the strictly loaded bundle instead of accepting a second
 caller-controlled spelling. Its success is the fresh plan's exact result
-variant: either the compact JSON object or array, or the bounded source stdout,
-stderr, and conventional status. Neither variant is the maintainer evidence
-envelope returned by `bundle execute`.
+variant: either the compact JSON object or array, bounded source stdout/stderr
+and conventional status, or an original-preserving optimizer result whose
+disposition is `preserved_before_processor`,
+`preserved_after_processor`, or `optimized`. None is the maintainer evidence
+envelope returned by `bundle execute`; that direct evidence command rejects the
+optimizer mode before source start.
 
 ## Thesis 5: The source CLI owns source-operation meaning and authorization
 
@@ -210,18 +222,21 @@ owns its domain semantics, authentication, authorization, destinations,
 prompts, and downstream side effects.
 
 Atsura still owns the safety of its own behavior. Starting an identity-bound
-source process is declared honestly as source-owned execution, not disguised
-as an Atsura read. Atsura-owned local mutations—such as bundle trust-store
-writes and any future wrapper-artifact installation or replacement—continue to
-require explicit effect, target, impact, central mutation invocation, and
-uncertain-outcome handling.
+external process—whether the source CLI or an admitted output processor—is
+declared honestly as execution, not disguised as an Atsura read. The source CLI
+alone owns the downstream meaning of a source operation; a processor remains a
+separate untrusted process with no authority to select or start the source.
+Atsura-owned local mutations—such as bundle trust-store writes and any future
+wrapper-artifact installation or replacement—continue to require explicit
+effect, target, impact, central mutation invocation, and uncertain-outcome
+handling.
 
 ### Mechanical enforcement target
 
-`operation.EffectExecute` represents starting a source-owned process and cannot
-carry an Atsura mutation target or impact. `EffectCreate` and `EffectWrite`
-retain the existing mutation contracts for Atsura-owned state. Unknown effects
-remain non-executable.
+`operation.EffectExecute` represents starting an identity-bound external source
+or processor process and cannot carry an Atsura mutation target or impact.
+`EffectCreate` and `EffectWrite` retain the existing mutation contracts for
+Atsura-owned state. Unknown effects remain non-executable.
 
 ## Thesis 6: Output projection and optimization are first-class wrapper stages
 
@@ -232,10 +247,12 @@ hatch.
 
 A typed projection and an original-preserving optimizer have different
 contracts. A projection promises a declared shape and fails closed without
-exposing its input. An optimizer may return either optimized output or its
-byte-identical admitted input, but only when the adopted plan explicitly permits
-that input as agent-facing output. This `preserved` result is declared behavior,
-not an automatic recovery from a failed projection.
+exposing its input. An optimizer may return conventional ineligible source
+bytes as `preserved_before_processor`, byte-identical admitted input as
+`preserved_after_processor`, or independently validated transformed bytes as
+`optimized`, but only when the adopted plan explicitly permits original input
+as agent-facing output. These are declared stage dispositions, not automatic
+recovery from a failed projection or processor.
 
 The preferred path is to request source-native structured output when the
 adapter can verify it, parse it within declared bounds, apply typed built-ins,
@@ -252,16 +269,18 @@ admits only `issue list` and `pr list` after four fixed offline
 version/reference/command-help probes. Successful stdout is still untrusted and
 must satisfy the bounded JSON parser and typed transform.
 
-Go CLI adapter contract 1 uses exactly three fixed offline probes: `go
+Go CLI adapter contract 2 uses exactly three fixed offline probes: `go
 version`, `go help`, and `go help test`. Its first runtime admits only plans
 whose recorded inspection-time effective-toolchain observation is stable Go
-1.26.x, and then only for the exact no-argument invocation `go test`, one
-complete identity-wrapper surface, and `source_stream_passthrough`. An option,
-package pattern, positional marker, or test-binary argument is outside this
-contract and fails before source start. `go test` is still a source-owned
-`EffectExecute`: it may compile and run repository code, consult credentials or
-configuration, resolve modules, access networks, and mutate caller-owned files
-or caches. Atsura neither classifies nor authorizes those effects.
+1.26.x. It retains the exact no-argument identity-wrapper
+`source_stream_passthrough` contract and additionally admits one transforming
+wrapper that appends exact `-json` and selects
+`original_preserving_optimizer`. Any caller-supplied option, package pattern,
+positional marker, or test-binary argument is outside these contracts and fails
+before source start. `go test` remains a source-owned `EffectExecute`: it may
+compile and run repository code, consult credentials or configuration, resolve
+modules, access networks, and mutate caller-owned files or caches. Atsura
+neither classifies nor authorizes those effects.
 
 `go version` may itself delegate, so `Source.Version` is the effective
 toolchain observed under the inspection working directory and environment; it
@@ -272,7 +291,7 @@ directives, `GOTOOLCHAIN`, `GOROOT`, or related ambient state without pre-start
 detection. Atsura does not identify the selected toolchain or GOROOT tree.
 Constraining that behavior requires an explicit environment/toolchain closure,
 a successor ADR, and new native evidence rather than stronger wording around
-contract 1.
+contract 2.
 
 Projection failure never changes argv, retries the source process, selects raw
 mode, or silently exposes unreviewed raw output.
@@ -288,26 +307,34 @@ compatibility admission, and fresh-plan validation still apply. Timing and
 stdout/stderr interleaving are not preserved. Uncertain post-start outcomes
 suppress both captured streams and never make replay safe.
 
-Where Atsura proves an exact source/version/command and RTK filter contract, the
-authoring workflow materializes an explicit RTK-backed optimizer as the default
-wrapper choice. A user or proposing agent may explicitly choose another
-reviewable stage before compilation; an installed tool never changes the
-choice. The bundle and plan bind exact RTK identity, version, filter, bounds,
-original-output allowance, and reason. Atsura still executes the source itself;
-RTK is never the source executor, a runtime-selected fallback, or a permission
-mechanism. RTK's advertised support list is evidence to investigate, not the
-compatibility registry itself. This direction is accepted, but no RTK stage is
-implemented by the current schema or runtime. ADR 0009 rejects the previously
-proposed `git log` / `git-log` first tuple: RTK `v0.43.0` accepts a valid commit
-message containing its literal block delimiter and can return exit zero with a
-misleading association. A future tuple must prove semantic relationships with
-hostile fixtures, not merely identity, exit status, and shorter output.
-ADR 0011 identifies `go test -json` with RTK's fixed `go-test` filter as the
-next pass-only candidate to investigate, not an accepted tuple. Native evidence
-still has unresolved skip-only classification, malformed-line omission,
-nonzero-status preservation, and failure-order determinism. The current
-authoring workflow therefore emits no RTK default and the runtime starts no
-RTK process.
+The first implemented tuple is
+`atsura.output.rtk_go_test_pass.v1`: source-catalog schema 2, Go CLI contract
+2, an inspection-time stable Go 1.26.x observation, caller argv `go test`,
+source argv `go test -json`, processor-observation schema 1, and an explicitly
+inspected official RTK v0.43.0 artifact invoked as `pipe --filter=go-test`.
+Specification schema 4 records only the typed contract and original-output
+allowance. Bundle schema 3 and plan schema 5 bind the exact processor identity,
+version, filter mapping, bounds, and reason. An installed tool never changes
+the choice, and RTK is never the source executor, a runtime-selected fallback,
+or a permission mechanism.
+
+Atsura independently admits only one strict single-package pass lifecycle and
+computes its exact shorter summary before processor start. Every conventional
+but ineligible result—including skip, failure, malformed or unknown JSON,
+empty output, source stderr, nonzero status, and a non-beneficial pass
+summary—is returned byte-for-byte with its status as
+`preserved_before_processor` and zero processor attempts. Eligible input is
+passed once to RTK only after a second identity check. Valid RTK stdout may be
+the exact admitted input (`preserved_after_processor`) or the independently
+computed newline-free summary (`optimized`). Once processor authority begins,
+failure, uncertainty, stderr, drift, or unexpected output is non-retryable,
+publishes no source or processor bytes, and never falls back.
+
+ADR 0009 still rejects the proposed `git log` / `git-log` tuple because a valid
+commit message can collide with RTK's literal delimiter and produce a
+successful but misleading association. RTK's advertised support list, exit
+zero, and shorter output remain research evidence rather than compatibility
+authority for any additional tuple.
 
 ## Thesis 7: Agents propose and invoke; the deterministic core compiles
 
@@ -329,8 +356,9 @@ bundle digest, invokes `wrapper run` with structured JSON errors, and forwards
 allowed only when the complete included surface is one maintained runtime-
 admitted command and result mode. The finite first contracts cover one JSON-
 transforming GitHub CLI command, finite GitHub CLI identity or append-argv-only
-source-stream commands, and the exact no-argument Go `test` identity wrapper.
-Windows returns a structured unsupported fault for POSIX rendering; this
+source-stream commands, the exact no-argument Go `test` identity wrapper, and
+the one processor-bound pass-only Go optimizer. Windows returns a structured
+unsupported fault for POSIX rendering and has no optimizer runtime claim; this
 contract makes no Windows activation claim.
 
 Production Atsura has no coding-agent-host adapter. It never discovers,
@@ -372,7 +400,8 @@ purpose-specific CLI, not a grant of permission to source operations.
 A trust summary therefore describes included and excluded surface entries,
 option changes, identity and transforming wrappers, argv changes, processing
 stages, output transformations, source-stream result visibility, source
-identity, and bundle digest. When source streams may be returned unprojected,
+identity, exact processor bindings, original-output visibility, and bundle
+digest. When source streams or pre-processor preserved bytes may be returned unprojected,
 the controlling review warns that they may contain secrets, controls, malformed
 text, or prompt-like content. It stores none of those bytes. The summary does
 not count source permissions, decisions, or inferred effects.
@@ -435,6 +464,16 @@ same host-neutral wrapper, fresh-plan constructor, finite compatibility
 registry, and source-process boundary. Any additional Go argv starts no source
 process.**
 
+The first external-output-processor proof is:
+
+**A maintainer can explicitly inspect one official RTK v0.43.0 executable,
+materialize the exact maintained Go pass optimizer into a reviewed schema-4
+specification, build and adopt its processor-bound schema-3 bundle, and invoke
+ordinary no-argument `go test` through the same host-neutral wrapper. A strict
+eligible pass stream yields the independently validated shorter summary;
+conventional ineligible results are preserved exactly before RTK starts; and a
+processor fault after source execution publishes no bytes or fallback.**
+
 The release-quality proof uses a generic caller-owned activation fixture and
 the exact installed `atr` artifact. It verifies the wrapper bytes, binding,
 argv, plan, attempt, and tailored result without importing a coding-agent host
@@ -450,10 +489,11 @@ exact-artifact evidence and the required gates pass on the claimed targets.
 - Claiming that hidden commands are sandboxed or impossible to invoke elsewhere.
 - Reimplementing source CLI domain semantics or remote APIs.
 - Arbitrary shell, scripts, jq programs, RTK programs/argv, plugins, or
-  unregistered external transformers in the initial specification. The
-  accepted RTK optimizer direction remains unimplemented.
+  unregistered external transformers in the initial specification. The one
+  accepted RTK contract does not generalize this boundary.
 - Unplanned or implicit raw/intact-output fallback. An adopted optimizer's
-  declared byte-identical `preserved` result is not fallback.
+  declared `preserved_before_processor` or `preserved_after_processor` result
+  is not fallback; a processor fault can produce neither.
 - Requiring a language model for routine execution.
 - Typed before/after actions in the initial runtime. `bundle execute` remains
   the direct JSON-transform evidence command; source-stream results belong to
@@ -495,9 +535,9 @@ exact-artifact evidence and the required gates pass on the claimed targets.
   without giving repository content authority?
 - What stronger executable identity mechanism can close the remaining
   check-to-exec race on each supported platform?
-- Can the pass-only `go test -json` / fixed RTK `go-test` candidate preserve
-  status and lifecycle semantics under skip-only, malformed, nonzero, and
-  ordering fixtures well enough to become the first optimizer tuple?
+- Which later source, version, command, RTK version, or filter—if any—can meet
+  the same independent semantic-admission and native-evidence threshold as the
+  first finite optimizer tuple?
 - When, if ever, should jq, other external transformers, plugins, or scripts be
   admitted through a similarly finite contract?
 - How, if at all, should usage evidence be collected without storing secrets or

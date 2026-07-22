@@ -115,7 +115,7 @@ unknown, duplicate, or misconfigured registrations fail closed as
 `runtimeadmission.CategoryAdapterContract`; preserve only errors carrying a
 valid finite runtime-admission category.
 
-For Go CLI contract 1, distinguish direct-launcher identity from version
+For Go CLI contract 2, distinguish direct-launcher identity from version
 observation. Path/hash/size identify the direct `go` file. `go version` may
 delegate, so `Source.Version` is the effective toolchain observed under the
 inspection working directory/environment. Runtime does not repeat that probe
@@ -128,12 +128,14 @@ For an output-stage capability, classify the stage before selecting a backend:
 
 - a typed projection promises one declared result shape and fails closed
   without exposing its input; and
-- an original-preserving optimizer may return `optimized` output or its exact
-  admitted input as `preserved` only when the adopted plan explicitly permits
-  that input as agent-facing output. Derive that disposition from observable
-  bytes: successful valid processor stdout equal to the admitted input is
-  `preserved`; different valid stdout is `optimized`. Do not infer the
-  processor's internal branch.
+- an original-preserving optimizer uses three stage-observable dispositions
+  only when the adopted plan explicitly permits original input as agent-facing
+  output: conventional ineligible source bytes are
+  `preserved_before_processor`; successful valid processor stdout equal to the
+  admitted input is `preserved_after_processor`; and independently validated
+  different output is `optimized`. Do not infer the processor's internal
+  branch from those labels, and never turn processor failure into a preservation
+  disposition.
 
 For a finite external output processor such as RTK, keep the compatibility
 adapter choice in a namespaced registry and materialize any preferred default
@@ -144,11 +146,16 @@ source itself; the processor receives only bounded admitted stage input and
 never receives source-selection authority, separately supplied credentials,
 source stderr, caller payloads, or ambient configuration.
 
-The next RTK research candidate is pass-only `go test -json` with the fixed
-`go-test` filter. It is not an accepted tuple or current authoring default.
-Resolve skip-only classification, malformed-line omission, nonzero-status
-preservation, and deterministic failure ordering before registering or
-materializing it.
+The first accepted RTK tuple is exactly
+`atsura.output.rtk_go_test_pass.v1`: source-catalog schema 2, Go CLI contract
+2, a recorded stable Go 1.26.x inspection observation, caller argv `go test`,
+source argv `go test -json`, an explicitly inspected official RTK v0.43.0
+artifact, and fixed processor argv `pipe --filter=go-test`. Atsura admits only
+the strict independently validated single-package pass stream. Skip, failure,
+malformed, unknown, nonzero, stderr-bearing, empty, and non-beneficial
+conventional results are preserved exactly before the processor starts. Do not
+generalize this tuple to another source, version, argv, package count, RTK
+version, or filter without a successor ADR and new hostile/native evidence.
 
 Bind and revalidate exact processor identity, compatibility contract, fixed
 argv, original-output allowance, limits, environment, and reason before source
@@ -157,12 +164,15 @@ or drifted state at preflight causes zero source attempts, a source failure
 causes zero processor attempts, and an admitted success causes at most one of
 each. Revalidate processor identity after admitted source success and before
 processor start; a change then is non-retryable with one source attempt and zero
-processor attempts. Run an external processor without a shell in isolated roots
-and observe filesystem and network behavior for each exact native artifact
-within the platform harness's declared capabilities. Retain the check-to-exec
-race as a limitation rather than claiming sandboxing. Any processor failure
-after source start is non-retryable and exposes neither intermediate
-input/output nor processor stderr.
+processor attempts. Run an external processor without a shell in isolated
+roots. Treat the supplied environment and roots as isolation inputs, not
+evidence that child processes, outside-root filesystem access, or network
+attempts were absent. Make an absence claim only after implementing and
+validating a platform-specific external observer contract; otherwise record
+the fact as unasserted. Retain the check-to-exec race as a limitation rather
+than claiming sandboxing. Any processor failure after source start is
+non-retryable and exposes neither intermediate input/output nor processor
+stderr.
 
 Treat processor exit zero and size reduction as transport facts, not semantic
 proof. Before registering a tuple, use hostile valid source data to exercise
@@ -512,15 +522,19 @@ Add the smallest set that proves the capability:
   fields or dependencies and leave vendor activation/conformance to downstream
   integrations;
 
-For the current Go second-source release evidence, schema 4 must record three
-inspection attempts on every native target. Linux/macOS first reject ordinary
-`go test extra` with `wrapper_runtime_not_supported`, exit 12, and zero Go
-attempts, then run one no-argument identity-wrapper case with a nonempty
-rendered-wrapper digest and one attempt. Windows records the
-same zero-attempt rejection count, an empty wrapper-case list, and the exact
-unsupported POSIX outcome. The fixture may set `GOTOOLCHAIN=local`, disable
-download, and isolate roots for determinism; never promote those fixture inputs
-to production toolchain guarantees.
+Current Go release evidence retains the three inspection attempts and exact
+identity-wrapper case, and its versioned successor adds the finite optimizer
+journey. Every claimed Linux/Darwin target inspects the pinned official RTK
+v0.43.0 artifact, binds Go CLI contract 2 and
+`atsura.output.rtk_go_test_pass.v1`, and proves the optimized pass result plus
+the reachable pre-processor preservation cases. Windows records exact
+optimizer unavailability before a source attempt. Arbitrary processor
+failures and `preserved_after_processor` remain controlled application and
+infrastructure truth-table contracts when the official artifact cannot reach
+them honestly; native journeys must not fabricate those results. The fixture
+may set `GOTOOLCHAIN=local`, disable download, and isolate roots for
+determinism; never promote those fixture inputs to production toolchain
+guarantees.
 
 Tests must use temporary directories, fixed clocks, fake credentials, and local
 test servers. They must not require a developer account or live network.

@@ -2,10 +2,11 @@
 
 The harness turns Atsura's product, architecture, and security claims into
 repeatable checks. A capability is complete only when `task check` passes. The
-current transform and host-neutral wrapper milestone also requires `task
-security` because it admits an attempted source invocation, observes source and
-runtime executable identity, exposes a canonical plan contract, and can start
-one compatibility-admitted source process.
+current transform, host-neutral wrapper, and finite output-optimizer milestone
+also requires `task security` because it admits attempted source and processor
+invocations, observes every executable identity, exposes a canonical plan
+contract, and can start one compatibility-admitted source process followed by
+one compatibility-admitted processor process.
 
 Do not weaken a check to preserve the superseded authorization-centered model.
 Update the governing contract and its mechanical claim together.
@@ -71,7 +72,7 @@ Contract tests must prove:
   and finite attempts/time/bytes; adapter contracts and tests define and
   enforce their accepted source-version range;
 - GitHub CLI contract 2 executes exactly four fixed offline probes, while Go
-  CLI contract 1 executes exactly `go version`, `go help`, and `go help test`;
+  CLI contract 2 executes exactly `go version`, `go help`, and `go help test`;
 - Go inspection accepts a stable Go 1.26.x effective-toolchain observation
   from `go version` under the probe working directory/environment, requires the
   bounded root command table and no-argument test-help anchors, emits exact
@@ -87,11 +88,11 @@ Contract tests must prove:
 Inspection command catalog entries declare `EffectExecute` because their
 bounded probes start a source-owned process.
 
-### Tailoring specification schema 3
+### Tailoring specification schema 4
 
 Domain, codec, application, and CLI tests must prove:
 
-- schema version 3 is required and catalog-bound;
+- schema version 4 is required and catalog-bound;
 - `surface.default` is explicitly `inherit` or `exclude`;
 - commands are exact, sorted, unique, verified catalog paths with bounded
   reasons;
@@ -103,9 +104,15 @@ Domain, codec, application, and CLI tests must prove:
 - identity wrappers contain no transformations;
 - transform wrappers contain at least one supported transformation;
 - before/after lists are explicit and reject unsupported actions;
-- the current schema rejects every shell, script, jq, RTK, plugin, external-
-  processor, and runtime-LLM action; acceptance of a future finite RTK adapter
-  does not make arbitrary executable names or argv valid; and
+- output projection and original-preserving optimization are a closed
+  discriminated union;
+- an optimizer contains only the accepted namespaced processor contract,
+  declared input format, and explicit original-output allowance; it never
+  contains a shell fragment, executable path, arbitrary argv, filter, plugin,
+  or runtime-LLM action;
+- the only admitted optimizer contract is
+  `atsura.output.rtk_go_test_pass.v1`; every other RTK filter, processor,
+  version, source tuple, and platform remains invalid; and
 - bounded strict decoding rejects aliases, excessive depth/nodes/bytes,
   duplicate or unknown fields, and trailing documents.
 
@@ -127,27 +134,29 @@ entry without a complete wrapper, and a wrapper-only or membership-only
 shortcut are invalid. Resolving an absent command returns
 `command_not_in_surface`, produces no plan, and starts zero source processes.
 
-### Bundle schema 2 and adoption
+### Bundle schema 3 and adoption
 
 Tests must prove:
 
 - a canonical bundle binds exact source identity, adapter evidence, normalized
-  catalog and digest, normalized schema-3 specification and digest, and the
-  derived surface with wrappers;
+  catalog and digest, normalized schema-4 specification and digest, the
+  derived surface with wrappers, and any exact processor observation required
+  by those wrappers;
 - canonical bytes exclude timestamps, machine/user identity, credentials,
   source output, and random values;
 - every embedded digest and derived surface is recomputed on load;
-- catalog, specification, surface, wrapper, source, and bundle drift are
-  distinguishable;
+- catalog, specification, surface, wrapper, source, processor, and bundle drift
+  are distinguishable;
 - alternate vendor-neutral adapter fixtures compile to the same shared bundle
   contract; and
-- schema-1 bundles are rejected rather than reinterpreted.
+- schema-1 and schema-2 bundles are rejected rather than reinterpreted.
 
 Adoption tests must prove that only the full exact digest is accepted through a
 controlling terminal; the receipt is user-local and content-bound; unrelated
 receipts survive replacement; malformed or unsafe storage fails closed; and
 the review summary counts surface and wrapper facts rather than source
-permissions, decisions, or inferred effects.
+permissions, decisions, or inferred effects. It exposes the exact processor
+identity and whether original transformed-source output may remain visible.
 
 Trust-store writes remain Atsura-owned create/write mutations and must pass
 through the central mutation invoker with exact target and impact contracts.
@@ -157,7 +166,7 @@ through the central mutation invoker with exact target and impact contracts.
 `bundle preview --bundle <path> -- <source-executable> <argv>` is the current
 zero-execution plan boundary. Tests must prove:
 
-- only a strictly loaded schema-2 bundle with an exact valid adoption receipt
+- only a strictly loaded schema-3 bundle with an exact valid adoption receipt
   is admitted;
 - current source path, SHA-256, and size are observed and must equal the
   bundle-bound identity before plan construction;
@@ -172,10 +181,11 @@ zero-execution plan boundary. Tests must prove:
   returns `option_not_in_surface`, and both produce no plan;
 - an explicit surface match includes the exact specification entry, while an
   inherited match encodes `specification_entry: null`;
-- the plan binds bundle/catalog/specification digests, source and adapter
-  identity, matched command and surface origin, wrapper kind, reason, option
-  surface, original/transformed argv, and ordered before/invoke/output/after
-  stages plus exactly one schema-4 result mode;
+- the schema-5 plan binds bundle/catalog/specification digests, source and
+  adapter identity, any required processor identity and contract, matched
+  command and surface origin, wrapper kind, reason, option surface,
+  original/transformed argv, and ordered before/invoke/output/after stages plus
+  exactly one result mode;
 - the invocation stage declares closed stdin plus inherited working directory
   and environment modes without serializing ambient values;
 - the invoke stage declares exactly one maximum attempt plus finite timeout,
@@ -184,14 +194,17 @@ zero-execution plan boundary. Tests must prove:
 - an output transform requires exactly one active cataloged selector matching
   its input format before `--`; missing, duplicate, conflicting, or positional
   selectors fail plan construction;
-- an output stage derives `transformed_json`; a complete identity or append-
-  argv-only wrapper without an output stage derives
-  `source_stream_passthrough`; a missing, unknown, or contradictory mode fails;
+- a projection output stage derives `transformed_json`; a complete identity or
+  append-argv-only wrapper without an output stage derives
+  `source_stream_passthrough`; the accepted optimizer stage derives
+  `original_preserving_optimizer`; a missing, unknown, or contradictory mode
+  fails;
 - identical validated inputs produce identical canonical plan bytes and
   `plan_digest` values;
 - the schema-2 preview envelope contains exactly `plan_digest`, `plan`, and
   `source_process_attempts`, with the attempt count always zero;
-- exact schema-10 agent help publishes the versioned `wrapper-plan` inventory,
+- exact schema-12 agent help publishes the versioned schema-5 `wrapper-plan`
+  inventory,
   including nested JSON-pointer paths, scalar/object/array types, array element
   types, requiredness, and nullable object states; and
 - wrapper stages contain no allow/confirm/deny or source
@@ -224,6 +237,9 @@ public source-runtime boundary. Tests must prove:
 - unsupported adapters, versions, commands, identity wrappers, argv-only
   transforms, missing or mismatched selectors, and unmodeled invocation forms
   fail with zero source-process attempts;
+- an `original_preserving_optimizer` plan is rejected before source or
+  processor start because `bundle execute` retains its projection-only result
+  envelope;
 - execution is bound to the plan's exact resolved path, SHA-256, and size and
   revalidates that identity before start and after wait;
 - the source process starts at most once with exact argv, no shell, closed
@@ -242,7 +258,7 @@ public source-runtime boundary. Tests must prove:
 - secret-shaped canaries in unselected fields and source stderr do not appear
   in success output, faults, persisted bundles, receipts, or diagnostics.
 
-### Source-stream ordinary-wrapper runtime contract
+### Ordinary-wrapper runtime contract
 
 `wrapper run` extends the shared plan application service without broadening
 the direct `bundle execute` result envelope. Tests must prove:
@@ -255,10 +271,10 @@ the direct `bundle execute` result envelope. Tests must prove:
 - the complete GitHub CLI adapter/version/command/surface/long-option grammar
   is admitted before source start for one identity or append-argv-only wrapper,
   without requiring a JSON selector;
-- Go CLI contract 1 admits only a recorded stable Go 1.26.x inspection
-  observation, exact command `test`, one complete identity wrapper,
-  `source_stream_passthrough`, no observed long-
-  option or structured-output surface, and no argv element after `test`;
+- Go CLI contract 2 admits a recorded stable Go 1.26.x inspection observation
+  and exact command `test`. Its identity branch permits one complete identity
+  wrapper, `source_stream_passthrough`, no caller-visible option surface, and
+  no argv element after `test`;
 - every Go option, package pattern, `--` marker, test-binary argument, other
   command, non-identity wrapper, and catalog recording a version outside stable
   1.26.x fails before source start;
@@ -266,7 +282,7 @@ the direct `bundle execute` result envelope. Tests must prove:
   `Source.Version` observation and do not claim that runtime repeats `go
   version`, detects a later effective-toolchain change, or binds a selected
   toolchain/GOROOT tree;
-- preview and wrapper application rebuild byte-identical schema-4 plans and
+- preview and wrapper application rebuild byte-identical schema-5 plans and
   plan digests for `source_stream_passthrough`;
 - source stdout and stderr are returned byte-for-byte within 4 MiB and 256 KiB,
   including empty streams, NUL, non-UTF-8, control-looking, and prompt-like
@@ -291,58 +307,65 @@ the direct `bundle execute` result envelope. Tests must prove:
 - trust-summary derivation counts source-stream-result wrappers and the
   controlling terminal emits a conditional warning without persisting bytes.
 
-### Deferred original-preserving optimizer contract
+### Original-preserving optimizer contract
 
-`tailoring.output.optimize` remains deferred. Schema 3 and the current runtime
-continue to reject RTK and arbitrary external-processor actions. ADR 0007
-selects a future contract, while ADR 0009 rejects the ambiguous `v0.43.0`
-`git-log` candidate. ADR 0011 identifies pass-only `go test -json` plus the
-fixed RTK `go-test` filter as the next candidate, but does not accept it as a
-tuple. Neither the current transform-runtime milestone nor its passing gates
-claim an optimizer, an RTK authoring default, or RTK runtime compatibility.
+ADR 0012 admits exactly one finite tuple:
+`atsura.output.rtk_go_test_pass.v1`, source-catalog schema 2, Go CLI contract 2,
+processor-observation schema 1, specification schema 4, bundle schema 3, and
+plan schema 5. It binds exact caller argv `go test`, source argv
+`go test -json`, an official RTK v0.43.0 artifact, and processor argv
+`pipe --filter=go-test` on Linux and macOS amd64/arm64. Tests must prove:
 
-An implementing slice may change that ledger state only after tests prove:
+- projection and original-preserving optimizer are disjoint typed contracts,
+  and arbitrary processor paths, argv, filters, versions, source tuples,
+  platforms, shell fragments, and runtime discovery are rejected;
+- `processor inspect` accepts one explicit absolute path, verifies the exact
+  maintained artifact identity for the current platform, runs `--version`
+  once without a shell under the isolated environment contract, and emits one
+  bounded canonical schema-1 observation with no ambient discovery or install;
+- `spec init --processor` selects the optimizer only for the exact compatible
+  Go catalog and explicit processor observation, while omission keeps the
+  identity draft; `bundle build --processor` requires and binds that same
+  observation, and status/adoption/preview expose the exact identity and
+  original-output visibility;
+- source and processor preflight completes before source start. Missing,
+  incompatible, or drifted processor evidence therefore yields source zero and
+  processor zero attempts;
+- strict typed Go-test JSONL admission independently validates the single-
+  package pass lifecycle and calculates the exact shorter summary before RTK
+  starts. Failure, skip, malformed/unknown JSON, empty output, source stderr,
+  nonzero status, and a non-beneficial valid summary return exact source
+  stdout/stderr/status as `preserved_before_processor` after one source and
+  zero processor attempts;
+- eligible input alone reaches the exact identity-bound processor process port.
+  It receives only the bounded admitted source stdout on stdin, starts at most
+  once without a shell, and inherits neither caller credentials nor coding-
+  agent-host state;
+- successful processor output is either byte-identical admitted input as
+  `preserved_after_processor` or the independently calculated newline-free
+  summary as `optimized`, each after one source and one processor attempt;
+- processor start/wait/timeout/cancellation/limit/status/stderr/identity or
+  semantic-postcondition failure after source completion is non-retryable,
+  publishes no source or processor bytes, and never selects original output as
+  fallback;
+- controlled application/infrastructure fixtures own every disposition,
+  source/processor attempt combination, isolation classification, hostile
+  source data, and arbitrary processor failure that a real official artifact
+  cannot safely fabricate; and
+- native release evidence replays the exact official artifact on all four
+  claimed platforms, records Apache-2.0 provenance, verifies the supplied
+  isolated environment/root contract, and proves the optimized and reachable
+  pre-processor preservation journeys. It does not claim absence of child
+  processes, outside-root filesystem access, or network attempts without a
+  separately implemented and validated external observer. Until that
+  optimizer-aware successor evidence passes, implementation completion is
+  distinct from a release-quality native claim.
 
-- projection and original-preserving optimizer are disjoint typed contracts;
-  projection never preserves failed input, while successful valid processor
-  stdout byte-equal to admitted input is `preserved` and different valid stdout
-  is `optimized`; preservation is valid only when the adopted plan explicitly
-  permits the original stage input as agent-facing output, and the disposition
-  makes no claim about RTK's internal branch;
-- the preferred backend, exact processor contract, filter, and reason are
-  materialized by the authoring workflow into canonical specification, bundle,
-  plan, and trust-summary facts; an explicit authoring override remains
-  reviewable, and compilation and execution never discover or insert ambient
-  RTK implicitly;
-- source adapter, source version, command contract, source argv, processor path,
-  SHA-256, size, version, adapter contract, filter, and claimed platform form
-  one exact compatibility tuple; the trust summary exposes the processor kind,
-  version and identity, contract/filter mapping, and original-output visibility;
-- missing or drifted processor identity at preflight fails before either
-  process starts; after admitted source success, Atsura revalidates processor
-  identity before start, and a change then is non-retryable with one source
-  attempt and zero processor attempts;
-- Atsura starts the source at most once and starts the processor at most once
-  only after admitted source success; source failure produces one source
-  attempt and zero processor attempts, while every post-source processor
-  failure is non-retryable and leaks no source bytes, processor bytes, or
-  processor stderr;
-- the processor uses no shell, receives only the bounded admitted stage input,
-  and runs with finite time and byte limits in isolated working and
-  configuration roots; native fixtures observe the exact invocation's file
-  effects and attempted network I/O within declared platform capabilities,
-  without claiming an OS/network sandbox, and tests retain the portable
-  processor check-to-exec race as a stated limitation; and
-- every claimed platform replays an exact native RTK artifact and records
-  Apache-2.0 provenance, license, notice, dependency, and SBOM evidence.
-- each filter fixture covers its literal delimiters, grouping keys, truncation
-  boundaries, and association rules with hostile valid source data; exit zero,
-  empty stderr, and smaller output never substitute for semantic validation.
-- the Go candidate additionally resolves skip-only classification, malformed-
-  line omission, nonzero-status preservation, and deterministic failure
-  ordering before any pass-only source result becomes eligible.
+ADR 0009's rejected `git-log` tuple remains a negative fixture: executable
+identity, status zero, empty stderr, and smaller output never substitute for
+task-owned semantic validation.
 
-### Source execution effect and process boundary
+### External-process effect and controlled boundaries
 
 Operation tests must prove:
 
@@ -360,6 +383,11 @@ starts no source process. `bundle execute` is `EffectExecute`, has no Atsura
 mutation contract, and starts at most one source process after compatibility
 and identity checks succeed.
 
+Processor-inspection and optimizer tests likewise use `EffectExecute` and bind
+the exact processor identity, argv, environment contract, stdin ownership, and
+attempt budget at their separate port. Execute does not turn the processor into
+an Atsura-owned mutation or let it select or start the source.
+
 Go runtime tests must also keep `go test` classified as source-owned
 `EffectExecute`, not Read or an Atsura-owned mutation. The tests prove only
 exact identity/argv, zero/one attempts, and failure classification; they do not
@@ -368,7 +396,8 @@ use, network access, or caller-owned file/cache changes.
 
 ### Retired-schema migration
 
-Fixtures for specification schemas 1 and 2 and bundle schema 1 must prove:
+Fixtures for specification schemas 1 through 3 and bundle schemas 1 and 2 must
+prove:
 
 - retired documents are rejected before adoption or source start;
 - no allow/confirm/deny, source read/create/write, target, or impact value is
@@ -393,12 +422,14 @@ Catalog tests must prove:
   their catalog-static field, envelope, and schema-version contracts, with
   help's tested root-index/scoped-contract variants kept explicit;
 - `fresh_wrapper_plan` authority has no static result fields or maintainer
-  envelope and publishes an exact typed `plan_result_modes` union. One variant
-  is compact object-or-array JSON plus LF/empty stderr/status zero; the other is
-  exact bounded source stdout/stderr, no framing, buffered delivery, and
-  conventional source status with no timing/interleaving claim. Whole-catalog
-  validation resolves the exact `bundle preview` `plan`/`wrapper-plan`
-  schema-4 reference and rejects an incomplete or unknown result variant;
+  envelope and publishes an exact typed `plan_result_modes` union. The variants
+  are compact object-or-array JSON plus LF/empty stderr/status zero; exact
+  bounded source stdout/stderr, no framing, buffered delivery, and conventional
+  source status with no timing/interleaving claim; and the three exact
+  original-preserving optimizer dispositions with their source/processor
+  attempt contracts. Whole-catalog validation resolves the exact `bundle
+  preview` `plan`/`wrapper-plan` schema-5 reference and rejects an incomplete
+  or unknown result variant;
 - retired `policy` vocabulary appears only in migration diagnostics or
   historical superseded documents;
 - exact output schemas reject undeclared fields and preserve absent versus
@@ -419,8 +450,8 @@ The slice must prove:
 - one exact adopted purpose bundle produces deterministic wrapper material and
   a canonical rendered-byte digest;
 - `wrapper render --bundle <absolute-path> [--format text|json]` is read-only,
-  defaults to raw sourceable text, and returns the exact schema-1 review
-  envelope in JSON without a source attempt;
+  defaults to raw sourceable text, and returns the exact schema-2 review
+  envelope in JSON with zero source and processor attempts;
 - POSIX rendering succeeds only on Linux and macOS; Windows returns exact
   structured `wrapper_platform_not_supported`, emits no wrapper bytes, and has
   no POSIX activation claim;
@@ -429,8 +460,9 @@ The slice must prove:
 - the complete included surface contains exactly one command and result mode
   covered by its registry-selected verifier before bytes are rendered: GitHub
   CLI contract 2 admits finite `issue list` / `pr list` transform, identity, or
-  append-only surfaces; Go CLI contract 1 admits only identity-wrapped `test`
-  with no observed long-option or structured-output surface;
+  append-only surfaces; Go CLI contract 2 admits either identity-wrapped `test`
+  or the exact RTK-bound `test -json` optimizer, each with no caller-visible
+  option surface;
 - the wrapper binding contains only wrapper contract, bundle identity, runtime
   identity, source identity, and ordinary command spelling;
 - no bundle, binding, plan, result, help, or capability field names a
@@ -451,26 +483,29 @@ The slice must prove:
   and ordering survive wrapper forwarding without `eval`, `sh -c`, or shell
   reconstruction;
 - missing adoption, runtime or bundle mismatch, source drift, absent surface
-  command, invalid option, or unsupported runtime
-  starts zero source processes;
+  command, invalid option, processor drift, or unsupported runtime starts zero
+  source and processor processes;
 - the runtime identity check is described and tested as cooperative drift
   detection after the bound `atr` path starts, not attestation or containment
   against malicious replacement at that path;
-- admitted success starts the exact physical source once, applies the same
-  typed stages, emits only the plan-declared result, and never selects raw or
-  another bundle as fallback;
+- admitted success starts the exact physical source once, conditionally starts
+  the exact bound processor once, applies the same typed stages, emits only the
+  plan-declared result, and never selects raw, another bundle, or original bytes
+  after processor failure as fallback;
 - wrapper success uses the exclusive `fresh_wrapper_plan` interpretation and
   presentation authority and emits no maintainer evidence envelope; exact
-  scoped schema-10 help publishes both typed result modes and points to the
-  `bundle preview` wrapper-plan schema governing the selected variant;
+  scoped schema-12 help publishes all three typed result modes and points to the
+  schema-5 `bundle preview` wrapper-plan governing the selected variant;
 - the current renderer persists nothing and edits no activation configuration;
   any future persisted artifact lifecycle uses exact ownership, bounded
   regular-file paths, symlink/special-file rejection, atomic replacement,
   central mutation invocation, and read-only drift reconciliation without
   editing caller-owned activation configuration; and
-- the exact installed release artifact replays the ordinary-command journey on
-  every claimed Linux and macOS native target, while Windows replays existing
-  commands and the exact unsupported-render result.
+- optimizer implementation conformance is owned by local controlled tests;
+  release-quality optimizer status additionally requires exact installed-
+  artifact replay with the official RTK artifact on every claimed Linux and
+  macOS native target, while Windows replays existing commands and the exact
+  unsupported-render result with zero processor attempts.
 
 Consumer conformance uses a non-shipped generic caller-owned activation fixture
 that invokes the exact installed `atr` artifact. It compares rendered bytes and
@@ -496,31 +531,36 @@ bytes in persisted or structured evidence.
 
 ## Test ownership
 
-- Domain tests own specification, surface, wrapper, bundle, digest, effect,
-  full-catalog matching, option admission, plan, host-neutral wrapper-binding
-  invariants, safe command names, and pure resolution invariants.
+- Domain tests own specification, surface, wrapper, processor binding, bundle,
+  digest, effect, full-catalog matching, option admission, plan, optimizer
+  disposition, host-neutral wrapper-binding invariants, safe command names, and
+  pure resolution invariants.
 - Application tests own ordering, port calls, adoption assessment, current
   source/runtime identity assessment, whole-surface runtime admission, mutation
   invocation, wrapper/direct fresh-plan parity, zero-attempt rejection,
-  one-attempt execution, conventional-completion classification, and uncertain
-  post-start fault suppression.
+  bounded source/processor ordering and attempt counts, conventional-completion
+  classification, optimizer admission/postconditions, and uncertain post-start
+  fault suppression.
 - Infrastructure tests own bounded strict codecs, executable identity, process
-  limits, safe local persistence, source/output adapter mechanics, fixed POSIX
-  quoting and rendering, and bounded argv forwarding.
+  limits, safe local persistence, source/output adapter mechanics, RTK identity,
+  isolated processor execution and observation, fixed POSIX quoting and
+  rendering, and bounded argv forwarding.
 - CLI tests own catalog registration, typed argv, help, output schemas,
   migration recovery, stdout/stderr routing, and any generic wrapper lifecycle,
-  invocation, output-authority, complete dual-stream writes, source-status
-  propagation, and mutation contracts.
+  invocation, output-authority, processor inspection, complete dual-stream
+  writes, source-status propagation, optimizer disposition presentation, and
+  mutation contracts.
 - CLI integration fixtures own clean-state specification through bundle status,
   adoption and preview, plus one synthetic GitHub-compatible transform that
   runs through the production compatibility verifier, identity-bound process
   runner, parser, transformer, and result renderer without provider credentials
   or network effects. The recovery fixture additionally proves an exact
-  bijection with all 27 preview help faults and all 41 execute help faults. It
-  exercises 27 preview zero-attempt cases plus 28 execute pre-start and 15
-  execute post-start cases, including both phases of identity change and
+  bijection with every catalog-declared preview and execute help fault. It
+  exercises every declared preview zero-attempt case and every execute
+  pre-start and post-start phase, including both phases of identity change and
   unclassified outcomes, exact recovery actions, drift through the production
-  identity reader, zero/one attempt accounting, and hostile-canary absence.
+  identity reader, zero/one source-attempt accounting, and hostile-canary
+  absence.
   Narrow controlled ports provide deterministic external-boundary
   observations; defensive request/encoding cases are invoked at their owning
   boundary. The execute encoding case corrupts the application result only
@@ -529,132 +569,130 @@ bytes in persisted or structured evidence.
   Infrastructure tests independently prove production file, trust, identity,
   and process fault emission, including native start, wait, limit,
   cancellation, timeout, and identity-race faults.
+- Optimizer integration fixtures own the complete explicit
+  processor-observation-to-specification-to-bundle-to-plan journey and all
+  three dispositions. Controlled source and processor ports prove the exact
+  source/processor attempt matrix, preflight ordering, semantic oracle, no-byte
+  processor-failure rule, and no fallback without manufacturing behavior in an
+  official RTK executable.
 - Artifact-journey fixtures own execution of the exact `atr` file extracted
   from a release archive. They use a native credential- and provider-network-
   free GitHub-compatible source fixture, a direct Go launcher whose fixture
-  observation is stable 1.26.x against a dependency-free synthetic module, an isolated user-
-  config root, and bounded append-only attempt logs. Before source inspection
-  they verify schema-10 root help and seven exact
-  scoped authoring/runtime contracts, including complete nested field
-  inventories and the complete ordered 27-fault preview and 41-fault execute
-  recovery signatures. The non-shipped harness may seed an exact
+  observation is stable 1.26.x against a dependency-free synthetic module, an
+  isolated user-config root, and bounded append-only attempt logs. Before
+  source inspection they verify schema-12 root help and the catalog-derived
+  exact scoped authoring/runtime contracts, including complete nested field
+  inventories and complete ordered recovery signatures. The non-shipped
+  harness may seed an exact
   receipt through the production trust-store adapter for each tested bundle;
   this proves receipt consumption, not human consent. Controlling-terminal
   full-digest confirmation remains separate required production-adapter
-  evidence. The journey verifies eight help documents: the root index plus
-  seven exact scoped public contracts. Linux and macOS activate deterministic
-  `wrapper render` bytes and invoke transformed-JSON, identity, and append-argv-
-  only GitHub ordinary commands plus one exact identity-wrapped no-argument Go
-  `test` command through the extracted runtime. The raw-byte cases prove exact
-  stream digests, conventional status, hostile argv, and three GitHub plus one
-  Go wrapper source attempts. Windows verifies the exact structured unsupported-
-  render result for both source bundles without sourcing bytes or starting a
-  wrapper source process. The Go fixture sets `GOTOOLCHAIN=local`, disables
-  download, and isolates module/cache roots; those are deterministic harness
-  inputs, not production environment or effective-toolchain guarantees.
+  evidence. Linux and macOS activate deterministic `wrapper render` bytes and
+  invoke the maintained GitHub and Go ordinary-command surfaces through the
+  extracted runtime. Windows verifies exact structured unsupported rendering
+  without sourcing bytes or starting a wrapper source or processor. The Go
+  fixture sets `GOTOOLCHAIN=local`, disables download, and isolates module/cache
+  roots; those are deterministic harness inputs, not production environment or
+  effective-toolchain guarantees.
 - Each native CI artifact row runs the full production source-runner and
-  trust-store tests, the exact bundle-file fault mapping, and the complete CLI
-  recovery matrix before packaging and replay. The release linter pins that
-  exact step as well as the five runner/target tuples.
-- Artifact-evidence aggregation owns the exact five-target set. Evidence schema
-  4 distinguishes `ordinary_command_verified` on Linux/macOS from
-  `platform_not_supported` on Windows and binds an ordered `wrapper_cases`
-  inventory for GitHub CLI. Each POSIX case records wrapper kind, result mode, bundle and plan
-  digests, rendered-source digest, stdout/stderr digests, source status, and one
-  source attempt; Windows records an empty case list and zero attempts. Its
-  required `go_source` record separately binds adapter contract 1, a stable Go
-  1.26.x inspection observation, three inspection attempts, exact command `test`, catalog/bundle/plan
-  digests, and one zero-attempt rejection on every target. POSIX additionally
-  records exit 12 / `wrapper_runtime_not_supported` for `go test extra`, then
-  one identity-wrapper case with a nonempty rendered-wrapper digest and one
-  attempt; Windows records the empty
-  unsupported case set with zero wrapper attempts. Each
-  native job uploads one bounded document containing target and
-  observed host,
-  revision, archive, command, bundle, and command-specific plan identities,
-  fixed attempt/fault counts, and leak booleans. A dependent job pairs those
-  documents with the five actual candidate archives, recomputes their hashes,
-  strictly rejects missing, extra, duplicate, symlinked, malformed, or
-  cross-revision inputs,
-  and emits a path-free unattested digest index. The release linter pins the
-  aggregator to one exact verifier command plus an allowlist of checkout, Go
-  setup, artifact download, and artifact upload actions; no candidate rebuild
-  or replay step is admitted.
+  trust-store and processor-runner tests, the exact bundle-file fault mapping,
+  and the complete CLI recovery matrix before packaging and replay. The release
+  linter pins that exact step as well as the five base runner/target tuples.
+- Artifact-evidence aggregation owns the exact five-target base set. Existing
+  evidence schema 4 proves the pre-optimizer GitHub and Go identity-wrapper
+  journey and therefore cannot support an optimizer release claim. Its
+  optimizer-aware versioned successor must retain those base facts and add Go
+  CLI contract 2, processor-observation schema 1, the exact RTK identity and
+  invocation, schema-3 bundle and schema-5 plan identities, separate source and
+  processor attempt counts, disposition/status, and leak booleans. The four
+  Linux/macOS optimizer targets must prove `optimized` and reachable
+  `preserved_before_processor`; Windows records no optimizer case and zero
+  processor attempts. A dependent job pairs each document with the actual
+  candidate archive and exact official RTK artifact where applicable,
+  recomputes hashes, strictly rejects missing, extra, duplicate, symlinked,
+  malformed, or cross-revision inputs, and emits a path-free unattested digest
+  index. No candidate rebuild or replay substitute is admitted.
 - Architecture and public guards own dependency direction and secret-free
   repository state.
 
-## Host-neutral wrapper and source-stream milestone gate
+## Host-neutral wrapper and optimizer implementation gate
 
-This milestone is complete only when all of the following are true on the same
-tree:
+This implementation milestone is complete only when all of the following are
+true on the same tree:
 
-1. focused domain, codec, application, CLI, and migration tests pass;
-2. schema-3 specification and schema-2 bundle canonical fixtures pass;
-3. surface/wrapper truth-table and `EffectExecute` negative tests pass;
-4. adopted/current bundle preview covers identity and transforming wrappers,
-   explicit and inherited surface entries, longest-prefix matching, option
-   absence, exact schema-4 result modes, stable plan digests, and exactly zero
-   source attempts;
-5. compatibility-admitted GitHub CLI `issue list` and `pr list` transformation execution
-   covers exact selector encoding, preview/execute plan-digest equality,
-   selected/renamed typed JSON, no raw-output leak, and exactly one source
-   attempt per command;
-6. Go CLI contract 1 inspection proves the exact three probes and a recorded
-   stable 1.26.x observation; finite-registry, plan, and whole-surface truth tables admit
-   only identity-wrapped exact no-argument `test` and reject every additional
-   argv or misconfigured adapter before source start;
-7. `wrapper render` and `wrapper run` catalog, typed-argv, output-authority,
-   fault, and scoped-help contracts match the implementation; `wrapper run`
-   requires the explicit `--` separator and publishes the exact transformed-
-   JSON/source-stream result union;
-8. deterministic binding/render tests cover portable command-name eligibility,
-   POSIX quoting, exact bundle and runtime closure, whole-surface runtime
-   admission, hostile argv forwarding, and no host fields;
-9. application and CLI tests prove direct preview/wrapper plan-digest parity,
-   bundle/runtime/source drift rejection at zero source attempts, exact one-
-   attempt transformed-JSON, identity, and append-argv-only success, source
-   stream/status fidelity, uncertain-stream suppression, final-write faults,
-   no maintainer envelope, and no raw fallback;
-10. the production-composition recovery matrix covers all 27 preview faults,
-   all 28 execute pre-start phase cases at zero attempts, and all 15 execute
-   post-start phase cases at one non-retryable attempt, with exact scoped-help
-   parity and no raw or secret canary leak;
-11. retired authorization schemas fail with zero source attempts and legacy
-   `plan preview` remains migration-only;
-12. exact scoped agent help publishes the finite source-catalog,
-   specification-authoring, and runtime-admission contracts used by the
-   installed-artifact journey;
-13. `task release:check` replays the platform-native exact archive, and CI defines
-   required native jobs for Linux amd64/arm64, macOS amd64/arm64, and Windows
-   amd64; a dependent aggregation job verifies the exact five evidence
-   documents and five candidate archive hashes, and the release publish job
-   depends on that aggregate. Linux/macOS rows activate the ordinary POSIX
-   GitHub commands for all three result cases plus one exact Go `test` identity
-   case, while Windows proves structured unsupported rendering for both source
-   bundles with zero wrapper source attempts;
-14. evidence schema 4 records the ordered GitHub wrapper cases and the separate
-   Go adapter/recorded-version/three-probe/catalog/bundle/plan and platform outcome,
-   including one zero-attempt Go rejection on every target, followed by one
-   POSIX Go success attempt or the Windows empty unsupported case set,
-   without storing source bytes or claiming caller attestation;
-15. `task check` passes;
-16. `task security` passes;
-17. `task public:check` passes; and
-18. repository search finds no live source-wrapper requirement for
-   allow/confirm/deny, source read/create/write, or source target/impact outside
-   explicit migration and superseded-history contexts.
+1. focused domain, codec, application, infrastructure, CLI, and migration tests
+   pass;
+2. schema-4 specification, schema-3 bundle, schema-5 plan, and schema-1
+   processor-observation canonical fixtures pass;
+3. surface/wrapper truth tables, the projection/optimizer discriminated union,
+   and `EffectExecute` negative tests pass;
+4. adopted/current bundle preview covers identity, projection, source-stream,
+   and optimizer wrappers, stable plan digests, exact processor binding, and
+   exactly zero process attempts;
+5. compatibility-admitted GitHub CLI execution covers exact selector encoding,
+   preview/execute plan parity, selected typed JSON, no raw-output leak, and one
+   source attempt per admitted command;
+6. Go CLI contract 2 inspection proves its exact three probes and recorded
+   stable 1.26.x observation; its finite registry admits only exact no-argument
+   `test` through either the identity surface or wrapper-owned `-json` optimizer
+   surface;
+7. `processor inspect`, `spec init --processor`, and `bundle build --processor`
+   prove explicit evidence flow, exact RTK v0.43.0 identity, no ambient
+   discovery, deterministic authoring default, and preflight rejection before
+   source start;
+8. strict Go-test event validation proves every accepted lifecycle fact and
+   exact shorter-summary oracle before the processor starts;
+9. application and infrastructure tests prove all three optimizer dispositions,
+   separate zero/one source and processor attempt counts, isolated no-shell
+   execution, post-source identity revalidation, no-byte processor faults, and
+   no failure fallback;
+10. `wrapper render` and `wrapper run` catalog, typed-argv, output-authority,
+    fault, schema-2 review-envelope, and scoped-help contracts match the
+    implementation; `wrapper run` publishes all three schema-12 result modes;
+11. deterministic binding/render tests cover portable command names, POSIX
+    quoting, exact bundle/runtime/source/processor closure, whole-surface
+    admission, hostile argv forwarding, and absence of coding-agent-host
+    fields;
+12. the production-composition recovery matrix is an exact bijection with every
+    catalog-declared fault, covers each pre-start and post-start attempt phase,
+    and leaks no raw or secret canary;
+13. retired authorization schemas fail with zero process attempts and legacy
+    `plan preview` remains migration-only;
+14. exact scoped agent help publishes the finite source-catalog,
+    processor-inspection, specification-authoring, planning, and runtime
+    admission contracts;
+15. `task check`, `task security`, and `task public:check` pass; and
+16. repository search finds no live source-wrapper requirement for
+    allow/confirm/deny, source read/create/write, source target/impact, arbitrary
+    processors, or coding-agent-host adaptation outside explicit migration and
+    superseded-history contexts.
 
-Local `task release:check` proves archive mechanics, workflow structure, and
-the current platform's native replay. It cannot stand in for the other four native
-jobs; an exact commit has complete platform evidence only after the required CI
-matrix succeeds. Emulation and cross-build metadata do not count as native
-runtime evidence.
+Implementation completion is not yet a release-quality optimizer claim. That
+claim additionally requires all of the following for the exact candidate
+revision:
 
-The gate does not claim original-preserving optimization, external-processor
-execution, raw execution, richer argv transforms, persistent wrapper
+1. `task release:check` replays the platform-native exact Atsura archive;
+2. CI provides native Linux amd64/arm64, Darwin amd64/arm64, and Windows amd64
+   base rows, with the exact official RTK v0.43.0 artifact supplied only to the
+   four optimizer-supported rows;
+3. an optimizer-aware versioned successor to evidence schema 4 records Go CLI
+   contract 2, processor-observation schema 1, exact RTK provenance and
+   identity, bundle/plan digests, optimized and reachable pre-processor
+   preservation cases, attempt counts, statuses, and bounded leak checks;
+4. Windows proves structured unsupported rendering and zero processor attempts
+   without claiming an optimizer;
+5. aggregation recomputes all candidate and processor hashes, rejects missing
+   or extra evidence, and the release publish job depends on that aggregate;
+   and
+6. every required native job succeeds. Emulation, cross-build metadata, local
+   replay of one platform, or controlled synthetic processor tests cannot stand
+   in for another platform's native evidence.
+
+Neither gate claims raw execution, richer argv transforms, persistent wrapper
 installation or executable shims, Windows POSIX activation, arbitrary
-transformer integration, support for a source CLI beyond an accepted adapter
-contract, executable attestation, or publication authorization.
+transformer integration, support beyond an accepted source/processor contract,
+executable attestation, source authorization, sandboxing, coding-agent-host
+integration, or publication authorization.
 
 ## Evidence discipline
 
