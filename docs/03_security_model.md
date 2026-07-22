@@ -549,14 +549,20 @@ source fixture attempt counts and processor-inspection evidence, result
 disposition, status, and the same bounded leak checks. It predates static
 tailored help.
 
-Current schema 6 retains that optimizer-aware proof and adds one bounded
-`tailored_help` record. A POSIX row binds the complete bundle and rendered-
-wrapper digests plus wrapper contract 2, proves exact root, namespace, and
-command `--help` while the bound `atr` is non-executable, and proves hidden and
-unknown help-shaped selectors retain their declared fail-closed faults without
-source or processor attempts. A Windows row records an explicit unsupported
-outcome with empty help views and faults, no binding digests, and zero attempts.
-Aggregate schema 2 is unchanged.
+Historical schema 6 retains that optimizer-aware proof and adds the first
+bounded `tailored_help` record for one transformed-PR wrapper. Current schema 7
+adds exact `caller_argv` to every wrapper case and binds the transformed
+`pr list` and append-only `issue list` calls to one exact bundle and one rendered
+wrapper while requiring separate plan digests. A POSIX row proves five exact
+root/namespace/command help views while the bound `atr` is non-executable, then
+proves hidden `api --help` remains `command_not_in_surface` and unknown
+`unknown --help` remains `invalid_invocation`, all without source or processor
+attempts. It retains three wrapper source attempts and 13 total GitHub fixture
+attempts. A Windows row records the explicit unsupported outcome with empty
+wrapper cases, help views, and faults, no tailored-help bundle or rendered-
+wrapper binding digests or wrapper contract, zero wrapper attempts, and 10
+GitHub fixture attempts. Top-level journey identities remain required.
+Aggregate schema 2 is unchanged and does not carry per-case caller argv.
 
 Installed evidence does not claim processor-launch counts without an accepted
 external observer; controlled application and infrastructure tests own that
@@ -594,9 +600,10 @@ and GitHub artifact provenance must still show that the matching native matrix
 job produced it.
 
 On 2026-07-22, CI run 29910455312 supplied that workflow provenance and passed
-all five schema-6 rows plus aggregate schema 2 for revision
+all five historical schema-6 rows plus aggregate schema 2 for revision
 `01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. The observation does not attest
-the executables, authorize publication, or carry forward to another revision.
+the executables, authorize publication, prove schema-7 multi-command behavior,
+or carry forward to another revision.
 
 ## Known limitations
 

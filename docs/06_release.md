@@ -12,24 +12,27 @@ wrappers. ADR 0011 adds Go CLI as the nature-distinct second source and ADR
 `atsura.output.rtk_go_test_pass.v1` processor tuple. The packaging mechanics
 below remain reviewed infrastructure, but they do not authorize publication.
 The current implemented runtime is intentionally narrower than the artifact
-matrix: one GitHub compatibility-admitted typed JSON transform boundary;
-finite GitHub transformed-JSON, identity, and append-argv-only ordinary wrapper
-cases; exact no-argument Go `test` identity; and the processor-bound strict
-pass-only `go test -json` optimizer through an explicitly inspected official
-RTK v0.43.0 artifact. Linux and macOS have the host-neutral POSIX renderer.
+matrix: one GitHub compatibility-admitted typed JSON transform boundary; one
+complete two-command GitHub wrapper combining the transformed-JSON and append-
+argv-only cases plus one separate identity case; exact no-argument Go `test`
+identity; and the processor-bound strict pass-only `go test -json` optimizer
+through an explicitly inspected official RTK v0.43.0 artifact. Linux and macOS
+have the host-neutral POSIX renderer.
 Windows retains existing-command runtime evidence and exact structured
 unsupported wrapper rendering, with no POSIX activation or optimizer claim.
 
 Implementation acceptance and release-quality evidence are separate.
-Installed-artifact schema 6 and aggregate schema 2 are implemented. Schema 6
-retains the optimizer-aware schema-5 record and adds bounded static tailored-
-help evidence for wrapper contract 2. They do not by themselves establish a
-release-quality optimizer, tailored-help, or platform claim: that claim belongs
-only to the workflow result for one exact revision after all five required
-native rows and their aggregate pass. CI run 29910455312 supplied that evidence
-on 2026-07-22 for revision
+Installed-artifact schema 7 and aggregate schema 2 are implemented. Schema 7
+retains the optimizer-aware schema-5 record and historical schema-6 static-help
+proof, then binds a two-command GitHub surface through exact per-case caller
+argv, one shared bundle and rendered wrapper, and distinct plans. They do not
+by themselves establish a release-quality optimizer, tailored-help,
+multi-command, or platform claim: that claim belongs only to the workflow
+result for one exact revision after all five required native rows and their
+aggregate pass. CI run 29910455312 supplied the historical schema-6 evidence on
+2026-07-22 for revision
 `01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. No release was created, and a
-later candidate must repeat the matrix.
+later schema-7 candidate must repeat the matrix.
 
 The current first-release packaging decisions are:
 
@@ -190,7 +193,7 @@ The release workflow follows this order:
    aggregate succeed.
 9. For a stable tag, render the checksum-pinned Homebrew Formula and open a Formula update pull request.
 
-Steps 4 and 5 are implemented by evidence schema 6, aggregate schema 2, and the
+Steps 4 and 5 are implemented by evidence schema 7, aggregate schema 2, and the
 native workflow. Their presence is not an attestation for a moving worktree.
 Publication remains blocked until every required native row and its aggregate
 succeed for the exact candidate revision.
@@ -483,25 +486,37 @@ process modes, v2 isolation and bounds, source-fixture attempt counts,
 processor-inspection evidence, result disposition and status, and bounded leak
 checks. It is optimizer-aware but predates static tailored help.
 
-Current schema 6 retains the complete schema-5 proof and adds one bounded
-`tailored_help` object. Each POSIX row binds the transformed-PR bundle's full
-digest, rendered-wrapper digest, and wrapper contract 2. It records exact
-`["--help"]`, `["pr","--help"]`, and `["pr","list","--help"]`
-selectors with output and empty-stderr digests while the exact extracted `atr`
-is temporarily non-
-executable. It then restores that runtime and records hidden `issue list` as
-`command_not_in_surface` and an unknown selector as `invalid_invocation`, both
-with zero source and processor attempts. Windows records
-`platform_not_supported`, empty help-view and fallthrough inventories, no help
-binding digests or wrapper contract, and zero attempts.
+Historical schema 6 retains the complete schema-5 proof and adds one bounded
+`tailored_help` object for the transformed-PR wrapper. Current schema 7 keeps
+that object and adds exact `caller_argv` to every `wrapper_cases` entry. Each
+POSIX row orders the cases as `transformed_json`, `append_only`, and `identity`.
+The first two use caller argv
+`["pr","list","--limit=1"]` and
+`["issue","list","--search=append value","--label=one","--label=two"]`,
+bind the same complete bundle and rendered-wrapper digest, and require distinct
+schema-5 plan digests. The identity case retains its separate bundle, wrapper,
+plan, and hostile caller argv. The shared wrapper records the five exact views
+`["--help"]`, `["issue","--help"]`,
+`["issue","list","--help"]`, `["pr","--help"]`, and
+`["pr","list","--help"]` while the extracted `atr` is temporarily non-
+executable. It then restores that runtime and records `["api","--help"]` as
+`command_not_in_surface` and `["unknown","--help"]` as
+`invalid_invocation`, both with zero source and processor attempts. The three
+ordinary calls add one source attempt each and retain the POSIX GitHub fixture
+total of 13. Windows records `platform_not_supported`, empty wrapper cases,
+help views, and fallthrough inventories, no tailored-help bundle or rendered-
+wrapper binding digests or wrapper contract, zero wrapper attempts, and 10
+GitHub fixture attempts. Top-level journey identities remain required. Its Go
+case is also empty; POSIX Go identity evidence records caller argv `["test"]`.
 
 The four POSIX rows must also record `optimized` and reachable
 `preserved_before_processor`; Windows records no optimizer case or processor
 evidence. Without an accepted external observer, installed evidence does not
 claim processor-launch counts; controlled application and infrastructure tests
-own that truth. Schema 6 and unchanged aggregate schema 2 implement the proof
-mechanism; the workflow result for one exact candidate revision owns whether
-the required five-target evidence exists. The inherited schema-5 optimizer
+own that truth. Schema 7 and unchanged aggregate schema 2 implement the current
+proof mechanism; aggregate schema 2 intentionally does not project the new
+per-case caller argv. The workflow result for one exact candidate revision owns
+whether the required five-target evidence exists. The inherited schema-5 optimizer
 shape keeps the identity case in the outer `go_source` wrapper fields and
 records the optimizer's separate bundle, plan, rendered-wrapper digest, cases,
 and faults in the nested `optimizer` object.
@@ -541,11 +556,11 @@ package patterns, `--`, and test-binary arguments remain outside the first
 runtime. The same launcher selecting Go 1.27 later is not detected by contract
 2. Ambient Go configuration and toolchain selection remain source-owned. The
 pass-only `go test -json` / RTK `go-test` optimizer is now the one accepted
-external-processor implementation tuple. Current evidence schema 6 and
+external-processor implementation tuple. Current evidence schema 7 and
 aggregate schema 2 can carry that optimizer claim together with the contract-2
-tailored-help claim, but only a successful five-target native run for one exact
-candidate revision can advance the implementation to a release-quality
-platform claim.
+multi-command tailored-help claim, but only a successful five-target native run
+for one exact candidate revision can advance the implementation to a release-
+quality platform claim.
 
 Matrix artifacts use stable, target-unique names and explicit replacement of
 the prior same-name artifact. Candidate archives, native journey evidence, and
@@ -553,13 +568,14 @@ aggregate summaries use disjoint prefixes. This avoids immutable-name
 collisions on a rerun while strict revision, filename, target, and digest
 checks still fail closed on any absent or stale input.
 
-Current bounded observation: on 2026-07-22 CI run 29910455312 passed the exact
+Historical bounded observation: on 2026-07-22 CI run 29910455312 passed the exact
 Linux amd64/arm64, Darwin amd64/arm64, and Windows amd64 schema-6 journeys,
 full/security/public gates, and aggregate schema 2 for revision
 `01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. This establishes the implemented
-optimizer, tailored-help, and platform contracts for that revision only. It is
-not publication, attestation, or evidence for another commit or tag; the exact
-revision selected for any release must replay all required rows again.
+optimizer, one-command tailored-help, and platform contracts for that revision
+only. It is not schema-7 multi-command evidence, publication, attestation, or
+evidence for another commit or tag; the exact revision selected for any release
+must replay all required rows again.
 
 No public release has yet made the wrapper claim. A future candidate that
 passes the complete gates may claim only the fixed Linux/macOS POSIX

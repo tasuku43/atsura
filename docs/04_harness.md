@@ -369,7 +369,7 @@ plan schema 5. It binds exact caller argv `go test`, source argv
   claim absence of child
   processes, outside-root filesystem access, or network attempts without a
   separately implemented and validated external observer. A release-quality
-  native claim belongs only to an exact revision whose evidence schema 6 rows
+  native claim belongs only to an exact revision whose evidence schema 7 rows
   and aggregate schema 2 pass the required five-target workflow.
 
 ADR 0009's rejected `git-log` tuple remains a negative fixture: executable
@@ -644,15 +644,21 @@ bytes in persisted or structured evidence.
   and processor-inspection evidence, disposition/status, source-fixture attempt
   counts, and leak booleans. It is optimizer-aware but predates static tailored
   help.
-- Current evidence schema 6 retains the complete schema-5 record and adds a
-  bounded `tailored_help` object. POSIX rows bind the full transformed-PR bundle
-  and wrapper-source digests plus wrapper contract 2; require the exact root,
-  namespace, and exact-command final-`--help` argv and output digests while the
-  bound `atr` is non-executable; and record the hidden-command
-  `command_not_in_surface` and unknown-selector `invalid_invocation` faults with
-  zero source and processor attempts. Windows requires
-  `platform_not_supported`, empty view and fault lists, absent binding digests,
-  and zero attempts. Aggregate schema 2 is unchanged.
+- Historical evidence schema 6 retains the complete schema-5 record and adds
+  the first bounded `tailored_help` object for one transformed-PR wrapper.
+  Current schema 7 adds exact `caller_argv` to every wrapper case. POSIX rows
+  keep three ordered cases and three wrapper source attempts: transformed
+  `pr list` and append-only `issue list` share one exact bundle and wrapper
+  digest while keeping distinct caller argv and plan digests; identity remains
+  independently bound. Their shared wrapper requires five ordered root,
+  namespace, and exact-command help views plus hidden `api --help`
+  `command_not_in_surface` and unknown `unknown --help` `invalid_invocation`
+  faults with zero source and processor attempts. The GitHub fixture total
+  remains 13. Windows requires `platform_not_supported`, empty wrapper cases,
+  views, and fault lists, no tailored-help bundle or rendered-wrapper binding
+  digests or wrapper contract, zero wrapper attempts, and 10 GitHub fixture
+  attempts. Top-level journey identities remain required. Aggregate schema 2
+  is unchanged and excludes the new per-case caller argv.
 - The four Linux/macOS optimizer targets must prove `optimized` and reachable
   `preserved_before_processor`; Windows records no optimizer case and no
   processor evidence. Installed evidence does not claim processor-launch
@@ -733,10 +739,11 @@ candidate revision:
 2. CI provides native Linux amd64/arm64, Darwin amd64/arm64, and Windows amd64
    base rows, with the exact official RTK v0.43.0 artifact supplied only to the
    four optimizer-supported rows;
-3. evidence schema 6 retains the schema-5 optimizer record and additionally
-   records the bounded contract-2 `tailored_help` binding, exact POSIX views,
-   runtime-non-executable condition, fallthrough fault codes, and zero source/
-   processor attempts;
+3. evidence schema 7 retains the schema-5 optimizer and historical schema-6
+   tailored-help records, adds exact caller argv to each ordinary-wrapper case,
+   binds transformed `pr list` and append-only `issue list` to one shared bundle
+   and wrapper with distinct plans, and records all five POSIX help views plus
+   the runtime-non-executable condition and zero-attempt fallthrough faults;
 4. Windows proves structured unsupported rendering and an explicit empty
    `tailored_help: platform_not_supported` record without receiving a
    processor artifact or claiming POSIX activation or an optimizer;
@@ -749,11 +756,12 @@ candidate revision:
    replay of one platform, or controlled synthetic processor tests cannot stand
    in for another platform's native evidence.
 
-Observed evidence: a clean detached-worktree `task release:check` and CI run
-29910455312 together passed all six conditions on 2026-07-22 for revision
-`01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. This is bounded historical
-evidence for that tree; any later candidate must run both the local release
-gate and native workflow again.
+Historical predecessor evidence: a clean detached-worktree
+`task release:check` and CI run 29910455312 passed the corresponding schema-6
+six-condition set on 2026-07-22 for revision
+`01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. That run does not satisfy current
+schema-7 condition 3 or the current six-condition set. A schema-7 candidate must
+run both the local release gate and native workflow before making this claim.
 
 Neither gate claims raw execution, richer argv transforms, persistent wrapper
 installation or executable shims, Windows POSIX activation, arbitrary

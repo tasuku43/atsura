@@ -588,16 +588,24 @@ environment and bounds, optimized and honestly reachable pre-processor
 preservation outcomes, source-fixture attempt counts, and exact processor-
 inspection evidence. It predates static tailored help.
 
-Current evidence schema 6 retains the complete schema-5 record and adds one
-bounded `tailored_help` object. Each POSIX row binds the full transformed-PR
-bundle digest, rendered-wrapper digest, and wrapper contract 2; records exact
-root, namespace, and command `--help` argv and output digests while the bound
-`atr` file is temporarily non-executable; and records hidden-command
-`command_not_in_surface` plus unknown-selector `invalid_invocation` fallthrough
-with zero source and processor attempts. Windows records
-`platform_not_supported`, empty view and fault inventories, no bound digests or
-contract, and zero attempts. Aggregate schema 2 remains the unchanged validator
-for the fixed five-document/five-candidate set.
+Historical evidence schema 6 retains the complete schema-5 record and adds the
+first bounded `tailored_help` object for a one-command transformed-PR wrapper.
+Current evidence schema 7 retains that proof and adds exact `caller_argv` to
+every ordinary-wrapper case. On POSIX rows, ordered cases
+`transformed_json`, `append_only`, and `identity` still total three source
+attempts. The first two bind the same complete two-command bundle and rendered-
+wrapper digest but distinct plan digests and caller argv; the identity case has
+its own bundle, wrapper, and plan. The shared wrapper records five ordered help
+views for root, `issue`, `issue list`, `pr`, and `pr list` while its bound `atr`
+is temporarily non-executable, then records `api --help` as
+`command_not_in_surface` and `unknown --help` as `invalid_invocation`, all with
+zero source and processor attempts. POSIX GitHub fixture attempts remain 13.
+Windows records `platform_not_supported`, empty wrapper cases, help views, and
+faults, no tailored-help bundle or rendered-wrapper binding digests or wrapper
+contract, zero wrapper attempts, and 10 GitHub fixture attempts. Top-level
+journey identities remain required. Aggregate schema 2 remains the unchanged
+validator for the fixed five-document/five-candidate set and intentionally does
+not project the new per-case caller argv.
 
 Linux and Darwin require native official-artifact replay on amd64 and arm64.
 Windows must reject optimizer availability before a source attempt. An
@@ -606,10 +614,11 @@ external observer; controlled application and infrastructure tests own that
 attempt truth. The journey does not fabricate `preserved_after_processor` or
 arbitrary processor faults when the official artifact cannot reach them;
 controlled application and infrastructure truth tables own those branches.
-On 2026-07-22, CI run 29910455312 passed schema 6 and aggregate schema 2 for
-revision `01c05a45e8b00f09d63d3c6551d3a5df393c41b5` across the exact five
-target matrix. That is release-quality implementation evidence for this
-revision, not publication authorization or evidence for a later candidate.
+On 2026-07-22, CI run 29910455312 passed historical schema 6 and aggregate
+schema 2 for revision `01c05a45e8b00f09d63d3c6551d3a5df393c41b5` across the
+exact five-target matrix. That is release-quality implementation evidence for
+this revision's one-command tailored-help contract, not schema-7 multi-command
+evidence, publication authorization, or evidence for a later candidate.
 The inherited schema-5 optimizer shape keeps the identity case in the outer
 `go_source` wrapper fields and the optimizer's distinct bundle, plan, rendered-
 wrapper digest, cases, and faults only in the nested `optimizer` object.
@@ -684,10 +693,12 @@ Go CLI contract 2 catalog (three probes, recorded Go 1.26.x observation)
   -> strict `test -json` admission and the isolated processor boundary
 ```
 
-The exact five-target evidence above establishes this milestone for revision
-`01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. Every later release candidate
-must repeat the full gates and installed-artifact journeys. Windows exercises
-existing commands and structured unsupported behavior only.
+The exact five-target schema-6 evidence above establishes the predecessor
+one-command wrapper portion of this milestone for revision
+`01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. It does not establish the
+schema-7 multi-command portion. Every later release candidate must repeat the
+full gates and installed-artifact journeys. Windows exercises existing commands
+and structured unsupported behavior only.
 
 Raw execution, source refresh, richer argv transformations, additional
 processor tuples, and coding-agent-host integration remain outside these

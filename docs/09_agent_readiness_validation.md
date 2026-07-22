@@ -797,9 +797,10 @@ not runtime attestation.
 - Windows returns `wrapper_platform_not_supported`, empty success stdout, one
   structured fault on stderr, and zero wrapper source attempts. It does not
   claim POSIX activation.
-- A mixed, multi-command, partially admitted, or otherwise unsupported complete
-  surface returns
-  `wrapper_runtime_not_supported` before rendering.
+- A non-empty GitHub surface containing one or both maintained commands is
+  admitted only when every entry satisfies its independent runtime contract;
+  an empty, partially admitted, or otherwise unsupported complete surface
+  returns `wrapper_runtime_not_supported` before rendering.
 - A catalog recording a version outside stable Go 1.26.x, a non-`test` command,
   a wrapper other than the exact identity or finite optimizer form, any option
   or package pattern, `--`, or a test-binary argument returns
@@ -866,10 +867,10 @@ transform journey on that target without a repository-built replacement
 binary, provider credential, provider network call, or undeclared parser. On
 Linux and macOS the same extracted executable must also render and serve the
 transformed-JSON, identity, and append-argv-only ordinary-command POSIX cases.
-The transformed-JSON wrapper must serve exact root, namespace, and command
-tailored help while its bound runtime is non-executable, then preserve the
-declared hidden- and unknown-selector faults with zero source and processor
-attempts.
+One shared two-command wrapper must serve the transformed-JSON and append-only
+cases, expose both exact commands through root, namespace, and command tailored
+help while its bound runtime is non-executable, then preserve the declared
+hidden- and unknown-selector faults with zero source and processor attempts.
 Every native target must record stable Go 1.26.x inspection evidence through
 contract 2. Linux and macOS must additionally serve exact identity-wrapped
 no-argument `go test` and the finite processor-bound optimizer using the
@@ -878,13 +879,14 @@ artifact and proves the exact unsupported-render result with zero Go wrapper
 source attempts and no processor evidence while retaining the GitHub transform
 journey.
 
-This section defines the optimizer- and tailored-help-aware acceptance target.
-Evidence schema 6, unchanged aggregate schema 2, and the native workflow
-implement the mechanism. CI run 29910455312 passed the five-target matrix and
-aggregate on 2026-07-22 for revision
+This section defines the optimizer-, multi-command-, and tailored-help-aware
+acceptance target. Evidence schema 7, unchanged aggregate schema 2, and the
+native workflow implement the current mechanism. CI run 29910455312 passed the
+historical schema-6 five-target matrix and aggregate on 2026-07-22 for revision
 `01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. The requirements below therefore
-have one exact release-quality implementation observation; they do not
-authorize publication or carry that result to a later revision.
+have one exact release-quality observation for the predecessor one-command
+help contract; the schema-7 multi-command requirements do not yet inherit that
+observation, authorize publication, or carry it to a later revision.
 
 ### Automated probe
 
@@ -909,13 +911,16 @@ render`, and `wrapper run` scopes. It checks the complete
 catalog/specification output-schema field
 inventory and the exact ordered 27-fault preview and 41-fault execute recovery
 signatures rather than recognizing prose markers alone. It then obtains the
-catalog in four fixture attempts and, for
-each admitted command, asks packaged `atr` for an identity draft, applies the
-same documented finite transform edit with option default `exclude` and only
-`--limit` included, validates and builds it, and observes
-`not_adopted/current`. Pre-adoption preview and execute fail without another
-fixture attempt. The non-shipped orchestrator then loads each exact bundle and
-adds its digest through the production trust-store adapter. This step proves
+catalog in four fixture attempts. For the shared wrapper, the harness composes
+typed drafts into one exclude-by-default specification: `pr list` exposes only
+`--limit` and uses the compact projection, while `issue list` exposes `--label`
+and `--search`, appends fixed `--limit=1`, and preserves source streams. It
+separately builds the existing issue projection bundle for direct-execution
+evidence. Each specification is validated and built before its status is
+observed. Pre-adoption preview and execute against the shared bundle fail
+without another fixture attempt. The non-shipped orchestrator then loads each
+exact bundle and adds its digest through the production trust-store adapter.
+This step proves
 receipt consumption only; it is not recorded as interactive human consent.
 Production tests separately require a controlling terminal, display the full
 authority summary, require the full digest, and reject other input.
@@ -929,27 +934,34 @@ stderr, or unselected-field canaries. Successful execute adds exactly one
 attempt per command, returns fields `["id","title","state"]`, omits the
 unselected canary, and has the same command-specific plan digest as preview.
 
-Linux and macOS also build and adopt three wrapper bundles: the existing
-transformed-JSON `pr list` case, one identity case, and one output-less fixed-
-argv-append case. For each bundle they render JSON review material and raw
-function text from the exact extracted `atr`, compare the exact source and
-SHA-256, source that fixed material in an isolated generic POSIX shell, and
-invoke ordinary `gh`. For the transformed-JSON wrapper, the harness temporarily
-makes the exact extracted `atr` non-executable and requires byte-exact
-`["--help"]`, `["pr","--help"]`, and `["pr","list","--help"]`
-results with the full bundle digest and empty stderr. After restoring the
-runtime, hidden `["issue","list","--help"]` must yield
-`command_not_in_surface` and `["unknown","--help"]` must yield
-`invalid_invocation`; none may add a source or processor attempt. Every
-wrapper/preview schema-5 plan identity must match in bounded fixture evidence
-and the append-only log must add exactly one source attempt per ordinary
-execution case. The transformed result must equal its compact JSON value.
-The other two must match the fixture's exact bounded stdout/stderr digests and
-conventional status without storing either stream. Windows must instead
-receive `wrapper_platform_not_supported`, no rendered source digest or case,
-zero wrapper source attempts, and one explicit
-`tailored_help: platform_not_supported` record with empty views and faults and
-no binding digests.
+Linux and macOS build and adopt one two-command wrapper bundle plus one separate
+identity bundle. The shared wrapper serves transformed-JSON `pr list` with
+caller argv `["pr","list","--limit=1"]` and append-only `issue list` with
+caller argv
+`["issue","list","--search=append value","--label=one","--label=two"]`;
+the two cases bind one exact bundle and rendered-source digest but distinct
+schema-5 plans. The identity case retains its separate bundle, plan, rendered
+source, and hostile caller argv. The harness renders JSON review material and
+raw function text from the exact extracted `atr`, compares the exact source and
+SHA-256, sources the fixed material in an isolated generic POSIX shell, and
+invokes ordinary `gh`. For the shared wrapper, it temporarily makes the exact
+extracted `atr` non-executable and requires byte-exact `["--help"]`,
+`["issue","--help"]`, `["issue","list","--help"]`,
+`["pr","--help"]`, and `["pr","list","--help"]` results with the full
+bundle digest and empty stderr. After restoring the runtime, hidden
+`["api","--help"]` must yield `command_not_in_surface` and
+`["unknown","--help"]` must yield `invalid_invocation`; none may add a
+source or processor attempt. Every wrapper/preview schema-5 plan identity must
+match in bounded fixture evidence and the append-only log must add exactly one
+source attempt per ordinary execution case. The transformed result must equal
+its compact JSON value; the append-only and identity cases must match their
+exact bounded stdout/stderr digests and conventional status without storing
+either stream. POSIX retains three wrapper source attempts and 13 GitHub
+fixture attempts. Windows must instead receive
+`wrapper_platform_not_supported`, empty wrapper cases and tailored-help views
+and faults, zero wrapper source attempts, 10 GitHub fixture attempts, and no
+tailored-help bundle or rendered-wrapper binding digests or wrapper contract;
+top-level journey identities remain required.
 
 Every target also uses packaged `atr` to obtain a stable Go 1.26.x observation
 with `go version`, `go help`, and `go help test`. The harness
@@ -964,7 +976,7 @@ but requires `wrapper_platform_not_supported`, no Go wrapper case, one zero-
 attempt rejection, and zero Go wrapper source attempts. Isolation is fixture
 discipline, not an Atsura sandbox claim.
 
-The schema-6 journey supplies the exact official RTK v0.43.0 archive
+The schema-7 journey supplies the exact official RTK v0.43.0 archive
 only to the four POSIX rows. Before extraction it verifies target, archive name,
 size, and SHA-256 from the pinned processor manifest; after extraction it
 requires exactly one regular executable with the pinned binary identity. The
@@ -1018,18 +1030,26 @@ source-fixture attempt counts, processor-inspection evidence, optimizer
 disposition and status, and bounded leak booleans. It is optimizer-aware but
 predates static tailored help.
 
-Current schema 6 retains the complete schema-5 record and adds a bounded
-`tailored_help` object. POSIX requires the transformed-PR bundle's full digest,
-its rendered-wrapper digest, contract version 2, the three exact view argv and
-stdout/stderr digests, the runtime-non-executable condition, the two exact
-fallthrough fault codes, and zero source and processor attempts. Windows
-requires an explicit unsupported outcome, empty view and fallthrough lists, no
-help binding digests or contract, and zero attempts. Aggregate schema 2 remains
-unchanged.
+Historical schema 6 retains the complete schema-5 record and adds a bounded
+`tailored_help` object for one transformed-PR wrapper. Current schema 7 adds
+exact `caller_argv` to every wrapper case. POSIX orders
+`transformed_json`, `append_only`, and `identity`; the first two share one exact
+bundle and wrapper digest while keeping distinct caller argv and plan digests,
+and the identity case remains separately bound. The shared wrapper requires
+the five exact root, issue namespace/command, and PR namespace/command views,
+the runtime-non-executable condition, hidden `api --help`
+`command_not_in_surface`, unknown `unknown --help` `invalid_invocation`, and
+zero source and processor attempts for help and faults. Three ordinary cases
+produce three wrapper source attempts and the POSIX GitHub fixture total remains
+13. Windows requires an explicit unsupported outcome, empty wrapper cases,
+views, and fallthrough lists, no help binding digests or contract, zero wrapper
+attempts, and 10 GitHub fixture attempts. POSIX Go identity evidence adds exact
+caller argv `["test"]`; Windows keeps the Go case empty. Aggregate schema 2
+remains unchanged and excludes the per-case caller argv.
 
 No evidence document stores source or processor streams. Without an accepted
 external observer it does not claim processor-launch counts; controlled
-application and infrastructure tests own that truth. Schema 6 becomes release
+application and infrastructure tests own that truth. Schema 7 becomes release
 evidence only for an exact revision whose strict decoder, five native rows,
 aggregate, and publication dependency all pass; this document does not attest
 a moving worktree. The inherited schema-5 optimizer shape keeps the identity
@@ -1067,7 +1087,7 @@ On 2026-07-22, the exact packaged Darwin/arm64 journey passed for revision
 `b4ade8c`, including ordinary-command activation. That bounded observation does
 not cover this later documentation tree, schema-5 source-stream or optimizer
 plans, current Go contract 2, RTK inspection or execution, wrapper contract 2
-static help, the current schema-6/aggregate-schema-2 mechanism, the other
+static help, the current schema-7/aggregate-schema-2 mechanism, the other
 native rows, publication, or the complete release matrix; the tagged revision
 must replay every required row.
 
@@ -1083,10 +1103,12 @@ The harness's deterministic YAML edit verifies those artifact contracts but
 does not erase the user's deliberate configuration-authoring step.
 
 Historical evidence schema 4 did not run RTK or validate an optimizer default.
-Schema 5 is the optimizer-aware proof but predates static tailored help.
-Current schema 6 retains its accepted `atsura.output.rtk_go_test_pass.v1`
-evidence and adds the bounded contract-2 tailored-help proof; the release claim
-is not complete merely because local controlled tests or one platform pass.
+Schema 5 is the optimizer-aware proof but predates static tailored help, and
+schema 6 adds the first one-command contract-2 tailored-help proof. Current
+schema 7 retains the accepted `atsura.output.rtk_go_test_pass.v1` evidence and
+adds the exact shared-bundle/shared-wrapper multi-command proof; the release
+claim is not complete merely because local controlled tests or one platform
+pass.
 The processor portion records only explicitly observed identity, invocation,
 bounds, the processor-inspection attempt, source-fixture attempts,
 dispositions, status, and leak facts. Because the harness has no separate

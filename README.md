@@ -247,11 +247,13 @@ startup files; restore a prior alias yourself after `unset -f gh` if needed.
 This activation expects `unalias` to be the standard shell utility rather than
 a caller-defined function.
 
-The fixed function answers the three shown help selectors from the exact
-bundle-derived surface and prints its full bundle digest. This artifact-local
-help does not execute raw source help or claim that later source/runtime state
-is current. For every non-help argv list, the function invokes the absolute
-`atr` that rendered it, passes the complete bundle/runtime closure to
+For this one-command walkthrough, the fixed function answers the three shown
+help selectors from the exact bundle-derived surface and prints its full bundle
+digest. A bundle containing both maintained GitHub commands instead answers
+five selectors: root, `issue`, `issue list`, `pr`, and `pr list`. This artifact-
+local help does not execute raw source help or claim that later source/runtime
+state is current. For every non-help argv list, the function invokes the
+absolute `atr` that rendered it, passes the complete bundle/runtime closure to
 `wrapper run`, inserts the required `--`, and forwards `"$@"` without `eval` or
 `sh -c`. Successful ordinary-command stdout
 and status follow the fresh plan's required result mode. `transformed_json`
@@ -291,11 +293,13 @@ again. The credential- and provider-network-free synthetic fixture is the
 canonical automated evidence.
 
 `wrapper render` additionally rejects a bundle unless its complete included
-surface contains exactly one command admitted by the registry-selected runtime
-verifier. GitHub CLI contract 2 permits `issue list` or `pr list` under the
-existing typed JSON, identity, or finite append-argv-only grammar. Go CLI
-contract 2 permits identity-wrapped `test` or the exact processor-bound
-`test -json` optimizer, both with no caller-visible option surface. It derives
+surface is non-empty and every entry is admitted by the registry-selected
+runtime verifier. GitHub CLI contract 2 permits one or both of `issue list` and
+`pr list` under the existing typed JSON, identity, or finite append-argv-only
+grammar; different admitted entries may retain different result modes. Go CLI
+contract 2 remains a singleton surface containing identity-wrapped `test` or
+the exact processor-bound `test -json` optimizer, both with no caller-visible
+option surface. It derives
 the function name verbatim from the bundle's requested executable, so an
 absolute source path or non-POSIX/reserved name is not normalized into a
 wrapper name. The rendered source digest is deterministic review evidence, not
@@ -422,16 +426,19 @@ The following remain later research or vertical-slice decisions:
 
 The optimizer implementation and controlled conformance tests are distinct
 from release evidence. Historical installed-artifact schema 4 predates the
-optimizer, and schema 5 adds optimizer evidence but predates static tailored
-help. Current evidence schema 6 retains both earlier proof sets and adds one
-bounded `tailored_help` record. On POSIX rows it binds the full bundle and
-rendered-wrapper digests plus wrapper contract 2, proves exact root, namespace,
-and command `--help` while the bound `atr` is non-executable, and records the
-hidden/unknown fallthrough faults with zero source and processor attempts.
-Windows records an explicit unsupported result with an empty help proof.
-Aggregate schema 2 remains unchanged. A release-quality claim still requires
-all five native schema-6 rows and that aggregate to pass for one exact revision;
-that has not yet been established for the current revision.
+optimizer, schema 5 adds optimizer evidence, and schema 6 adds the first static
+tailored-help proof for a one-command wrapper. Current evidence schema 7 retains
+those proofs and adds exact `caller_argv` to every ordinary-wrapper case. On
+POSIX rows, the transformed `pr list` and append-only `issue list` cases share
+one bundle digest and rendered-wrapper digest while retaining distinct caller
+argv and plan digests; the separate identity case remains independent. The
+shared wrapper proves all five root/namespace/exact-command help views plus
+hidden `api --help` and unknown `unknown --help` faults with zero source and
+processor attempts. Windows retains empty wrapper/help inventories, zero
+wrapper attempts, and the structured unsupported result. Aggregate schema 2 is
+unchanged and does not project `caller_argv`. A release-quality claim still
+requires all five native schema-7 rows and that aggregate to pass for one exact
+revision; that has not yet been established for the current revision.
 
 Current plan parsing is deliberately bounded. Source short options,
 root/global options, and command-specific positional grammar are not completely
