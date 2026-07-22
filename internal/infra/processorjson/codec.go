@@ -1,9 +1,10 @@
-// Package processorjson strictly encodes and loads schema-1 processor
-// observations.
+// Package processorjson strictly encodes and loads the schema-1 processor
+// inspection document emitted by the public CLI.
 package processorjson
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -15,23 +16,62 @@ import (
 
 const MaxObservationBytes = int64(64 * 1024)
 
-// Encode returns the canonical compact LF-terminated observation bytes.
+const documentSchemaVersion = 1
+
+type document struct {
+	SchemaVersion int               `json:"schema_version"`
+	Inspection    inspectionPayload `json:"inspection"`
+}
+
+type inspectionPayload struct {
+	ObservationDigest        string                       `json:"observation_digest"`
+	Observation              processorprocess.Observation `json:"observation"`
+	ProcessorProcessAttempts int                          `json:"processor_process_attempts"`
+}
+
+// Encode returns the canonical compact LF-terminated public inspection
+// document. The attempt count is derived from the validated observation.
 func Encode(observation processorprocess.Observation) ([]byte, error) {
-	return observation.CanonicalJSON()
+	digest, err := observation.Digest()
+	if err != nil {
+		return nil, err
+	}
+	encoded, err := json.Marshal(document{
+		SchemaVersion: documentSchemaVersion,
+		Inspection: inspectionPayload{
+			ObservationDigest: digest, Observation: observation,
+			ProcessorProcessAttempts: observation.Probe.Attempts,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("encode canonical processor inspection document: %w", err)
+	}
+	return append(encoded, '\n'), nil
 }
 
 // Decode rejects duplicate and unknown fields, trailing values, excessive
-// depth or bytes, and every invalid domain observation.
+// depth or bytes, digest/attempt mismatches, and every invalid observation.
 func Decode(raw []byte) (processorprocess.Observation, error) {
 	if len(raw) == 0 || int64(len(raw)) > MaxObservationBytes {
 		return processorprocess.Observation{}, fmt.Errorf("%w: observation JSON must be non-empty and at most %d bytes", processorprocess.ErrInvalidObservation, MaxObservationBytes)
 	}
-	var observation processorprocess.Observation
-	if err := strictjson.Decode(raw, &observation, 8); err != nil {
+	var value document
+	if err := strictjson.Decode(raw, &value, 12); err != nil {
 		return processorprocess.Observation{}, fmt.Errorf("%w: %v", processorprocess.ErrInvalidObservation, err)
 	}
+	if value.SchemaVersion != documentSchemaVersion {
+		return processorprocess.Observation{}, fmt.Errorf("%w: inspection document schema_version must be %d", processorprocess.ErrInvalidObservation, documentSchemaVersion)
+	}
+	observation := value.Inspection.Observation
 	if err := observation.Validate(); err != nil {
 		return processorprocess.Observation{}, fmt.Errorf("%w: %v", processorprocess.ErrInvalidObservation, err)
+	}
+	digest, err := observation.Digest()
+	if err != nil || value.Inspection.ObservationDigest != digest {
+		return processorprocess.Observation{}, fmt.Errorf("%w: observation digest is invalid or mismatched", processorprocess.ErrInvalidObservation)
+	}
+	if value.Inspection.ProcessorProcessAttempts != 1 || value.Inspection.ProcessorProcessAttempts != observation.Probe.Attempts {
+		return processorprocess.Observation{}, fmt.Errorf("%w: processor process attempts are invalid or mismatched", processorprocess.ErrInvalidObservation)
 	}
 	return observation, nil
 }

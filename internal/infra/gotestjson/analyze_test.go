@@ -30,6 +30,9 @@ func TestAnalyzeAcceptsRealGoShapedPassStreamWithoutChangingInput(t *testing.T) 
 	if facts.Package != "example.com/project/check" || facts.TestPassCount != 2 || facts.Summary != "Go test: 2 passed in 1 packages" {
 		t.Fatalf("Analyze() facts = %+v", facts)
 	}
+	if summary, admitted := NewAnalyzer().ExpectedSummary(input); !admitted || summary != facts.Summary {
+		t.Fatalf("ExpectedSummary() = %q, %v", summary, admitted)
+	}
 	if !bytes.Equal(input, original) {
 		t.Fatal("Analyze() mutated its source bytes")
 	}

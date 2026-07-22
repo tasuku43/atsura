@@ -27,6 +27,20 @@ type Facts struct {
 	Summary       string
 }
 
+// Analyzer adapts Analyze to the application-owned summary-admission port
+// without exposing Go-specific event facts above infrastructure.
+type Analyzer struct{}
+
+// NewAnalyzer returns the stateless frozen Go test admission adapter.
+func NewAnalyzer() *Analyzer { return &Analyzer{} }
+
+// ExpectedSummary returns the independently derived newline-free summary only
+// when input satisfies the complete pass-only grammar.
+func (*Analyzer) ExpectedSummary(input []byte) (string, bool) {
+	facts, eligible := Analyze(input)
+	return facts.Summary, eligible
+}
+
 type rawEvent struct {
 	Time        json.RawMessage `json:"Time"`
 	Action      json.RawMessage `json:"Action"`

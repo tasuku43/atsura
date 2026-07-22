@@ -55,6 +55,8 @@ func TestDecodeRejectsUnknownDuplicateTrailingAndInvalidObservation(t *testing.T
 	duplicate := strings.Replace(string(valid), `"schema_version":1`, `"schema_version":1,"schema_version":1`, 1)
 	wrongSchema := strings.Replace(string(valid), `"schema_version":1`, `"schema_version":2`, 1)
 	nullArgs := strings.Replace(string(valid), `"argv":["--version"]`, `"argv":null`, 1)
+	digestMismatch := strings.Replace(string(valid), `"observation_digest":"`, `"observation_digest":"a`, 1)
+	attemptMismatch := strings.Replace(string(valid), `"processor_process_attempts":1`, `"processor_process_attempts":0`, 1)
 	tests := [][]byte{
 		nil,
 		[]byte(unknown),
@@ -62,6 +64,8 @@ func TestDecodeRejectsUnknownDuplicateTrailingAndInvalidObservation(t *testing.T
 		append(append([]byte(nil), valid...), []byte(` {}`)...),
 		[]byte(wrongSchema),
 		[]byte(nullArgs),
+		[]byte(digestMismatch),
+		[]byte(attemptMismatch),
 		make([]byte, MaxObservationBytes+1),
 	}
 	for index, raw := range tests {
