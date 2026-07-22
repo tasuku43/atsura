@@ -178,6 +178,7 @@ commands:
       kind: transform
       before: []
       invoke:
+        option_defaults: []
         append_args: ["--json=id,name"]
       output:
         kind: projection
@@ -249,6 +250,7 @@ commands:
       kind: transform
       before: []
       invoke:
+        option_defaults: []
         append_args: ["--json=number,title,state"]
       output:
         kind: projection
@@ -320,6 +322,7 @@ commands:
       kind: identity
       before: []
       invoke:
+        option_defaults: []
         append_args: []
       after: []
 `, tailoringbundle.SpecificationSchemaVersion, digest)
@@ -636,6 +639,11 @@ func TestBundlePreviewReturnsCompleteSchemaTwoPlanWithoutSourceAttempt(t *testin
 		t.Fatal(err)
 	}
 	assertJSONKeys(t, specificationOutput, []string{"kind", "projection"})
+	var specificationInvoke map[string]json.RawMessage
+	if err := json.Unmarshal(specificationWrapper["invoke"], &specificationInvoke); err != nil {
+		t.Fatal(err)
+	}
+	assertJSONKeys(t, specificationInvoke, []string{"append_args", "option_defaults"})
 	var sourceObject map[string]json.RawMessage
 	if err := json.Unmarshal(planObject["source"], &sourceObject); err != nil {
 		t.Fatal(err)
@@ -660,7 +668,7 @@ func TestBundlePreviewReturnsCompleteSchemaTwoPlanWithoutSourceAttempt(t *testin
 	if err := json.Unmarshal(stagesObject["invoke"], &invokeObject); err != nil {
 		t.Fatal(err)
 	}
-	assertJSONKeys(t, invokeObject, []string{"appended_args", "args", "environment_mode", "executable", "max_attempts", "stderr_limit_bytes", "stdin_mode", "stdout_limit_bytes", "timeout_millis", "working_directory_mode"})
+	assertJSONKeys(t, invokeObject, []string{"appended_args", "applied_option_defaults", "args", "environment_mode", "executable", "max_attempts", "option_defaults", "stderr_limit_bytes", "stdin_mode", "stdout_limit_bytes", "timeout_millis", "working_directory_mode"})
 	var document bundlePreviewDocument
 	if err := json.Unmarshal(out.Bytes(), &document); err != nil {
 		t.Fatal(err)
@@ -675,6 +683,72 @@ func TestBundlePreviewReturnsCompleteSchemaTwoPlanWithoutSourceAttempt(t *testin
 	wantOriginal := []string{os.Args[0], "item", "list", "active"}
 	if strings.Join(preview.Plan.OriginalArgv, "\x00") != strings.Join(wantOriginal, "\x00") || preview.Plan.TransformedArgv[len(preview.Plan.TransformedArgv)-1] != "--json=id,name" {
 		t.Fatalf("argv original=%v transformed=%v", preview.Plan.OriginalArgv, preview.Plan.TransformedArgv)
+	}
+}
+
+func TestBundlePreviewPublishesAppliedAndCallerSuppressedOptionDefaults(t *testing.T) {
+	catalogPath, specificationPath := githubRuntimeBundleArtifactPaths(t)
+	raw, err := os.ReadFile(specificationPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withDefault := strings.Replace(
+		string(raw),
+		"        option_defaults: []\n",
+		"        option_defaults:\n          - option: --limit\n            value: \"30\"\n",
+		1,
+	)
+	if withDefault == string(raw) {
+		t.Fatal("strict specification fixture has no explicit option_defaults field")
+	}
+	if err := os.WriteFile(specificationPath, []byte(withDefault), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bundlePath := bundleArtifactPath(t, catalogPath, specificationPath)
+
+	preview := func(t *testing.T, callerArgs ...string) tailoringplan.Plan {
+		t.Helper()
+		var out, errOut bytes.Buffer
+		command := New(strings.NewReader(""), &out, &errOut)
+		installTrustedBundleAuthority(command)
+		arguments := []string{"bundle", "preview", "--bundle", bundlePath, "--", os.Args[0], "pr", "list"}
+		arguments = append(arguments, callerArgs...)
+		if code := command.RunContext(context.Background(), arguments); code != ExitOK || errOut.Len() != 0 {
+			t.Fatalf("preview code=%d stderr=%q", code, errOut.String())
+		}
+		var document bundlePreviewDocument
+		if err := json.Unmarshal(out.Bytes(), &document); err != nil {
+			t.Fatal(err)
+		}
+		if document.SchemaVersion != 2 || document.Preview.SourceProcessAttempts != 0 || document.Preview.Plan.SchemaVersion != tailoringplan.SchemaVersion {
+			t.Fatalf("preview=%+v", document.Preview)
+		}
+		return document.Preview.Plan
+	}
+
+	configured := tailoringbundle.OptionDefault{Option: "--limit", Value: "30"}
+	applied := preview(t)
+	if len(applied.Stages.Invoke.OptionDefaults) != 1 || applied.Stages.Invoke.OptionDefaults[0] != configured ||
+		len(applied.Stages.Invoke.AppliedOptionDefaults) != 1 || applied.Stages.Invoke.AppliedOptionDefaults[0] != configured ||
+		strings.Join(applied.Stages.Invoke.Args, "\x00") != "pr\x00list\x00--limit=30\x00--json=number,title,state" {
+		t.Fatalf("applied default plan=%+v", applied.Stages.Invoke)
+	}
+	overridden := preview(t, "--limit=2")
+	if len(overridden.Stages.Invoke.OptionDefaults) != 1 || overridden.Stages.Invoke.OptionDefaults[0] != configured ||
+		overridden.Stages.Invoke.AppliedOptionDefaults == nil || len(overridden.Stages.Invoke.AppliedOptionDefaults) != 0 ||
+		strings.Join(overridden.Stages.Invoke.Args, "\x00") != "pr\x00list\x00--limit=2\x00--json=number,title,state" {
+		t.Fatalf("caller-suppressed default plan=%+v", overridden.Stages.Invoke)
+	}
+	appliedDigest, err := applied.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	overriddenDigest, err := overridden.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if appliedDigest == overriddenDigest {
+		t.Fatalf("applied and caller-suppressed plan digests match: %q", appliedDigest)
 	}
 }
 

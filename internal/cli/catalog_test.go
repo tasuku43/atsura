@@ -735,28 +735,46 @@ func TestBundlePreviewCatalogDeclaresPurePlanOutcome(t *testing.T) {
 		paths[field.Path] = field
 	}
 	for path, fieldType := range map[string]OutputFieldType{
-		"/schema_version":                         OutputFieldTypeInteger,
-		"/processor":                              OutputFieldTypeObject,
-		"/processor/contract":                     OutputFieldTypeString,
-		"/processor/observation/identity/sha256":  OutputFieldTypeString,
-		"/processor/execution/max_attempts":       OutputFieldTypeInteger,
-		"/source/sha256":                          OutputFieldTypeString,
-		"/specification_entry":                    OutputFieldTypeObject,
-		"/stages/invoke/max_attempts":             OutputFieldTypeInteger,
-		"/stages/invoke/args":                     OutputFieldTypeArray,
-		"/stages/invoke/stdin_mode":               OutputFieldTypeString,
-		"/stages/invoke/environment_mode":         OutputFieldTypeString,
-		"/stages/invoke/working_directory_mode":   OutputFieldTypeString,
-		"/stages/output/kind":                     OutputFieldTypeString,
-		"/stages/output/projection":               OutputFieldTypeObject,
-		"/stages/output/projection/rename/*/from": OutputFieldTypeString,
-		"/stages/output/optimizer":                OutputFieldTypeObject,
-		"/stages/output/optimizer/contract":       OutputFieldTypeString,
-		"/specification_entry/options/include":    OutputFieldTypeArray,
+		"/schema_version":                                     OutputFieldTypeInteger,
+		"/processor":                                          OutputFieldTypeObject,
+		"/processor/contract":                                 OutputFieldTypeString,
+		"/processor/observation/identity/sha256":              OutputFieldTypeString,
+		"/processor/execution/max_attempts":                   OutputFieldTypeInteger,
+		"/source/sha256":                                      OutputFieldTypeString,
+		"/specification_entry":                                OutputFieldTypeObject,
+		"/specification_entry/wrapper/invoke/option_defaults": OutputFieldTypeArray,
+		"/specification_entry/wrapper/invoke/option_defaults/*/option": OutputFieldTypeString,
+		"/specification_entry/wrapper/invoke/option_defaults/*/value":  OutputFieldTypeString,
+		"/stages/invoke/applied_option_defaults":                       OutputFieldTypeArray,
+		"/stages/invoke/applied_option_defaults/*/option":              OutputFieldTypeString,
+		"/stages/invoke/applied_option_defaults/*/value":               OutputFieldTypeString,
+		"/stages/invoke/max_attempts":                                  OutputFieldTypeInteger,
+		"/stages/invoke/args":                                          OutputFieldTypeArray,
+		"/stages/invoke/option_defaults":                               OutputFieldTypeArray,
+		"/stages/invoke/option_defaults/*/option":                      OutputFieldTypeString,
+		"/stages/invoke/option_defaults/*/value":                       OutputFieldTypeString,
+		"/stages/invoke/stdin_mode":                                    OutputFieldTypeString,
+		"/stages/invoke/environment_mode":                              OutputFieldTypeString,
+		"/stages/invoke/working_directory_mode":                        OutputFieldTypeString,
+		"/stages/output/kind":                                          OutputFieldTypeString,
+		"/stages/output/projection":                                    OutputFieldTypeObject,
+		"/stages/output/projection/rename/*/from":                      OutputFieldTypeString,
+		"/stages/output/optimizer":                                     OutputFieldTypeObject,
+		"/stages/output/optimizer/contract":                            OutputFieldTypeString,
+		"/specification_entry/options/include":                         OutputFieldTypeArray,
 	} {
 		declared, exists := paths[path]
 		if !exists || declared.Type != fieldType {
 			t.Errorf("schema field %q=%+v", path, declared)
+		}
+	}
+	for _, path := range []string{
+		"/specification_entry/wrapper/invoke/option_defaults",
+		"/stages/invoke/applied_option_defaults",
+		"/stages/invoke/option_defaults",
+	} {
+		if paths[path].ElementType != OutputFieldTypeObject {
+			t.Errorf("schema object-array field %q=%+v", path, paths[path])
 		}
 	}
 	if !paths["/specification_entry"].Nullable || !paths["/processor"].Required || !paths["/processor"].Nullable || !paths["/stages/output"].Nullable ||
@@ -1119,6 +1137,9 @@ func TestSpecificationCatalogPublishesFiniteAuthoringGrammar(t *testing.T) {
 				"/commands/*/options/default":                                OutputFieldTypeString,
 				"/commands/*/wrapper/kind":                                   OutputFieldTypeString,
 				"/commands/*/wrapper/invoke/append_args":                     OutputFieldTypeArray,
+				"/commands/*/wrapper/invoke/option_defaults":                 OutputFieldTypeArray,
+				"/commands/*/wrapper/invoke/option_defaults/*/option":        OutputFieldTypeString,
+				"/commands/*/wrapper/invoke/option_defaults/*/value":         OutputFieldTypeString,
 				"/commands/*/wrapper/output/kind":                            OutputFieldTypeString,
 				"/commands/*/wrapper/output/projection":                      OutputFieldTypeObject,
 				"/commands/*/wrapper/output/projection/input":                OutputFieldTypeString,
@@ -1136,6 +1157,9 @@ func TestSpecificationCatalogPublishesFiniteAuthoringGrammar(t *testing.T) {
 					t.Errorf("%s schema field %q=%+v", path, schemaPath, got)
 				}
 			}
+			if paths["/commands/*/wrapper/invoke/option_defaults"].ElementType != OutputFieldTypeObject {
+				t.Errorf("%s option-default array=%+v", path, paths["/commands/*/wrapper/invoke/option_defaults"])
+			}
 			if paths["/commands/*/options"].Required || paths["/commands/*/wrapper"].Required || paths["/commands/*/wrapper/output"].Required ||
 				paths["/commands/*/wrapper/output/projection"].Required || paths["/commands/*/wrapper/output/optimizer"].Required {
 				t.Fatalf("%s conditional authoring fields=%+v %+v %+v", path, paths["/commands/*/options"], paths["/commands/*/wrapper"], paths["/commands/*/wrapper/output"])
@@ -1150,6 +1174,7 @@ func TestSpecificationCatalogPublishesFiniteAuthoringGrammar(t *testing.T) {
 		"not an executable transform",
 		"performs no PATH lookup, download, installation, inspection, or processor execution",
 		"kind=transform",
+		"invoke.option_defaults",
 		"output.kind=projection",
 		"output.projection.input=json",
 		"output.projection.select",

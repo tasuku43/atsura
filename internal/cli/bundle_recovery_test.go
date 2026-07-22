@@ -523,7 +523,7 @@ func compileRecoveryVariant(t *testing.T, fixture recoveryFixture, variant strin
 	case "identity_wrapper":
 		specification.Commands[0].Wrapper = &tailoringbundle.Wrapper{
 			Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{},
-			Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{},
+			Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{}}, After: []tailoringbundle.StageAction{},
 		}
 	default:
 		t.Fatalf("unknown recovery bundle variant %q", variant)

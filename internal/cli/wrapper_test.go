@@ -617,7 +617,7 @@ func TestWrapperRunRejectsRetiredContractOneBeforeTheApplicationPort(t *testing.
 	if code := command.RunContext(context.Background(), args); code != ExitUsage || stdout.Len() != 0 || stub.calls != 0 {
 		t.Fatalf("code=%d stdout=%q stderr=%q calls=%d", code, stdout.String(), stderr.String(), stub.calls)
 	}
-	if !strings.Contains(stderr.String(), `"code":"invalid_arguments"`) || !strings.Contains(stderr.String(), "value must be one of 2") {
+	if !strings.Contains(stderr.String(), `"code":"invalid_arguments"`) || !strings.Contains(stderr.String(), "value must be one of "+strconv.Itoa(wrapperbinding.ContractVersion)) {
 		t.Fatalf("stderr=%q", stderr.String())
 	}
 }
