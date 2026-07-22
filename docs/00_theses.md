@@ -40,10 +40,11 @@ adopted bundle + attempted source invocation
      stage around one identity-bound source invocation
 
 adopted bundle + explicit purpose binding
-  -> deterministically materialize a host-neutral wrapper implementation
+  -> `wrapper render` produces a deterministic host-neutral POSIX function
   -> caller-owned environment exposes it as the ordinary source command
   -> maintainer or coding agent invokes that ordinary command
-  -> wrapper rebuilds and applies the same fresh plan
+  -> fixed function calls `wrapper run` with its exact bundle/runtime closure
+  -> wrapper run rebuilds and applies the same fresh plan
 ```
 
 Source-CLI inspectors and finite output processors are adapters. Coding-agent
@@ -186,7 +187,13 @@ positional intent.
 Preview reports `source_process_attempts: 0`. `bundle execute` revalidates the
 bundle and source identity, reuses this constructor, binds the plan's exact
 path/hash/size to the process boundary, and starts at most the one source
-attempt declared by the current wrapper contract.
+attempt declared by the current wrapper contract. `wrapper run` reaches that
+same constructor and process boundary after validating the render-produced
+bundle digest and exact current `atr` path/hash/size. It derives the ordinary
+source spelling from the strictly loaded bundle instead of accepting a second
+caller-controlled spelling. Its successful stdout is the plan-declared compact
+JSON object or array itself, not the maintainer evidence envelope returned by
+`bundle execute`.
 
 ## Thesis 5: The source CLI owns source-operation meaning and authorization
 
@@ -262,6 +269,14 @@ spelling. The agent simply invokes that command. The wrapper receives argv,
 revalidates its exact bundle, runtime, command, and source binding, constructs a
 fresh plan, and applies the same runtime used by the direct maintainer gateway.
 
+The first material form is a fixed POSIX function produced by `wrapper render`
+on Linux and macOS. It embeds the absolute current `atr` identity and exact
+bundle digest, invokes `wrapper run` with structured JSON errors, and forwards
+`"$@"` without `eval`, `sh -c`, or specification-authored source. Rendering is
+allowed only when the complete included surface is one maintained runtime-
+admitted transforming command. Windows returns a structured unsupported fault
+for POSIX rendering; this contract makes no Windows activation claim.
+
 Production Atsura has no coding-agent-host adapter. It never discovers,
 inspects, starts, signals, or calls a host process, executable, service,
 session, transcript, or API; decodes a hook payload or shell command string;
@@ -275,6 +290,12 @@ and ordinary command spelling. It contains no coding-agent host, hook, model,
 session, or host-permission field. A generated shell function's byte digest is
 reproducibility and review evidence; after caller-owned activation Atsura does
 not claim to attest the in-memory function bytes.
+
+Runtime binding is cooperative drift detection, not executable attestation.
+The fixed function must start the bound `atr` path before honest runtime code
+can hash itself. A mismatch prevents that honest runtime from starting the
+source, but it cannot constrain malicious replacement code already executing at
+the path.
 
 Any coding-agent host may be an external consumer of this same argv contract.
 Atsura does not maintain vendor compatibility fixtures or claim that it
@@ -328,19 +349,22 @@ reaches release quality only after the same scenario is replayed with the exact
 artifacts on every platform for which runtime support will be claimed; archive
 reproducibility alone is not that evidence.
 
-The next accepted slice is:
+The implemented host-neutral wrapper slice is:
 
-**A maintainer can materialize one exact adopted purpose bundle as a
-host-neutral wrapper, expose it through an explicitly chosen caller-owned
-command-resolution mechanism, and invoke the ordinary source-command spelling
-to reach the same fresh plan and transform runtime as the direct gateway. A
-missing, drifted, recursive, or mismatched binding starts no source process.**
+**A maintainer can render one exact adopted purpose bundle as deterministic
+POSIX function bytes, expose those bytes through an explicitly chosen caller-
+owned command-resolution mechanism, and invoke the ordinary source-command
+spelling to reach the same fresh plan and transform runtime as the direct
+gateway. A missing, drifted, or mismatched bundle, runtime, source, surface, or
+invocation starts no source process.**
 
 The release-quality proof uses a generic caller-owned activation fixture and
 the exact installed `atr` artifact. It verifies the wrapper bytes, binding,
 argv, plan, attempt, and tailored result without importing a coding-agent host
 protocol. Host independence follows from that host-neutral boundary; a
 downstream vendor integration is responsible for proving its own activation.
+The implementation does not become a release-quality platform claim until that
+exact-artifact evidence and the required gates pass on the claimed targets.
 
 ## Current non-goals
 
@@ -357,6 +381,9 @@ downstream vendor integration is responsible for proving its own activation.
 - Executing identity wrappers, argv-only transforms, nonempty successful
   stderr, or typed before/after actions in the initial transform runtime.
 - Source refresh or raw execution.
+- Persisting, installing, replacing, selecting, or removing wrapper artifacts;
+  executable/PATH shims and multi-profile activation remain later lifecycle
+  work.
 - Coding-agent host adapters, host hook decoding or rewriting, host settings or
   permission mutation, host process inspection, and vendor-specific lifecycle
   commands.
@@ -376,16 +403,11 @@ downstream vendor integration is responsible for proving its own activation.
   after an existing `--`, where the source will interpret them as positional?
 - Which source adapter should receive the next maintained runtime compatibility
   contract after the first GitHub CLI `issue list`/`pr list` evidence?
-- Should the first wrapper materialization be a generated shell function, an
-  executable shim, or both, and which native command-resolution evidence
-  distinguishes their supported contracts?
 - How should multiple purpose profiles select distinct wrappers for the same
   source command without ambient or host-specific state?
-- Which wrapper location, binding format, atomic replacement, and recursion
-  guard provide a reviewable lifecycle without giving repository content
-  authority?
-- Which generic caller-owned activation fixture best proves ordinary-command
-  resolution without becoming a product-managed lifecycle?
+- Which executable-shim format, location, ownership, binding, atomic
+  replacement, and recursion guard provide a reviewable persistent lifecycle
+  without giving repository content authority?
 - What stronger executable identity mechanism can close the remaining
   check-to-exec race on each supported platform?
 - Which exact RTK versions, pipe filters, source commands, and platforms satisfy

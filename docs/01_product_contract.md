@@ -54,14 +54,17 @@ surface resolution
 adopted bundle + explicit purpose binding
         |
         v
-host-neutral wrapper materialization
+`atr wrapper render --bundle <absolute-path>`
+        |
+        +--> fixed POSIX function bytes (Linux/macOS)
+        +--> optional schema-1 JSON review envelope
         |
 caller-owned command resolution exposes the ordinary source command
         +--> maintainer invocation
         +--> coding-agent invocation
         |
         v
-same fresh plan and bundle execution path
+generated function -> `atr wrapper run` -> same fresh plan and execution path
 ```
 
 `bundle preview` implements the zero-execution branch of this flow. `bundle
@@ -69,7 +72,12 @@ execute` implements the first transform-only runtime branch. Both require the
 exact schema-2 bundle to be user-adopted, revalidate current source path,
 SHA-256, and size, and rebuild the same deterministic schema-3 plan. Execute
 additionally requires an accepted adapter JSON selector contract and starts the
-identity-checked resolved path at most once.
+identity-checked resolved path at most once. `wrapper render` closes the exact
+bundle digest with the current absolute `atr` path/hash/size in deterministic
+function bytes. `wrapper run` verifies that closure once the bound `atr` starts,
+derives the source command spelling from the strictly loaded bundle, and
+applies the same fresh plan while returning only its plan-declared compact JSON
+value.
 
 ## Working vocabulary
 
@@ -337,11 +345,50 @@ non-retryable uncertain-outcome rules.
 
 ### Host-neutral wrapper materialization
 
-A materialized wrapper is the product artifact that lets a caller use the
-ordinary source-command spelling while applying one adopted purpose bundle. It
-accepts argv, not an agent-host event or a shell command string, and delegates
-to the same surface resolution, fresh planning, source execution, and result
-contracts as the direct gateway.
+A materialized wrapper is the product output that lets a caller use the
+ordinary source-command spelling while applying one adopted purpose bundle.
+The first public material form is a deterministic POSIX function rendered by:
+
+```text
+atr wrapper render --bundle <absolute-path> [--format text|json]
+```
+
+Text is the default and contains the exact sourceable function bytes. JSON is a
+schema-1 `wrapper` review envelope containing `source`, `source_sha256`,
+`command`, the POSIX contract version, exact bundle locator/digest, exact
+current `atr` path/hash/size, and `source_process_attempts: 0`. Rendering is an
+`EffectRead` utility and never starts the source CLI.
+
+The renderer accepts only Linux or macOS, an absolute clean bundle locator, and
+a requested executable that is verbatim one portable non-reserved POSIX Name.
+It does not derive a basename from a path. The complete included surface must
+contain exactly one transforming GitHub CLI `issue list` or `pr list` command,
+and every exposed option must be admitted by the maintained runtime contract.
+Identity, mixed, partial, or otherwise unsupported surfaces produce no wrapper
+bytes. On Windows, POSIX rendering returns the structured
+`wrapper_platform_not_supported` fault; no Windows POSIX activation contract is
+claimed.
+
+The fixed function invokes the exact absolute `atr` that rendered it:
+
+```text
+atr wrapper run \
+  --contract-version=1 \
+  --bundle=<absolute-path> \
+  --bundle-digest=<sha256> \
+  --runtime-path=<absolute-path> \
+  --runtime-sha256=<sha256> \
+  --runtime-size=<positive-integer> \
+  -- <argv...>
+```
+
+These flags are a renderer-produced closure, not an authoring interface for a
+second wrapper. `wrapper run` accepts exact argv, not an agent-host event or a
+shell command string, and delegates to the same bundle loading, adoption,
+surface resolution, fresh planning, compatibility admission, source execution,
+and typed transformation used by the direct gateway. The source command
+spelling is absent from the flags and is derived from the one strictly loaded
+bundle.
 
 The wrapper binding identifies only product facts:
 
@@ -349,32 +396,40 @@ The wrapper binding identifies only product facts:
 - exact source executable identity;
 - generated wrapper contract and exact runtime identity;
 - ordinary command spelling; and
-- recursion-prevention information that ensures the wrapper reaches the bound
-  physical source rather than itself.
+- the bundle-bound physical source path that execution uses instead of
+  resolving the ordinary wrapper name.
 
 The binding contains no host name, hook event, settings path, permission value,
 session, transcript, or model identity. Repository content and ambient host
 state cannot manufacture adoption or replace the binding.
 
-Materialization may eventually create Atsura-owned local state. Any such write
-uses the normal create/write mutation contracts, atomic ownership, drift
-reporting, and read-only reconciliation. The exact first lifecycle and whether
-its artifact is a generated shell function, an executable shim, or both remain
-part of the next implementation slice rather than this current public runtime.
+Runtime identity is a cooperative drift contract, not executable attestation.
+The shell must start the bound `atr` path before honest `wrapper run` code can
+fingerprint itself. An unchanged honest runtime detects a binding mismatch and
+starts no source process, but Atsura does not claim to constrain malicious code
+that has already replaced the executable at that path.
+
+The current renderer writes no Atsura-owned artifact and edits no activation
+configuration; stdout redirection or sourcing is caller-owned behavior. A
+future persisted wrapper or executable shim would create Atsura-owned local
+state and must add normal create/write mutation contracts, bounded ownership,
+atomic replacement, drift reporting, read-only reconciliation, and a separate
+platform contract.
 
 ### Wrapper result authority
 
 Every command output declares exactly one authority for interpreting and
-presenting a successful result. `catalog` authority keeps the existing static
-contract: declared logical fields and, when JSON is supported, one named
-envelope and positive result schema version. `help` remains the deliberate
-selector-dependent exception: its catalog fields describe the root index while
-scoped help projects the selected catalog contract. All currently implemented
-public commands use catalog authority, and their task-result renderers keep
-their existing bytes. Agent help advances to schema 9 to publish the new
-authority discriminator without reinterpreting an older machine contract.
+presenting a successful result. `catalog` authority keeps the static contract:
+declared logical fields and, when JSON is supported, one named envelope and
+positive result schema version. `help` remains the deliberate selector-
+dependent exception: its catalog fields describe the root index while scoped
+help projects the selected catalog contract. `wrapper render` is catalog-
+authoritative; its text bytes and JSON review envelope describe the same
+binding. `wrapper run` is the first public command with fresh-plan authority.
+Agent help schema 9 publishes that discriminator without reinterpreting an
+older machine contract.
 
-The host-neutral wrapper execution entry point uses the exclusive
+`wrapper run` uses the exclusive
 `fresh_wrapper_plan` authority. That variant is JSON-only, complete, and has no
 catalog-static fields, result envelope, or result schema version. Source JSON
 supplies the admitted object or array and its value types; the freshly rebuilt
@@ -410,9 +465,10 @@ RTK is also independent of the caller. The wrapper consumes an already
 compiled output stage and never detects RTK, selects a filter, or inserts an
 output processor at invocation time.
 
-## Current public artifact and transform workflow
+## Current public artifact, transform, and wrapper workflow
 
-The current milestone supports these artifact and runtime outcomes:
+The current milestone exposes these artifact and runtime outcomes, with release
+quality still conditional on the required gates and exact-artifact evidence:
 
 ```text
 atr source inspect --adapter github-cli --executable <path-or-name>
@@ -423,6 +479,10 @@ atr bundle status --bundle <bundle.json>
 atr bundle trust --bundle <bundle.json>
 atr bundle preview --bundle <bundle.json> -- <source-executable> <argv>
 atr bundle execute --bundle <bundle.json> -- <source-executable> <argv>
+atr wrapper render --bundle <absolute-bundle.json> [--format text|json]
+atr wrapper run --contract-version=1 --bundle=<absolute-bundle.json> \
+  --bundle-digest=<sha256> --runtime-path=<absolute-atr> \
+  --runtime-sha256=<sha256> --runtime-size=<bytes> -- <argv...>
 ```
 
 `spec init` emits an exclude-by-default specification containing one included
@@ -460,9 +520,18 @@ Success is schema-2 JSON containing bundle/plan identity,
 matched command, transform result, source exit code, and attempts=1. Raw source
 stdout/stderr and unselected fields are absent. Identity wrappers, argv-only
 transforms, nonempty successful stderr, source refresh, and raw execution are
-not implemented by this direct runtime slice. Host-neutral wrapper
-materialization is the next consumer-facing entry point around this same path,
-not another executor.
+not implemented by this runtime slice.
+
+`wrapper render` is the zero-source-attempt producer of the complete function
+and binding. Its fixed function forwards `"$@"` to `wrapper run` with root
+structured JSON errors. `wrapper run` first validates the closure against the
+honestly executing current `atr` identity and expected bundle digest, then
+reuses the direct runtime's fresh-plan application boundary. Successful stdout
+is one plan-declared compact JSON object or array followed by LF, with empty
+stderr and no maintainer envelope. Pre-start failures start zero source
+processes; post-start and final-output failures are non-retryable. The generated
+function never selects raw execution, another bundle, an ambient source
+executable, or a runtime-discovered processor.
 
 The current compatibility admission is also available in exact `bundle
 execute` help: GitHub CLI adapter contract 2 and major 2, `issue list` or `pr
@@ -473,20 +542,23 @@ repository context from the inherited working directory or an admitted
 command-specific `--repo` option. Atsura neither obtains those credentials nor
 turns a source-owned failure into replay permission.
 
-## Accepted next wrapper result
+## Host-neutral wrapper result
 
-ADR 0008 fixes the next product slice without broadening the completed direct
-runtime claim. A maintainer materializes one exact adopted purpose bundle as a
-host-neutral wrapper, explicitly exposes that wrapper through a caller-owned
+ADR 0008 fixes this product slice without broadening the direct runtime's source
+compatibility. A maintainer renders one exact adopted purpose bundle as a host-
+neutral POSIX function, explicitly exposes that function through a caller-owned
 command-resolution mechanism, and invokes the ordinary source-command spelling
 to reach the same fresh plan and execution path as `bundle execute`.
 
-The first wrapper contract must fail before source start on missing adoption,
+The wrapper contract fails before source start on missing adoption,
 bundle or source drift, runtime or binding mismatch, or unsupported invocation.
 A deterministic generated shell form records its byte digest as review and
 release evidence, but invocation does not claim to attest a sourced function's
-in-memory bytes. A future persisted executable artifact must add explicit
-artifact ownership and drift validation before receiving that stronger claim.
+in-memory bytes. Linux and macOS are the POSIX rendering and activation targets;
+Windows retains existing-command regression coverage and a structured
+unsupported result, not a POSIX activation claim. A future persisted executable
+artifact must add explicit artifact ownership and drift validation before
+receiving that stronger claim.
 
 ## Migration contract
 
@@ -550,6 +622,12 @@ outside production compatibility. Consumer fixtures may record exact external
 conditions needed to invoke the shared wrapper, but those conditions neither
 enter product schemas nor become Atsura support claims.
 
+The first wrapper renderer is intentionally platform- and surface-bounded. It
+produces fixed POSIX function source only on Linux and macOS, derives `gh`
+verbatim from the bundle's requested executable, and requires one complete
+runtime-admitted transform surface. Windows supports the existing portable
+commands but not POSIX wrapper rendering or activation.
+
 The current preview grammar is intentionally narrower than arbitrary source
 CLI grammar. Catalog evidence does not yet model short options, root/global
 options, or command-specific positional arguments completely. Preview accepts
@@ -571,6 +649,8 @@ ordering differences, or selectors after `--` fail before source start.
 - Source refresh and catalog persistence.
 - Identity-wrapper and argv-only-transform execution.
 - Raw execution.
+- Persistent wrapper installation, replacement, removal, executable/PATH shims,
+  and multi-profile wrapper selection.
 - Coding-agent host adapters, vendor hook protocols, host settings or permission
   mutation, and vendor-specific integration lifecycle commands.
 - Any claim that Atsura installs, enables, or enforces wrapper activation in a

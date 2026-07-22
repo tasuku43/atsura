@@ -15,9 +15,9 @@ enter through a host protocol adapter.
 The current runtime milestone extends strict schema-3 specification loading,
 schema-2 bundle compilation/adoption, and pure surface resolution through one
 complete bundle-backed wrapper plan into one compatibility-admitted JSON
-transform execution. Identity/raw execution remain unimplemented. Host-neutral
-wrapper materialization is the next bounded entry-point slice around this
-completed direct path.
+transform execution. It also exposes that same path through a deterministic
+Linux/macOS POSIX function rendered from an exact bundle/runtime closure.
+Identity/raw execution and persistent wrapper installation remain unimplemented.
 
 ## Dependency direction
 
@@ -64,10 +64,12 @@ adopted bundle + attempted invocation
        -> bounded JSON parse -> pure select/rename -> fixed result envelope
 
 adopted bundle + explicit purpose binding
-  -> deterministic host-neutral wrapper materialization
+  -> `wrapper render`: deterministic POSIX function + review digest
   -> caller-owned command resolution exposes the ordinary source command
-  -> wrapper accepts argv and revalidates artifact, bundle, and source binding
+  -> fixed function invokes the bound absolute `atr` and forwards exact argv
+  -> `wrapper run`: revalidate bundle/runtime/source binding
   -> same fresh plan constructor and compatibility-admitted execution path
+  -> one compact plan-authoritative JSON value, not a maintainer envelope
 ```
 
 Surface membership and wrapper behavior are independent inputs to compilation.
@@ -140,7 +142,7 @@ source read/create/write effect, or source-operation target and impact.
 - canonical schema-2 bundles, digests, and drift validation;
 - pure surface resolution and `command_not_in_surface`;
 - ordered schema-3 wrapper execution plans and canonical plan digests;
-- a future host-neutral wrapper binding containing an exact adopted purpose
+- a host-neutral wrapper binding containing an exact adopted purpose
   bundle, wrapper contract, runtime identity, source identity, and ordinary
   command spelling;
 - finite vendor-neutral runtime-admission diagnostic categories; and
@@ -175,9 +177,10 @@ coding-agent-host protocol.
   construct one pure wrapper plan without starting the source;
 - coordinate Atsura-owned trust-store changes through the central mutation
   invoker;
-- materialize and reconcile a future host-neutral wrapper binding through
-  narrow artifact ports while reusing the existing bundle preview and
-  execution services;
+- render one adopted bundle/runtime closure as deterministic POSIX function
+  material through a narrow pure renderer port, and apply the render-produced
+  runtime closure through the same fresh-plan application service as direct
+  execution;
 - apply a supported transform plan through an identity-bound source-process
   port, a vendor-neutral compatibility port, strict source-format parser, and
   pure transformer;
@@ -212,9 +215,10 @@ target or impact to the downstream source operation.
 - run a future exact output processor with bounded stdin/stdout/stderr, an
   isolated environment and working directory, no shell, and separately counted
   attempts without giving it source-execution authority; and
-- encode, identify, persist, and atomically replace a future host-neutral
-  wrapper artifact from a fixed bounded template without accepting
-  configuration-authored code.
+- identify the current `atr` executable and render a fixed bounded POSIX
+  function without accepting configuration-authored code; and
+- in a future persisted lifecycle, own bounded artifact encoding, identity,
+  and atomic replacement behind separate mutation ports.
 
 Each source adapter owns its probe grammar, accepted version range, runtime
 argv contract, attempt and byte budgets, and conversion into the shared
@@ -229,18 +233,21 @@ will authorize its downstream operation.
 
 ### Host-neutral wrapper boundary
 
-The next vertical slice introduces one generated wrapper artifact and binding,
-not a coding-agent integration. The artifact is derived from an exact adopted
-bundle and enters the same application services as the direct gateway. It
-accepts ordinary invocation argv and never accepts a host hook document or a
+The implemented first vertical slice introduces one generated wrapper binding,
+not a coding-agent integration. `wrapper render` derives a fixed POSIX function
+from an exact adopted bundle and current `atr` identity. `wrapper run` accepts
+ordinary invocation argv and enters the same shared fresh-plan application
+service as `bundle execute`; neither command accepts a host hook document or a
 shell command string.
 
-The first slice must choose and test one command-resolution mechanism: a fixed
-generated shell function, an executable shim, or both. A generated shell form
-may contain only Atsura's fixed template, an exact artifact or binding
-reference, and lossless `"$@"` forwarding. The tailoring specification cannot
-contribute shell source. An executable form must distinguish its own identity
-from the exact physical source so it cannot recurse through ambient `PATH`.
+The selected command-resolution material is a fixed generated shell function
+on Linux and macOS. It contains only Atsura's template, the exact bundle and
+runtime closure, structured-error selection, and lossless `"$@"` forwarding.
+The tailoring specification cannot contribute shell source. The ordinary
+command name is derived verbatim from the bundle's requested executable and
+must be one portable non-reserved POSIX Name. The runtime derives the same
+spelling from the strictly loaded bundle and reaches its bound physical source
+path rather than resolving the wrapper through ambient `PATH`.
 
 If materialization persists local artifacts, application owns the task and
 infrastructure owns bounded atomic file operations. The lifecycle exposes exact
@@ -248,13 +255,21 @@ ownership and drift, preserves unrelated state, and routes create/write through
 the central mutation boundary. Caller-owned shell or agent settings remain
 outside that lifecycle.
 
-At invocation, the wrapper revalidates the exact bundle adoption, runtime,
-source identity, and command spelling before fresh plan construction. Failure
-starts no source process. Success uses the existing compatibility admission,
-no-shell source process, typed transform, and result renderer. It cannot select
-raw mode or another bundle as fallback. A generated shell function's digest is
-deterministic artifact evidence, not runtime attestation of the sourced
-function bytes.
+At invocation, honest `wrapper run` code revalidates its exact runtime identity,
+the expected bundle digest and adoption, source identity, and command spelling
+before fresh plan construction. Failure starts no source process. Success uses
+the existing compatibility admission, no-shell source process, typed transform,
+and a plan-authoritative compact JSON renderer. It cannot select raw mode or
+another bundle as fallback. The shell necessarily starts the bound `atr` path
+before that program can fingerprint itself, so this is cooperative drift
+detection rather than attestation or containment against malicious executable
+replacement. A generated shell function's digest is deterministic artifact
+evidence, not runtime attestation of the sourced function bytes.
+
+Rendering rejects Windows with a structured unsupported fault and requires the
+complete included surface to contain exactly one runtime-admitted transforming
+GitHub CLI list command, including every exposed option. Windows remains a
+regression target for existing commands but receives no POSIX activation claim.
 
 The repository conformance fixture owns only a generic caller environment. A
 vendor integration and its host-specific evidence live downstream and consume
@@ -295,7 +310,8 @@ compiled stage and never selects RTK at invocation time.
 - catalog-derived public command registration and typed argv parsing;
 - specification validation and bundle-build presentation;
 - adoption and drift status presentation;
-- future host-neutral wrapper materialization and reconciliation commands;
+- host-neutral `wrapper render` and `wrapper run` presentation, including the
+  static review envelope and fresh-plan-authoritative tailored value;
 - stable migration diagnostics for retired policy and bundle schemas;
 - schema-3 wrapper-plan and schema-2 tailored-result rendering; and
 - composition of application tasks with source and output infrastructure
@@ -321,9 +337,9 @@ production identity reader, while the process runner's own tests induce native
 start, wait, limit, cancellation, timeout, and pre/post identity races. No
 fixture mode or test branch exists in the shipped composition.
 
-The completed transform-runtime milestone does not add identity/raw execution.
-ADR 0008 defines host-neutral wrapper materialization as the next entry point
-around that runtime. Retired authorization command paths remain only as
+The wrapper entry point does not add identity/raw execution or a persisted
+installation lifecycle. ADR 0008 keeps caller activation outside Atsura.
+Retired authorization command paths remain only as
 catalog-declared migration diagnostics and start zero source processes.
 
 ## Controlled side-effect boundaries
@@ -384,9 +400,9 @@ application, domain, or infrastructure layers.
 
 Before source inspection, the artifact journey also requires the complete
 ordered 27-fault preview and 41-fault execute signatures from packaged scoped
-help. It induces only the fixed portable subset needed for archive replay;
-complete zero/one-attempt phase coverage belongs to the production-composition
-fixture above.
+help plus exact `wrapper render` and `wrapper run` contracts. It induces only
+the fixed portable subset needed for archive replay; complete zero/one-attempt
+phase coverage belongs to the production-composition fixture above.
 
 Each of the five native CI artifact rows also runs the production source
 runner tests, exact bundle-file mapping test, and complete CLI recovery matrix
@@ -411,11 +427,14 @@ marked as unattested. The GitHub workflow's matrix dependency and artifact
 service establish which native jobs supplied those documents; JSON
 aggregation alone is not proof of native execution.
 
-Each claimed release target must replay the same bounded journey natively.
-Cross-compilation proves that an artifact can be built; it does not prove that
-the target can execute it. Platform evidence therefore belongs to the CI and
-release harness, while the deterministic catalog, specification, bundle, plan,
-and execution contracts remain owned by their production layers above.
+Each claimed release target must replay its bounded native journey. Linux and
+macOS rows render, activate, and invoke the ordinary POSIX function; the
+Windows row exercises the existing command journey and exact structured
+unsupported rendering result, not POSIX activation. Cross-compilation proves
+that an artifact can be built; it does not prove that the target can execute
+it. Platform evidence therefore belongs to the CI and release harness, while
+the deterministic catalog, specification, bundle, plan, and execution
+contracts remain owned by their production layers above.
 
 ## Current milestone boundary
 
@@ -444,18 +463,25 @@ retired authorization schema or command
   -> zero source-process attempts
 ```
 
-The accepted next wrapper slice is:
+The host-neutral wrapper slice implemented around that runtime is:
 
 ```text
 exact adopted purpose bundle
-  -> deterministic host-neutral wrapper artifact and binding
+  -> `wrapper render`: deterministic POSIX function and binding
   -> caller-owned environment exposes ordinary source-command spelling
 
 ordinary argv invocation
-  -> bundle/runtime/source/command binding revalidation
+  -> fixed absolute `atr` -> `wrapper run`
+  -> honest bundle/runtime/source/command binding revalidation
   -> fresh plan through the same application/domain constructor
   -> same bundle execution path
+  -> compact plan-declared JSON object or array
 ```
+
+This implementation does not itself establish release-quality evidence. The
+full gates and exact installed-artifact POSIX journey on every claimed Linux
+and macOS target remain the completion decision. Windows exercises existing
+commands and structured unsupported behavior only.
 
 Identity/argv-only plan application, original-preserving optimizers, external
 processor execution, raw execution, source refresh, and coding-agent-host
@@ -478,14 +504,10 @@ integration remain outside these milestones.
   adapter contract.
 - Streaming and output budgets beyond the current bounded buffered process
   boundary.
-- Whether the first wrapper materialization is a fixed generated shell
-  function, an executable shim, or both.
-- Which artifact location, exact-digest binding, ownership, atomic replacement,
-  and recursion guard close the generic wrapper lifecycle.
+- Which executable-shim format, artifact location, ownership, atomic
+  replacement, and recursion guard close a persistent wrapper lifecycle.
 - How multiple purpose profiles select wrappers for one ordinary command
   without ambient or coding-agent-host state.
-- Which generic caller-owned activation fixture proves ordinary command
-  resolution without becoming a production lifecycle.
 - Which exact Git/RTK `git log` source, format, filter, version, and platform
   contract should prove the first original-preserving optimizer.
 - Which explicit processor-observation input and storage boundary should bind an

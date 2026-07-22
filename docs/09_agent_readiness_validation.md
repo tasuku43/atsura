@@ -196,21 +196,22 @@ measurements were 1,517 bytes for root agent help, 5,359 bytes for exact
 `sample read` help, and 8,359 bytes for the `sample` namespace. The 512-byte
 limit continues to bound each root selection entry.
 
-With schema 9, measured on 2026-07-22 for the transform-runtime catalog, the
-current root is 5,589 bytes, exact `sample read` help is 5,867 bytes, and the
-`sample` namespace is 8,778 bytes. Exact artifact contracts remain scoped:
-`source inspect` is 11,200 bytes, `spec init` is 10,513 bytes, `spec validate`
-is 11,705 bytes, `bundle build` is 8,408 bytes, `bundle status` is 7,549 bytes,
-`bundle trust` is 8,765 bytes, `bundle preview` is 16,676 bytes, and `bundle
-execute` is 15,433 bytes. Preview's larger scoped contract
+With schema 9, measured on 2026-07-22 for the host-neutral wrapper catalog, the
+current root is 6,316 bytes, exact `sample read` help is 5,938 bytes, and the
+`sample` namespace is 8,849 bytes. Exact artifact contracts remain scoped:
+`source inspect` is 11,271 bytes, `spec init` is 10,584 bytes, `spec validate`
+is 11,776 bytes, `bundle build` is 8,479 bytes, `bundle status` is 7,620 bytes,
+`bundle trust` is 8,836 bytes, `bundle preview` is 16,747 bytes, `bundle
+execute` is 15,504 bytes, `wrapper render` is 11,444 bytes, and `wrapper run`
+is 15,399 bytes. Preview's larger scoped contract
 includes the versioned `wrapper-plan` JSON-pointer field/type inventory. The
 root contains selection entries rather than those complete invocation and
 failure contracts.
 
 Schema 9 retains the fixed derived-scale regression with six selected commands, 18
 producer endpoints, 18 consumer endpoints, and 324 implicit same-kind edges.
-The grouped document is 26,087 UTF-8 bytes; a pair-expanded representation of
-the same facts is 169,561 bytes. The fixed corpus has a 65,536-byte
+The grouped document is 26,158 UTF-8 bytes; a pair-expanded representation of
+the same facts is 169,632 bytes. The fixed corpus has a 65,536-byte
 whole-response budget. The test expands the groups in memory and proves exact
 edge-set equality, so meeting the budget cannot delete producer fields,
 consumer inputs, usage, invocation contracts, or fault recovery. This is a
@@ -296,7 +297,8 @@ rebound. `spec init` is the executable route to a catalog-bound draft.
 This scenario validates artifact inspection, specification composition, and
 deterministic compilation. Scenario E separately owns wrapper-plan preview and
 Scenario F owns the first transform runtime. This scenario does not validate
-runtime output transformation, raw bypass, or host-neutral wrapper materialization.
+runtime output transformation, raw bypass, or the caller-owned activation
+covered by Scenario G.
 
 ## Scenario D: Atsura bundle adoption
 
@@ -442,7 +444,7 @@ every plan field from the declared JSON contract, distinguish explicit from
 inherited surface origin without reconstructing policy, and select every
 recovery command from structured faults. Routine external processing and
 source-process attempts are both zero. This acceptance proves plan inspection,
-not runtime application, raw execution, or host-neutral wrapper materialization.
+not runtime application, raw execution, or ordinary-command activation.
 
 ## Scenario F: Atsura compatibility-admitted JSON transform execution
 
@@ -490,8 +492,9 @@ source inspection, provider-notation decoding, or external model call.
 The runnable live probe uses the caller's GitHub CLI authentication and current
 repository context. It is supporting observation only. The in-process
 credential- and network-free synthetic GitHub-compatible fixture is the fast
-production-composition gate. Scenario G separately proves the exact packaged
-executable on every claimed native platform.
+production-composition gate. Scenario G separately proves the ordinary-command
+contract, and Scenario H owns the exact packaged executable on every claimed
+native platform.
 
 That production-composition gate executes the complete recovery contract: all
 27 preview faults at zero attempts, all 28 execute pre-start phase cases at
@@ -530,8 +533,8 @@ runs the runner and recovery contracts before exact-archive replay.
 
 This scenario does not cover identity-wrapper execution, argv-only transforms,
 nonempty successful stderr, a source CLI beyond an accepted runtime adapter,
-raw execution, arbitrary shell/jq/RTK/plugin transformers, or host-neutral
-wrapper materialization.
+raw execution, arbitrary shell/jq/RTK/plugin transformers, or caller-owned
+ordinary-command activation; Scenario G owns that last result.
 It does not claim that every GitHub CLI major-2 command is supported.
 The accepted major-2 range is a maintained compatibility decision rather than
 proof that one captured fixture predicts every future 2.x release.
@@ -545,14 +548,152 @@ execute starts exactly one, and both identify the same canonical plan. Routine
 external interpretation count is zero, and every recovery action comes from a
 structured fault rather than from raw source data.
 
-## Scenario G: Exact installed-artifact transform journey
+## Scenario G: Host-neutral ordinary-command wrapper
+
+### Outcome
+
+Given one adopted runtime-admitted bundle and a stable installed or built
+`atr`, a maintainer can render a deterministic POSIX function, activate it in a
+caller-owned Linux or macOS shell, and invoke ordinary `gh` to receive only the
+plan-declared compact JSON value. No coding-agent-host protocol or repository-
+source inspection is part of routine invocation.
+
+### Runnable probe
+
+Use one stable `atr` path. `go run` is not suitable for rendering because its
+temporary executable may disappear before the generated function is invoked:
+
+```sh
+mkdir -p /tmp/atsura-demo/bin
+go build -o /tmp/atsura-demo/bin/atr ./cmd/atr
+ATR=/tmp/atsura-demo/bin/atr
+
+"$ATR" help wrapper render --format agent
+"$ATR" help wrapper run --format agent
+```
+
+Build the catalog and initial specification with requested executable spelling
+`gh`, not an absolute source path. The renderer uses that spelling verbatim as
+the function name:
+
+```sh
+"$ATR" source inspect \
+  --adapter github-cli \
+  --executable gh > /tmp/atsura-catalog.json
+
+"$ATR" spec init \
+  --catalog /tmp/atsura-catalog.json \
+  -- pr list > /tmp/atsura-spec.yaml
+```
+
+Before validation, replace the generated command's inherited option surface
+and identity wrapper with one deliberately narrow admitted transform. The
+command must expose only `--limit`; generated `--json` remains an invocation
+stage rather than an agent-visible option:
+
+```yaml
+options:
+  default: exclude
+  include: [--limit]
+  exclude: []
+wrapper:
+  kind: transform
+  before: []
+  invoke:
+    append_args: ["--json=number,title,state"]
+  output:
+    input: json
+    select: [number, title, state]
+    rename:
+      - from: number
+        to: id
+    render: compact_json
+  after: []
+```
+
+Then validate, build to an absolute bundle locator, adopt the exact digest in a
+controlling terminal, and render the fixed function bytes:
+
+```sh
+"$ATR" spec validate \
+  --catalog /tmp/atsura-catalog.json \
+  --spec /tmp/atsura-spec.yaml
+
+"$ATR" bundle build \
+  --catalog /tmp/atsura-catalog.json \
+  --spec /tmp/atsura-spec.yaml > /tmp/atsura-bundle.json
+
+"$ATR" bundle trust --bundle /tmp/atsura-bundle.json
+"$ATR" wrapper render \
+  --bundle /tmp/atsura-bundle.json > /tmp/atsura-gh-wrapper.sh
+
+. /tmp/atsura-gh-wrapper.sh
+gh pr list --limit=1
+unset -f gh
+```
+
+The generated function contains the complete `wrapper run` contract-version-1
+closure and always inserts the explicit `--` separator before `"$@"`. Users do
+not copy the bundle digest or runtime identity into a second command. On
+success, ordinary `gh` stdout is exactly one compact JSON object or array plus
+LF and stderr is empty. The source JSON supplies container and value types; the
+fresh schema-3 plan governs selection, rename, order, and compact rendering.
+
+`wrapper render --format json` returns the same source in a schema-1 review
+envelope with its SHA-256, command name, contract, bundle locator/digest,
+current `atr` path/hash/size, and zero source attempts. That source digest is
+review evidence. Sourcing or modifying the function is caller-owned, so it is
+not runtime attestation.
+
+### Recovery probes
+
+- A relative/unclean bundle path or a requested executable that is not a
+  portable non-reserved POSIX Name returns `invalid_wrapper_binding` and no
+  source bytes.
+- Windows returns `wrapper_platform_not_supported`, empty success stdout, one
+  structured fault on stderr, and zero wrapper source attempts. It does not
+  claim POSIX activation.
+- An identity, mixed, multi-command, partially admitted, inherited-option, or
+  otherwise unsupported complete surface returns
+  `wrapper_runtime_not_supported` before rendering.
+- A changed bundle digest, missing adoption, source drift, malformed closure,
+  or honest current-`atr` path/hash/size mismatch starts zero source processes
+  and points to render, status, or trust recovery as declared.
+- Empty forwarded argv still reaches `wrapper run` after its explicit `--`, but
+  cannot resolve a cataloged command and fails `invalid_invocation` at zero
+  attempts.
+- Spaces, empty values, Unicode, duplicate values, dash-prefixed values, and
+  literal shell metacharacters remain separate argv elements; the fixed
+  function uses no `eval` or `sh -c`.
+- Any admitted post-start failure is non-retryable, emits no raw source channel,
+  and never selects raw execution, another bundle, or ambient `gh` as fallback.
+- The function starts the bound absolute `atr` path before honest `wrapper run`
+  code can verify that executable. Drift detection prevents that honest
+  mismatched runtime from starting the source; it does not attest or sandbox
+  malicious replacement code already executing at the path.
+
+### Acceptance
+
+An agent that knows only the ordinary-command outcome reaches `wrapper render`
+and `wrapper run` through root plus one selected wrapper scope; a known path
+takes one scoped-help invocation. After caller-owned activation, routine use is
+the ordinary `gh` invocation with zero external reconstruction. Direct preview
+and wrapper application use the same fresh plan and plan digest for identical
+validated inputs; the generic fixture, not wrapper stdout, compares that
+evidence. Successful source attempts equal one and every pre-start rejection
+equals zero. Vendor-specific activation remains downstream.
+
+## Scenario H: Exact installed-artifact transform and wrapper journey
 
 ### Outcome
 
 The same `atr` executable that would be published for a claimed target can be
 extracted from its immutable archive and can close the finite GitHub CLI
 transform journey on that target without a repository-built replacement
-binary, provider credential, provider network call, or undeclared parser.
+binary, provider credential, provider network call, or undeclared parser. On
+Linux and macOS the same extracted executable must also render and serve the
+ordinary-command POSIX function. Windows must prove the exact unsupported-
+render result while retaining the transform journey.
 
 ### Automated probe
 
@@ -571,13 +712,15 @@ invocations. Its append-only JSONL log is outside public output.
 
 The replay starts from an isolated user-config root. Before starting the source
 fixture, packaged `atr` must return schema-9 root help plus exact `source
-inspect`, `spec init`, `spec validate`, `bundle preview`, and `bundle execute`
-scopes. It checks the complete catalog/specification output-schema field
+inspect`, `spec init`, `spec validate`, `bundle preview`, `bundle execute`,
+`wrapper render`, and `wrapper run` scopes. It checks the complete
+catalog/specification output-schema field
 inventory and the exact ordered 27-fault preview and 41-fault execute recovery
 signatures rather than recognizing prose markers alone. It then obtains the
 catalog in four fixture attempts and, for
 each admitted command, asks packaged `atr` for an identity draft, applies the
-same documented finite transform edit, validates and builds it, and observes
+same documented finite transform edit with option default `exclude` and only
+`--limit` included, validates and builds it, and observes
 `not_adopted/current`. Pre-adoption preview and execute fail without another
 fixture attempt. The non-shipped orchestrator then loads each exact bundle and
 adds its digest through the production trust-store adapter. This step proves
@@ -594,12 +737,32 @@ stderr, or unselected-field canaries. Successful execute adds exactly one
 attempt per command, returns fields `["id","title","state"]`, omits the
 unselected canary, and has the same command-specific plan digest as preview.
 
+For the `pr list` bundle, Linux and macOS also render JSON review material and
+raw function text from the exact extracted `atr`, compare the exact source and
+SHA-256, source that fixed material in an isolated generic POSIX shell, and
+invoke ordinary `gh pr list --limit=1`. The result must equal the plan-declared
+compact JSON value, wrapper/direct plan identity must match in bounded fixture
+evidence, and the append-only log must add exactly one wrapper source attempt.
+Windows must instead receive `wrapper_platform_not_supported`, no rendered
+source digest, and zero wrapper source attempts.
+
+The bounded journey document uses evidence schema 2. Linux/macOS record
+`wrapper_outcome: ordinary_command_verified`, a valid
+`wrapper_source_sha256`, and `wrapper_source_process_attempts: 1`; Windows
+records `wrapper_outcome: platform_not_supported`, an empty wrapper-source
+digest, and zero attempts. Together with the four inspection and two direct
+success attempts plus induced failures, the fixed fixture-attempt total is 11
+on Linux/macOS and 10 on Windows. These are acceptance requirements, not a
+claim here that a gate run has passed.
+
 ### Platform acceptance
 
 CI runs this probe natively on Linux amd64, Linux arm64, macOS amd64, macOS
 arm64, and Windows amd64. The release workflow downloads the exact archive
 uploaded by its build job and blocks publication until all five native replays
-succeed. Each job uploads a bounded document bound to its target, archive
+succeed. The four POSIX rows must close the ordinary-command contract; the
+Windows row must close the exact structured unsupported-render contract and
+does not count as POSIX activation. Each job uploads a bounded document bound to its target, archive
 digest, and exact revision. A dependent job accepts exactly those five
 canonical documents, validates the complete fixed journey facts, and emits a
 path-free unattested digest index after recomputing all five candidate archive
@@ -607,10 +770,19 @@ hashes. Cross-compilation, build metadata, aggregation of locally fabricated
 JSON, emulation, and the current host's local replay are not substitutes for
 the five native job results.
 
+On 2026-07-22, the exact packaged Darwin/arm64 journey passed for revision
+`b4ade8c`, including ordinary-command activation. That bounded observation does
+not cover this later documentation tree, Linux, macOS amd64, Windows, evidence
+aggregation, publication, or the complete release matrix; the tagged revision
+must replay every required row.
+
 Exact scoped help is the public authoring contract: the source catalog exposes
 command paths, provenance, option grammar, structured output selector, and
 fields; schema-3 help exposes surface, option, wrapper, select, rename, and
-render constraints; execute help exposes the finite runtime-admission matrix.
+render constraints; execute help exposes the finite runtime-admission matrix;
+wrapper help exposes the renderer-produced closure, explicit `--` argv
+boundary, platform matrix, static review envelope, and fresh-plan output
+authority.
 The harness's deterministic YAML edit verifies those artifact contracts but
 does not erase the user's deliberate configuration-authoring step.
 

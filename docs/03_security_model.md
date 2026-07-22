@@ -100,18 +100,26 @@ Repository content, ambient `PATH`, a shell environment, or a coding-agent host
 cannot create adoption, select another bundle, or replace the physical source
 authority.
 
-The wrapper accepts argv, not a shell command string or agent-host payload. A
-generated shell form, if supported, comes only from a fixed Atsura template and
-forwards argv losslessly; the specification cannot inject shell source. An
-executable form must not rediscover the source by the wrapper's own ordinary
-name. It invokes only the exact physical path already bound into the adopted
-bundle so ambient command resolution cannot recurse into the wrapper.
+The current wrapper accepts argv, not a shell command string or agent-host
+payload. On Linux and macOS, `wrapper render` emits one fixed POSIX function and
+an optional schema-1 review envelope. The function forwards `"$@"` losslessly;
+the specification cannot inject shell source, and the template uses neither
+`eval` nor `sh -c`. The source command spelling is derived verbatim from the
+bundle's requested executable, must be a portable non-reserved POSIX Name, and
+is never derived from a path or basename. `wrapper run` invokes only the exact
+physical source path already bound into the adopted bundle, so ambient command
+resolution cannot recurse into the wrapper. Windows returns a structured
+unsupported fault for POSIX rendering and receives no POSIX activation claim.
 
-Before source start, invocation revalidates the wrapper contract, exact
-expected bundle digest, current adoption, runtime identity, source identity,
-and command spelling and builds a fresh plan. Missing, malformed, drifted, or
-mismatched state starts zero source processes. The wrapper never selects a
-different bundle or raw execution as fallback.
+Once the bound `atr` has started, honest `wrapper run` code revalidates the
+wrapper contract, its own path/hash/size, exact expected bundle digest, current
+adoption, source identity, and bundle-derived command spelling and builds a
+fresh plan. Missing, malformed, drifted, or mismatched state starts zero source
+processes. The wrapper never selects a different bundle or raw execution as
+fallback. Because the shell must start the bound runtime path before that code
+can fingerprint itself, this check detects cooperative drift; it is not
+attestation, a sandbox, or protection against malicious code that replaced the
+`atr` executable at that path.
 
 For generated shell material, the rendered-byte digest proves deterministic
 generation and lets reviewers and release fixtures compare exact output. Once
@@ -120,7 +128,9 @@ in-memory bytes; activation integrity remains caller-owned. A future persisted
 executable wrapper needs explicit artifact ownership and drift checks before
 its bytes can become runtime authority.
 
-If Atsura persists wrapper artifacts, their create, replacement, status, and
+The current renderer writes only to stdout and does not persist or install the
+function. If Atsura later persists wrapper artifacts, their create,
+replacement, status, and
 removal are Atsura-owned filesystem operations. They require bounded paths,
 exact ownership, regular-file and symlink checks, atomic replacement, safe
 permissions appropriate to the platform, central mutation invocation, and
@@ -171,6 +181,15 @@ returns a canonical plan digest, and reports `source_process_attempts: 0`.
 Runtime revalidates again and rebuilds the plan rather than using an old
 preview as authority.
 
+`wrapper render` additionally requires the complete included surface to be one
+maintained runtime-admitted transforming command before exposing ordinary-
+command material. Its binding closes the exact bundle digest with the current
+`atr` path/hash/size and requested command spelling. `wrapper run` accepts only
+that complete closure plus argv after the explicit `--` separator, derives the
+source spelling from the loaded bundle, and rebuilds the same plan. Successful
+wrapper output is one compact plan-declared JSON object or array plus LF; it has
+no maintainer evidence envelope and exposes no raw source channel.
+
 ## Source process execution
 
 Starting the source is `operation.EffectExecute`: a source-owned process may
@@ -199,6 +218,12 @@ start, and after wait. Compatibility admission covers maintained command and
 argv behavior; it does not trust stdout, which still passes through the strict
 parser and typed transformer. `bundle preview` remains read-only. Inspection
 probes remain separately bounded source execution.
+
+`wrapper run` is a second public façade over that same source boundary, not a
+second executor. Runtime/bundle closure validation, adoption, source identity,
+surface and option resolution, fresh planning, compatibility admission, and
+process bounds all complete before an honest runtime starts the source. It
+forwards separate argv and returns the plan-authoritative transformed value.
 
 ## Atsura-owned mutations
 
@@ -299,7 +324,10 @@ owns, including:
 - missing, incomplete, or contradictory wrapper stages;
 - command absent from the tailored surface;
 - attempted option absent from the matched command's tailored option surface;
-- missing adoption, source drift, or pre-start identity mismatch; or
+- missing adoption, source drift, or pre-start identity mismatch;
+- malformed wrapper binding, expected bundle mismatch, honest runtime drift,
+  unsupported POSIX platform, or a surface not completely covered by one
+  maintained runtime contract; or
 - unknown core effect.
 
 Retired authorization schemas are not auto-converted. Their allow/confirm/deny,
@@ -347,6 +375,19 @@ retain only digests, counters, target identity, stable fault codes, and boolean
 leak checks. Native replay is required on each claimed release target so an
 emulation or cross-build cannot silently replace runtime security evidence.
 
+For the host-neutral slice, packaged help must also expose exact `wrapper
+render` and `wrapper run` contracts. On Linux and macOS the native journey must
+compare deterministic rendered bytes/digest, activate those bytes in a generic
+caller-owned POSIX shell, invoke the ordinary command, observe one exact source
+attempt, and retain only the plan-declared result. On Windows it must obtain the
+exact structured `wrapper_platform_not_supported` result with zero wrapper
+source attempts and no rendered digest; that is regression evidence, not POSIX
+activation support. The bounded journey evidence schema 2 records
+`wrapper_outcome`, `wrapper_source_sha256`, and
+`wrapper_source_process_attempts` so aggregation cannot confuse those two
+platform contracts. These are required evidence conditions; this section does
+not assert that the complete native matrix has passed.
+
 Each native replay emits one bounded journey document. The aggregation tool
 accepts exactly the five canonical evidence filenames and five matching
 candidate archive filenames as regular non-symlink files, strictly binds each
@@ -368,6 +409,10 @@ job produced it.
 - Local executable identity checks cannot provide operating-system sandboxing;
   portable path execution may retain a race between the final identity check
   and the operating system opening the file.
+- The generated function must start its bound `atr` path before honest
+  `wrapper run` code can verify that executable's hash. A mismatch prevents the
+  honest runtime from starting the source, but the binding does not attest or
+  constrain malicious replacement code already executing at that path.
 - Exact bundle adoption does not review or authorize every future downstream
   result of the source CLI.
 - Source help can omit dynamic behavior or change through plugins and
@@ -390,10 +435,14 @@ job produced it.
   arguments fail before source start.
 - Successful nonempty stderr is rejected without exposing it because the first
   result schema has no reviewed stderr meaning.
+- POSIX wrapper rendering and caller-owned function activation are limited to
+  Linux and macOS. Windows has structured unsupported behavior only. Atsura
+  does not persist/install the function, edit activation state, or provide an
+  executable/PATH shim.
 - Identity/argv-only execution, before/after actions, richer argv transforms,
-  original-preserving optimizers, external output processors, raw, and
-  host-neutral wrapper materialization remain unimplemented. ADR 0008 excludes
-  coding-agent-host adapters from the product boundary.
+  original-preserving optimizers, external output processors, and raw execution
+  remain unimplemented. ADR 0008 excludes coding-agent-host adapters from the
+  product boundary.
 
 ## Security claim for the current milestone
 
@@ -406,4 +455,15 @@ starts at most once without a shell, and returns only the complete typed
 selected JSON result. Pre-start contract failures start zero processes. Every post-start
 failure is non-retryable and exposes no raw source output. The milestone does
 not claim source-operation authorization, sandboxing, identity/raw execution,
-external-output-processor execution, or host-neutral wrapper materialization.
+or external-output-processor execution.
+
+The host-neutral wrapper implementation adds a narrower conditional claim:
+`wrapper render` emits only fixed POSIX source for one completely admitted
+surface on Linux or macOS, and an honestly executing bound `wrapper run`
+revalidates the bundle/runtime/source closure before reaching the same fresh
+plan and source boundary. Success emits one compact plan-declared JSON value;
+failure never selects raw or another bundle. This becomes a release-quality
+claim only after the required full/security/public/release gates and exact
+installed-artifact native evidence pass. It does not claim executable
+attestation, caller activation integrity, Windows POSIX support, source
+authorization, sandboxing, or a persistent wrapper lifecycle.

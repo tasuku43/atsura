@@ -11,12 +11,14 @@ authorization, operation semantics, and remote effects.
 ## Project status
 
 The current milestone implements artifact compilation, adoption, deterministic
-wrapper-plan inspection, and one narrow bundle-backed transformation runtime:
+wrapper-plan inspection, one narrow bundle-backed transformation runtime, and a
+host-neutral ordinary-command entry point:
 
 ```text
 source inspect -> spec init/validate -> bundle build -> bundle status/trust
   -> bundle preview
   -> bundle execute
+  -> wrapper render -> caller-owned POSIX activation -> ordinary source command
 ```
 
 - Tailoring specification schema 3 independently declares command membership,
@@ -32,14 +34,20 @@ source inspect -> spec init/validate -> bundle build -> bundle status/trust
   CLI `issue list` or `pr list` JSON transform, requires every observable
   executable identity to match the bundle and starts at most once before
   returning only selected/renamed typed JSON.
+- `wrapper render` emits deterministic POSIX function bytes on Linux and macOS,
+  bound to one exact adopted bundle and the current absolute `atr` identity.
+  The fixed function forwards ordinary argv to `wrapper run`, which applies the
+  same fresh plan and emits only its compact JSON object or array.
 - The retired authorization-oriented policy schemas, legacy `plan preview`,
   and `run` have migration diagnostics only. They are not current tailoring
   capabilities.
 
 Identity-wrapper execution, argv-only transforms, successful nonempty source
 stderr, source refresh, raw bypass, additional source/output adapter contracts,
-and host-neutral wrapper materialization remain unimplemented. Coding-agent
-host adapters are outside the product boundary.
+persistent wrapper installation or executable shims remain unimplemented.
+Coding-agent host adapters are outside the product boundary. Windows retains
+the existing command surface but returns a structured unsupported fault for
+POSIX wrapper rendering; no Windows POSIX activation support is claimed.
 
 The `atr` binary also contains the foundry's `doctor` and synthetic `sample`
 commands as executable architecture and harness examples. They are not
@@ -74,6 +82,13 @@ exact bundle digest
      -> adapter compatibility admission
         -> one bounded source process
         -> selected/renamed typed JSON result
+
+exact adopted bundle + current stable atr identity
+  -> deterministic POSIX function + source digest
+  -> caller-owned activation as the ordinary source command
+  -> wrapper run verifies the bundle/runtime closure
+  -> same fresh plan and source boundary
+  -> one compact plan-declared JSON value
 ```
 
 An excluded command is absent from the tailored surface; it is not denied or
@@ -85,18 +100,26 @@ feature, not an OS sandbox.
 ## Try the installed artifact workflow
 
 The first source adapter inspects an installed GitHub CLI using four bounded
-offline probes. Extract the archive for your platform, make `atr` available on
-your command path, and start with `atr help source inspect --format agent`.
-No public Atsura archive has been released yet; this workflow currently applies
-to a locally packaged candidate and to a future reviewed release. With GitHub
-CLI 2.x installed, using such an archive requires no Atsura source checkout:
+offline probes. Use one stable built or installed `atr` path for the entire
+workflow; do not render a wrapper from `go run`, whose temporary executable may
+disappear before the function is invoked. No public Atsura archive has been
+released yet. From a source checkout, a stable local candidate can be built as:
 
 ```sh
-atr source inspect \
+mkdir -p /tmp/atsura-demo/bin
+go build -o /tmp/atsura-demo/bin/atr ./cmd/atr
+ATR=/tmp/atsura-demo/bin/atr
+```
+
+With GitHub CLI 2.x installed, inspect `gh` by its ordinary spelling so the
+renderer can later use that exact spelling as the function name:
+
+```sh
+"$ATR" source inspect \
   --adapter github-cli \
   --executable gh > /tmp/atsura-catalog.json
 
-atr spec init \
+"$ATR" spec init \
   --catalog /tmp/atsura-catalog.json \
   -- pr list > /tmp/atsura-spec.yaml
 ```
@@ -104,12 +127,18 @@ atr spec init \
 `spec init` creates an exclude-by-default specification containing one exact
 verified command with inherited options and an identity wrapper. Review and
 edit that file before validation and compilation. To exercise the current
-runtime, replace the generated command's `wrapper` with this built-in JSON
-transform. Exact `spec init` and `spec validate` agent help publish the finite
-schema-3 field inventory and authoring constraints; this edit is deliberate
-configuration authoring, not generated source code:
+runtime and make the complete exposed surface renderable, replace the generated
+command's option surface and `wrapper` with this deliberately narrow built-in
+JSON transform. Only `--limit` remains agent-visible; the generated `--json`
+selector belongs to the invocation stage. Exact `spec init` and `spec validate`
+agent help publish the finite schema-3 field inventory and authoring
+constraints:
 
 ```yaml
+options:
+  default: exclude
+  include: [--limit]
+  exclude: []
 wrapper:
   kind: transform
   before: []
@@ -129,15 +158,15 @@ After editing the generated specification, validate and compile those exact
 bytes:
 
 ```sh
-atr spec validate \
+"$ATR" spec validate \
   --catalog /tmp/atsura-catalog.json \
   --spec /tmp/atsura-spec.yaml
 
-atr bundle build \
+"$ATR" bundle build \
   --catalog /tmp/atsura-catalog.json \
   --spec /tmp/atsura-spec.yaml > /tmp/atsura-bundle.json
 
-atr bundle status \
+"$ATR" bundle status \
   --bundle /tmp/atsura-bundle.json
 ```
 
@@ -151,15 +180,40 @@ To adopt the compiled surface, run this in an interactive terminal and confirm
 the exact digest after reviewing the source, surface, and wrapper summary:
 
 ```sh
-atr bundle trust --bundle /tmp/atsura-bundle.json
-atr bundle status --bundle /tmp/atsura-bundle.json
-atr bundle preview \
+"$ATR" bundle trust --bundle /tmp/atsura-bundle.json
+"$ATR" bundle status --bundle /tmp/atsura-bundle.json
+"$ATR" bundle preview \
   --bundle /tmp/atsura-bundle.json \
   -- gh pr list --limit=2
-atr bundle execute \
+"$ATR" bundle execute \
   --bundle /tmp/atsura-bundle.json \
   -- gh pr list --limit=2
 ```
+
+On Linux or macOS, render and activate the same bundle as the ordinary command.
+The JSON form is review metadata; the default text form is the exact sourceable
+function. Activation is deliberately caller-owned:
+
+```sh
+"$ATR" wrapper render \
+  --bundle /tmp/atsura-bundle.json \
+  --format json
+
+"$ATR" wrapper render \
+  --bundle /tmp/atsura-bundle.json > /tmp/atsura-gh-wrapper.sh
+
+. /tmp/atsura-gh-wrapper.sh
+gh pr list --limit=2
+unset -f gh
+```
+
+The fixed function invokes the absolute `atr` that rendered it, passes the
+complete bundle/runtime closure to `wrapper run`, inserts the required `--`, and
+forwards `"$@"` without `eval` or `sh -c`. Successful ordinary-command stdout
+is exactly one compact plan-declared JSON object or array plus LF; stderr is
+empty and there is no `bundle execute` evidence envelope. Windows returns the
+structured `wrapper_platform_not_supported` fault and does not claim POSIX
+activation.
 
 `bundle preview` requires the exact bundle digest to be adopted and the current
 source path, SHA-256, and size to match its catalog evidence. It selects the
@@ -185,11 +239,26 @@ Atsura's perspective; resolve it with the source CLI before choosing to execute
 again. The credential- and provider-network-free synthetic fixture is the
 canonical automated evidence.
 
+`wrapper render` additionally rejects a bundle unless its complete included
+surface contains exactly one transforming `issue list` or `pr list` command and
+every exposed option belongs to the maintained runtime grammar. It derives the
+function name verbatim from the bundle's requested executable, so an absolute
+source path or non-POSIX/reserved name is not normalized into a wrapper name.
+The rendered source digest is deterministic review evidence, not attestation
+after the caller sources or changes the function.
+
+`wrapper run` derives the source spelling from the strictly loaded bundle and
+uses the same fresh-plan application service as direct execution. Its runtime
+hash check is cooperative drift detection: the shell must start the bound
+absolute `atr` path before honest runtime code can verify itself. A mismatch
+prevents that honest runtime from starting the source, but Atsura does not claim
+to sandbox malicious replacement code already executing at that path.
+
 Use `atr help <exact-command> --format agent` for the complete machine-readable
 contract. Agent help currently uses schema version 9; object outputs may publish
 a versioned nested JSON-pointer field inventory. Each output declares whether
 the catalog or a freshly rebuilt wrapper plan governs its interpretation and
-presentation. The reserved host-neutral wrapper variant points to the exact
+presentation. `wrapper run` points to the exact
 `bundle preview` plan schema; source JSON supplies the admitted object or array
 and value types, while that fresh plan governs selection, rename, and compact
 JSON rendering.
@@ -208,8 +277,8 @@ The following remain later research or vertical-slice decisions:
 - source refresh and command-discovery depth;
 - execution of identity wrappers, argv-only transforms, and nonempty successful
   stderr;
-- host-neutral wrapper materialization and its artifact/runtime contract;
-- fixture evidence that caller-owned environments can expose the same wrapper;
+- persistent wrapper installation, replacement, removal, executable/PATH shims,
+  and multi-profile command selection;
 - raw tailoring bypass;
 - output transformations beyond the schema-3 built-ins;
 - usage-history collection; and

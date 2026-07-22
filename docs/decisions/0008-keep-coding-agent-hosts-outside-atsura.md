@@ -100,12 +100,14 @@ agent-provided hook, a container image, a development-environment launcher, or
 another caller-owned mechanism may expose the wrapper. Atsura does not own,
 inspect, edit, or attest that mechanism.
 
-Atsura may generate deterministic, bounded wrapper material from a fixed
-template. Configuration cannot supply arbitrary shell, a script body, or an
-executable transport program. Whether the first supported materialization is a
-shell function, an executable shim, or both is deliberately left to the next
-vertical slice and its native evidence. That mechanism choice does not move
-agent-host configuration into Atsura.
+Atsura generates deterministic, bounded wrapper material from a fixed template.
+The first slice chooses one POSIX function on Linux and macOS; Windows returns
+a structured unsupported result and has no POSIX activation claim.
+Configuration cannot supply arbitrary shell, a script body, or an executable
+transport program. Atsura does not persist or install the function. A future
+executable shim or persistent lifecycle requires separate ownership, drift,
+atomic replacement, recursion, and native platform evidence. This mechanism
+choice does not move agent-host configuration into Atsura.
 
 Activation is not an Atsura authorization boundary. A caller can still invoke
 the physical source executable through another path. Surface reduction remains
@@ -181,8 +183,9 @@ or preserve those controls by equivalence.
   agent starts using the environment.
 - Wrapper availability does not prevent direct invocation of the source
   executable through another path.
-- Shell-function and executable-shim behavior must be tested separately where
-  their command-resolution and portability semantics differ.
+- The current POSIX function requires Linux/macOS-specific activation evidence;
+  any future executable shim must establish its distinct command-resolution,
+  ownership, recursion, and portability contract.
 
 ## Mechanical enforcement
 
@@ -198,7 +201,8 @@ Current boundary checks:
 - The capability ledger tracks a generic wrapper-materialization result, not
   vendor lifecycle or transport capabilities.
 
-The wrapper implementation slice must additionally prove:
+The current wrapper slice adds these mechanical contracts; release-quality
+completion still requires the full gate and native artifact matrix:
 
 - catalog, specification, bundle, plan, wrapper binding, and result schemas
   contain no agent-host field;
@@ -209,6 +213,8 @@ The wrapper implementation slice must additionally prove:
   raw fallback through tests; deterministic shell bytes have a digest for
   review and release evidence but are not attested after caller-owned
   activation;
+- the bound runtime hash is cooperative drift detection after the absolute
+  `atr` path starts, not attestation against malicious executable replacement;
 - a generic caller fixture compares rendered bytes, bundle, argv, plan, result,
   and attempt evidence using the exact installed artifact. Vendor-specific
   compatibility evidence remains downstream; and

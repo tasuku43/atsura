@@ -9,7 +9,10 @@ ADR 0006 accepts the narrow transform runtime. The
 packaging mechanics below remain reviewed infrastructure, but they do not
 authorize publication. The current runtime claim is intentionally narrower
 than the artifact matrix: one compatibility-admitted typed JSON transform
-boundary.
+boundary plus fixed host-neutral POSIX wrapper rendering and invocation on
+Linux and macOS. Windows retains existing-command runtime evidence and exact
+structured unsupported wrapper rendering; no Windows POSIX activation claim is
+made.
 
 The current first-release packaging decisions are:
 
@@ -34,10 +37,11 @@ The current first-release packaging decisions are:
   review.
 
 These decisions fit the current pure-Go artifact and transform-runtime binary
-with no bundled provider SDK or credential store. The selected source CLI is an
-external user dependency. A later persisted/native wrapper artifact, signing
-system, extra package manager, or non-Go runtime dependency must revise the
-matrix and release contract.
+with its generated POSIX function and no bundled provider SDK or credential
+store. The selected source CLI is an external user dependency. A later
+persisted wrapper lifecycle, executable shim, signing system, extra package
+manager, or non-Go runtime dependency must revise the matrix and release
+contract.
 
 The base template defines byte-for-byte reproducible archives within a pinned pure-Go build contract and a public, reproducible-enough overall release path without private package infrastructure. A derived project must review supported platforms, artifact signing, provenance, package managers, and compatibility promises before its first release.
 
@@ -139,8 +143,10 @@ The release workflow follows this order:
 2. Run source, security, release, and public-boundary gates required by policy.
 3. Build the complete pure-Go platform matrix from that revision.
 4. Download each build artifact on its matching native runner and replay the
-   installed-artifact transform journey with no provider credentials or
-   provider network.
+   installed-artifact transform and wrapper journey with no provider
+   credentials or provider network. Linux and macOS activate the generated
+   ordinary-command function; Windows verifies the exact structured
+   unsupported-render contract and continues the existing command journey.
 5. Aggregate exactly five bounded native evidence documents and verify their
    target, archive digest, version, revision, journey counts, fault set, plan
    identities, and leak checks.
@@ -213,6 +219,15 @@ canonical plan digest, and report
 `source_process_attempts: 0`. Execute must rebuild the same plan, report the
 same digest, and report exactly one attempt only after compatibility succeeds.
 
+The same candidate must expose exact `wrapper render` and `wrapper run` scoped
+contracts. On Linux and macOS, release preparation renders deterministic POSIX
+function bytes from one absolute adopted bundle, compares their SHA-256,
+activates them in a generic caller-owned shell, invokes ordinary `gh` with exact
+argv, and observes the same fresh plan plus one compact plan-declared JSON value
+and one source attempt. On Windows, rendering must return the exact structured
+`wrapper_platform_not_supported` fault, no source bytes or digest, and zero
+wrapper source attempts. This is a platform boundary, not a skipped test.
+
 The current executable runtime claim is limited to all of the following:
 
 - a strict schema-3 transform wrapper with JSON input and compact JSON output;
@@ -230,22 +245,51 @@ The current executable runtime claim is limited to all of the following:
   or public inclusion of raw stdout, raw stderr, or unselected fields; and
 - non-retryable classification for every post-start or final-output failure.
 
+The host-neutral wrapper claim is additionally limited to all of the following:
+
+- `wrapper render --bundle <absolute-path> [--format text|json]` on Linux or
+  macOS, with a portable non-reserved POSIX requested executable name;
+- one complete included transform surface, either GitHub CLI `issue list` or
+  `pr list`, whose exposed options all belong to the maintained runtime grammar;
+- fixed Atsura-generated function source containing the exact bundle digest and
+  current absolute `atr` path/hash/size, root structured errors, the public
+  `wrapper run` contract version 1, an explicit `--`, and lossless `"$@"`;
+- honest runtime validation of that closure, followed by the same fresh-plan
+  application and exact source process boundary as `bundle execute`;
+- successful stdout consisting of exactly one compact plan-declared JSON object
+  or array plus LF, empty stderr, and no maintainer evidence envelope; and
+- caller-owned activation, no persisted install/shim lifecycle, no raw fallback,
+  no coding-agent-host protocol, and no claim that the runtime binding attests
+  against malicious replacement of the bound executable.
+
 The credential- and provider-network-free synthetic GitHub-compatible native
 fixture runs through the exact archived `atr`, production composition,
-verifier, runner, parser, transformer, and renderer and is the canonical
-automated artifact gate. It first verifies schema-9 root help and five exact
-scoped authoring/runtime contracts, including the complete nested catalog and
+verifier, runner, parser, transformer, and renderers and is the canonical
+automated artifact gate. It first verifies schema-9 root help and seven exact
+scoped authoring/runtime contracts, including `wrapper render` and `wrapper
+run`, the complete nested catalog and
 specification field inventories and the complete ordered 27-fault preview and
 41-fault execute recovery signatures. Every induced fault must then equal its
-packaged declaration. Its append-only log proves four inspection attempts, zero
-preview attempts, and exactly one success attempt for each of `issue list` and
-`pr list`; channel-specific canaries prove that raw failure data and
+packaged declaration. Its append-only log must prove four inspection attempts,
+zero preview attempts, exactly one direct success attempt for each of `issue
+list` and `pr list`, and either one ordinary-command wrapper attempt on
+Linux/macOS or zero on Windows. The fixed total is therefore 11 fixture
+attempts on a POSIX wrapper target and 10 on Windows; channel-specific canaries
+prove that raw failure data and
 unselected fields do not reach public output or isolated state. The
 non-shipped harness seeds each exact receipt into its ephemeral user-config
 root through the production trust-store adapter. This is explicitly
 receipt-consumption evidence, not evidence that automation provided human
 consent. Full-digest controlling-terminal success and redirected-input
 rejection are proven separately by production-adapter and application tests.
+
+Each bounded artifact-journey document uses evidence schema 2. It must record
+`wrapper_outcome: ordinary_command_verified`, a valid
+`wrapper_source_sha256`, and `wrapper_source_process_attempts: 1` on Linux and
+macOS. Windows must instead record `wrapper_outcome:
+platform_not_supported`, an empty wrapper-source digest, and zero wrapper source
+attempts. The aggregator validates those target-specific alternatives rather
+than treating unsupported POSIX activation as a skipped success.
 
 The credential-free in-process production-composition fixture supplies the
 complete phase evidence that a portable exact-archive journey cannot safely
@@ -281,10 +325,21 @@ aggregate summaries use disjoint prefixes. This avoids immutable-name
 collisions on a rerun while strict revision, filename, target, and digest
 checks still fail closed on any absent or stale input.
 
-There is no current release claim for identity-wrapper execution, argv-only
-transforms, nonempty successful source stderr, raw execution, arbitrary
-transformers, or host-neutral wrapper materialization. The retired legacy `plan preview`/`run`
-slice is not runtime evidence.
+Current bounded observation: on 2026-07-22 the Darwin/arm64 exact packaged
+journey passed for revision `b4ade8c`, including ordinary-command wrapper
+activation. This is one implementation observation, not evidence for the later
+documentation commit, the other four native rows, the aggregate, publication,
+or a release-quality matrix claim. The exact revision selected for any tag must
+replay all required rows again.
+
+No public release has yet made the wrapper claim. A future candidate that
+passes the complete gates may claim only the fixed Linux/macOS POSIX
+materialization and Windows unsupported contract above. It still has no claim
+for identity-wrapper execution, argv-only transforms, nonempty successful
+source stderr, raw execution, arbitrary transformers, persistent wrapper
+installation, executable/PATH shims, coding-agent-host activation, executable
+attestation, or Windows POSIX activation. The retired legacy `plan
+preview`/`run` slice is not runtime evidence.
 
 ## Failure and recovery
 

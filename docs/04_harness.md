@@ -2,9 +2,10 @@
 
 The harness turns Atsura's product, architecture, and security claims into
 repeatable checks. A capability is complete only when `task check` passes. The
-current transform-runtime milestone also requires `task security` because it
-admits an attempted source invocation, observes executable identity, exposes a
-canonical plan contract, and can start one compatibility-admitted source process.
+current transform and host-neutral wrapper milestone also requires `task
+security` because it admits an attempted source invocation, observes source and
+runtime executable identity, exposes a canonical plan contract, and can start
+one compatibility-admitted source process.
 
 Do not weaken a check to preserve the superseded authorization-centered model.
 Update the governing contract and its mechanical claim together.
@@ -36,7 +37,7 @@ completion gates for the current non-publication milestone unless its changes
 affect their tracked fixtures. They remain required evidence before any
 publication or release.
 
-The transform-runtime work packet deliberately runs both profiles as broad
+The wrapper work packet deliberately runs both profiles as broad
 regression evidence because it changes public documentation and release claims.
 Passing them does not replace the exact-artifact runtime replay required before
 a first tag.
@@ -314,8 +315,9 @@ Catalog tests must prove:
   recovery paths derive from that catalog;
 - current output uses `specification`, `surface`, and `wrapper` vocabulary;
 - every command selects exactly one authority for result interpretation and
-  presentation; all current commands are explicitly `catalog` authoritative
-  and retain their static field, envelope, and schema-version contracts, with
+  presentation; `wrapper run` is explicitly `fresh_wrapper_plan`
+  authoritative, while `wrapper render` and other current commands retain
+  their catalog-static field, envelope, and schema-version contracts, with
   help's tested root-index/scoped-contract variants kept explicit;
 - `fresh_wrapper_plan` authority is accepted only for JSON-only complete
   object-or-array compact output with no static fields, envelope, or result
@@ -329,19 +331,29 @@ Catalog tests must prove:
 - root agent help remains a bounded capability index, with details reachable
   by exact command or namespace help.
 
-### Deferred host-neutral wrapper contract
+### Host-neutral wrapper contract
 
-ADR 0008 accepts wrapper materialization as the next product result, but
-acceptance does not make an unimplemented capability public. Until its catalog,
-runtime, security, and artifact evidence land together,
-`tailoring.wrapper.materialize` remains `deferred`, no wrapper lifecycle command
-appears in `cli.Catalog`, and the current direct gateway remains the only
-implemented entry point.
+`wrapper render` and `wrapper run` are the public entry points for
+`tailoring.wrapper.materialize`. Their implementation is complete only when the
+catalog, capability status, runtime, security contracts, generic caller journey,
+and required gates agree on the same tree. Documentation of the command
+contract is not evidence that those gates or native journeys passed.
 
-The implementing slice must prove:
+The slice must prove:
 
 - one exact adopted purpose bundle produces deterministic wrapper material and
   a canonical rendered-byte digest;
+- `wrapper render --bundle <absolute-path> [--format text|json]` is read-only,
+  defaults to raw sourceable text, and returns the exact schema-1 review
+  envelope in JSON without a source attempt;
+- POSIX rendering succeeds only on Linux and macOS; Windows returns exact
+  structured `wrapper_platform_not_supported`, emits no wrapper bytes, and has
+  no POSIX activation claim;
+- the bundle's requested executable is used verbatim only when it is a portable
+  non-reserved POSIX Name; no basename or path normalization invents a command;
+- the complete included surface contains exactly one transforming GitHub CLI
+  `issue list` or `pr list` command and every exposed option is admitted by the
+  maintained runtime contract before bytes are rendered;
 - the wrapper binding contains only wrapper contract, bundle identity, runtime
   identity, source identity, and ordinary command spelling;
 - no bundle, binding, plan, result, help, or capability field names a
@@ -354,15 +366,19 @@ The implementing slice must prove:
 - default-catalog tests reject the exact retired Claude Code and Codex
   integration/hook routes and capability identifiers without reserving a
   generic `integration` namespace;
-- the wrapper accepts exact argv rather than a shell command string and reaches
-  the same plan constructor and source-execution boundary as the direct
-  gateway;
+- the generated function passes the complete render-produced closure to
+  `wrapper run`, includes the explicit `--` separator, accepts exact argv rather
+  than a shell command string, and reaches the same plan constructor and
+  source-execution boundary as the direct gateway;
 - spaces, empty values, Unicode, dash-prefixed values, literal metacharacters,
   and ordering survive wrapper forwarding without `eval`, `sh -c`, or shell
   reconstruction;
 - missing adoption, runtime or bundle mismatch, source drift, absent surface
   command, invalid option, or unsupported runtime
   starts zero source processes;
+- the runtime identity check is described and tested as cooperative drift
+  detection after the bound `atr` path starts, not attestation or containment
+  against malicious replacement at that path;
 - admitted success starts the exact physical source once, applies the same
   typed stages, emits only the plan-declared result, and never selects raw or
   another bundle as fallback;
@@ -371,12 +387,14 @@ The implementing slice must prove:
   JSON supplies the admitted container/value types, while exact scoped schema-9
   help points to the `bundle preview` wrapper-plan schema governing selection,
   rename, and rendering;
-- any persisted artifact lifecycle uses exact ownership, bounded regular-file
-  paths, symlink/special-file rejection, atomic replacement, central mutation
-  invocation, and read-only drift reconciliation without editing caller-owned
-  activation configuration; and
+- the current renderer persists nothing and edits no activation configuration;
+  any future persisted artifact lifecycle uses exact ownership, bounded
+  regular-file paths, symlink/special-file rejection, atomic replacement,
+  central mutation invocation, and read-only drift reconciliation without
+  editing caller-owned activation configuration; and
 - the exact installed release artifact replays the ordinary-command journey on
-  every claimed native target.
+  every claimed Linux and macOS native target, while Windows replays existing
+  commands and the exact unsupported-render result.
 
 Consumer conformance uses a non-shipped generic caller-owned activation fixture
 that invokes the exact installed `atr` artifact. It compares rendered bytes and
@@ -398,13 +416,15 @@ snapshots, transcripts, and agent reasoning are absent.
 ## Test ownership
 
 - Domain tests own specification, surface, wrapper, bundle, digest, effect,
-  full-catalog matching, option admission, plan, and pure resolution invariants.
+  full-catalog matching, option admission, plan, host-neutral wrapper-binding
+  invariants, safe command names, and pure resolution invariants.
 - Application tests own ordering, port calls, adoption assessment, current
-  source identity assessment, mutation invocation, zero-attempt rejection,
+  source/runtime identity assessment, whole-surface runtime admission, mutation
+  invocation, wrapper/direct fresh-plan parity, zero-attempt rejection,
   one-attempt execution, and post-start fault classification.
 - Infrastructure tests own bounded strict codecs, executable identity, process
-  limits, safe local persistence, source/output adapter mechanics, wrapper
-  artifact encoding and ownership, and bounded argv forwarding.
+  limits, safe local persistence, source/output adapter mechanics, fixed POSIX
+  quoting and rendering, and bounded argv forwarding.
 - CLI tests own catalog registration, typed argv, help, output schemas,
   migration recovery, stdout/stderr routing, and any generic wrapper lifecycle,
   invocation, output-authority, and mutation contracts.
@@ -429,20 +449,28 @@ snapshots, transcripts, and agent reasoning are absent.
 - Artifact-journey fixtures own execution of the exact `atr` file extracted
   from a release archive. They use a native credential- and provider-network-
   free source fixture, an isolated user-config root, and an append-only attempt
-  log. Before source inspection they verify schema-9 root help and five exact
+  log. Before source inspection they verify schema-9 root help and seven exact
   scoped authoring/runtime contracts, including complete nested field
   inventories and the complete ordered 27-fault preview and 41-fault execute
   recovery signatures. The non-shipped harness may seed an exact
   receipt through the production trust-store adapter for each tested bundle;
   this proves receipt consumption, not human consent. Controlling-terminal
   full-digest confirmation remains separate required production-adapter
-  evidence.
+  evidence. The journey verifies eight help documents: the root index plus
+  seven exact scoped public contracts. Linux and macOS activate deterministic
+  `wrapper render` bytes and invoke the ordinary command through the extracted
+  runtime; Windows verifies the exact structured unsupported-render result
+  without sourcing bytes.
 - Each native CI artifact row runs the full production source-runner and
   trust-store tests, the exact bundle-file fault mapping, and the complete CLI
   recovery matrix before packaging and replay. The release linter pins that
   exact step as well as the five runner/target tuples.
-- Artifact-evidence aggregation owns the exact five-target set. Each native
-  job uploads one bounded document containing target and observed host,
+- Artifact-evidence aggregation owns the exact five-target set. Evidence schema
+  2 distinguishes `ordinary_command_verified` on Linux/macOS from
+  `platform_not_supported` on Windows through `wrapper_outcome`, binds the
+  rendered source digest only where applicable, and records wrapper source
+  attempts. Each native job uploads one bounded document containing target and
+  observed host,
   revision, archive, command, bundle, and command-specific plan identities,
   fixed attempt/fault counts, and leak booleans. A dependent job pairs those
   documents with the five actual candidate archives, recomputes their hashes,
@@ -455,7 +483,7 @@ snapshots, transcripts, and agent reasoning are absent.
 - Architecture and public guards own dependency direction and secret-free
   repository state.
 
-## Transform-runtime milestone gate
+## Host-neutral wrapper milestone gate
 
 This milestone is complete only when all of the following are true on the same
 tree:
@@ -470,24 +498,38 @@ tree:
    covers exact selector encoding, preview/execute plan-digest equality,
    selected/renamed typed JSON, no raw-output leak, and exactly one source
    attempt per command;
-6. the production-composition recovery matrix covers all 27 preview faults,
+6. `wrapper render` and `wrapper run` catalog, typed-argv, output-authority,
+   fault, and scoped-help contracts match the implementation; `wrapper run`
+   requires the explicit `--` separator and emits one compact JSON value plus
+   LF on success;
+7. deterministic binding/render tests cover portable command-name eligibility,
+   POSIX quoting, exact bundle and runtime closure, whole-surface runtime
+   admission, hostile argv forwarding, and no host fields;
+8. application and CLI tests prove direct preview/wrapper plan-digest parity,
+   bundle/runtime/source drift rejection at zero source attempts, exact one-
+   attempt success, no maintainer envelope, and no raw fallback;
+9. the production-composition recovery matrix covers all 27 preview faults,
    all 28 execute pre-start phase cases at zero attempts, and all 15 execute
    post-start phase cases at one non-retryable attempt, with exact scoped-help
    parity and no raw or secret canary leak;
-7. retired authorization schemas fail with zero source attempts and legacy
+10. retired authorization schemas fail with zero source attempts and legacy
    `plan preview` remains migration-only;
-8. exact scoped agent help publishes the finite source-catalog,
+11. exact scoped agent help publishes the finite source-catalog,
    specification-authoring, and runtime-admission contracts used by the
    installed-artifact journey;
-9. `task release:check` replays the platform-native exact archive, and CI defines
+12. `task release:check` replays the platform-native exact archive, and CI defines
    required native jobs for Linux amd64/arm64, macOS amd64/arm64, and Windows
    amd64; a dependent aggregation job verifies the exact five evidence
    documents and five candidate archive hashes, and the release publish job
-   depends on that aggregate;
-10. `task check` passes;
-11. `task security` passes;
-12. `task public:check` passes; and
-13. repository search finds no live source-wrapper requirement for
+   depends on that aggregate. Linux/macOS rows activate the ordinary POSIX
+   command, while Windows proves structured unsupported rendering with zero
+   wrapper source attempts;
+13. evidence schema 2 records `wrapper_outcome`, the applicable rendered-source
+   digest, and wrapper source-attempt count without claiming caller attestation;
+14. `task check` passes;
+15. `task security` passes;
+16. `task public:check` passes; and
+17. repository search finds no live source-wrapper requirement for
    allow/confirm/deny, source read/create/write, or source target/impact outside
    explicit migration and superseded-history contexts.
 
@@ -499,8 +541,9 @@ runtime evidence.
 
 The gate does not claim identity-wrapper or argv-only-transform execution,
 original-preserving optimization, external-processor execution, raw execution,
-host-neutral wrapper materialization, arbitrary transformer integration, support for a source CLI
-beyond an accepted adapter contract, or publication authorization.
+persistent wrapper installation or executable shims, Windows POSIX activation,
+arbitrary transformer integration, support for a source CLI beyond an accepted
+adapter contract, executable attestation, or publication authorization.
 
 ## Evidence discipline
 
