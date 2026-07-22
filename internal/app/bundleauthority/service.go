@@ -12,6 +12,7 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/bundletrust"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
+	"github.com/tasuku43/atsura/internal/domain/processorprocess"
 	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
 )
@@ -36,6 +37,10 @@ type IdentityPort interface {
 	Identify(context.Context, string) (sourceprocess.Identity, error)
 }
 
+type ProcessorIdentityPort interface {
+	Identify(context.Context, string) (processorprocess.Identity, error)
+}
+
 type TrustPort interface {
 	Inspect(context.Context, string) bundletrust.State
 	Add(context.Context, string) (bool, error)
@@ -50,31 +55,53 @@ type Service struct {
 	identity     IdentityPort
 	trust        TrustPort
 	confirmation ConfirmationPort
+	processors   ProcessorIdentityPort
+	invalid      bool
+}
+
+type ProcessorStatus struct {
+	Contract     string
+	AdapterKind  string
+	Version      string
+	ResolvedPath string
+	SHA256       string
+	Size         int64
+	State        bundletrust.ProcessorState
 }
 
 type StatusResult struct {
-	BundleDigest          string
-	CatalogDigest         string
-	SpecificationDigest   string
-	Adoption              bundletrust.State
-	Source                bundletrust.SourceState
-	Adopted               bool
-	SourcePath            string
-	SourceSHA256          string
-	SourceVersion         string
-	SourceProcessAttempts int
+	BundleDigest             string
+	CatalogDigest            string
+	SpecificationDigest      string
+	Adoption                 bundletrust.State
+	Source                   bundletrust.SourceState
+	Adopted                  bool
+	SourcePath               string
+	SourceSHA256             string
+	SourceVersion            string
+	Processors               []ProcessorStatus
+	SourceProcessAttempts    int
+	ProcessorProcessAttempts int
 }
 
 type TrustResult struct {
-	BundleDigest          string
-	Adopted               bool
-	AlreadyAdopted        bool
-	Source                bundletrust.SourceState
-	SourceProcessAttempts int
+	BundleDigest             string
+	Adopted                  bool
+	AlreadyAdopted           bool
+	Source                   bundletrust.SourceState
+	Processors               []ProcessorStatus
+	SourceProcessAttempts    int
+	ProcessorProcessAttempts int
 }
 
-func New(bundles BundlePort, identity IdentityPort, trust TrustPort, confirmation ConfirmationPort) *Service {
-	return &Service{bundles: bundles, identity: identity, trust: trust, confirmation: confirmation}
+func New(bundles BundlePort, identity IdentityPort, trust TrustPort, confirmation ConfirmationPort, processors ...ProcessorIdentityPort) *Service {
+	service := &Service{bundles: bundles, identity: identity, trust: trust, confirmation: confirmation}
+	if len(processors) > 1 {
+		service.invalid = true
+	} else if len(processors) == 1 {
+		service.processors = processors[0]
+	}
+	return service
 }
 
 func (s *Service) Status(ctx context.Context, intent operation.Intent, path string) (StatusResult, error) {
@@ -88,9 +115,10 @@ func (s *Service) Status(ctx context.Context, intent operation.Intent, path stri
 	result := StatusResult{BundleDigest: digest, CatalogDigest: bundle.CatalogDigest, SpecificationDigest: bundle.SpecificationDigest,
 		Adoption: s.trust.Inspect(ctx, digest), SourcePath: bundle.Catalog.Source.ResolvedPath,
 		SourceSHA256: bundle.Catalog.Source.SHA256, SourceVersion: bundle.Catalog.Source.Version,
-		SourceProcessAttempts: 0,
+		SourceProcessAttempts: 0, ProcessorProcessAttempts: 0,
 	}
 	result.Source = s.sourceState(ctx, bundle)
+	result.Processors = s.processorStates(ctx, bundle)
 	result.Adopted = result.Adoption == bundletrust.StateAdopted
 	return result, nil
 }
@@ -111,8 +139,14 @@ func (s *Service) Trust(ctx context.Context, intent operation.Intent, path strin
 	if sourceState != bundletrust.SourceCurrent {
 		return TrustResult{}, fault.New(fault.KindRejected, "bundle_source_drift", "The bundle source identity is not current, so adoption was not recorded.", false, statusAction())
 	}
+	processorStates := s.processorStates(ctx, bundle)
+	for _, processor := range processorStates {
+		if processor.State != bundletrust.ProcessorCurrent {
+			return TrustResult{}, fault.New(fault.KindRejected, "bundle_processor_drift", "A bundle processor identity is not current, so adoption was not recorded.", false, statusAction())
+		}
+	}
 	if state == bundletrust.StateAdopted {
-		return TrustResult{BundleDigest: digest, Adopted: true, AlreadyAdopted: true, Source: sourceState}, nil
+		return TrustResult{BundleDigest: digest, Adopted: true, AlreadyAdopted: true, Source: sourceState, Processors: processorStates}, nil
 	}
 	summary := summarize(bundle, digest)
 	policy := confirmationPolicy{confirmation: s.confirmation, summary: summary, expected: intent}
@@ -125,7 +159,7 @@ func (s *Service) Trust(ctx context.Context, intent operation.Intent, path strin
 	if err != nil {
 		return TrustResult{}, err
 	}
-	return TrustResult{BundleDigest: digest, Adopted: true, Source: sourceState}, nil
+	return TrustResult{BundleDigest: digest, Adopted: true, Source: sourceState, Processors: processorStates}, nil
 }
 
 func (s *Service) preflight(ctx context.Context, intent operation.Intent, command string, effect operation.Effect) error {
@@ -138,13 +172,37 @@ func (s *Service) preflight(ctx context.Context, intent operation.Intent, comman
 	if err := intent.Validate(); err != nil || intent.Command != command || intent.Effect != effect {
 		return fmt.Errorf("bundle authority requires the exact %s intent", command)
 	}
-	if s == nil || portcheck.IsNil(s.bundles) || portcheck.IsNil(s.identity) || portcheck.IsNil(s.trust) {
+	if s == nil || s.invalid || portcheck.IsNil(s.bundles) || portcheck.IsNil(s.identity) || portcheck.IsNil(s.trust) {
 		return fmt.Errorf("bundle authority adapters are not configured")
 	}
 	if effect == operation.EffectWrite && portcheck.IsNil(s.confirmation) {
 		return fmt.Errorf("bundle adoption confirmation is not configured")
 	}
 	return nil
+}
+
+func (s *Service) processorStates(ctx context.Context, bundle tailoringbundle.Bundle) []ProcessorStatus {
+	result := make([]ProcessorStatus, len(bundle.Processors))
+	for index, binding := range bundle.Processors {
+		observation := binding.Observation
+		status := ProcessorStatus{
+			Contract: binding.Contract, AdapterKind: observation.Adapter.Kind, Version: observation.Version,
+			ResolvedPath: observation.Identity.ResolvedPath, SHA256: observation.Identity.SHA256, Size: observation.Identity.Size,
+			State: bundletrust.ProcessorUnavailable,
+		}
+		if !portcheck.IsNil(s.processors) {
+			identity, err := s.processors.Identify(ctx, observation.Identity.ResolvedPath)
+			if err == nil {
+				if identity == observation.Identity {
+					status.State = bundletrust.ProcessorCurrent
+				} else {
+					status.State = bundletrust.ProcessorDrifted
+				}
+			}
+		}
+		result[index] = status
+	}
+	return result
 }
 
 func (s *Service) sourceState(ctx context.Context, bundle tailoringbundle.Bundle) bundletrust.SourceState {
@@ -162,7 +220,15 @@ func summarize(bundle tailoringbundle.Bundle, digest string) bundletrust.Summary
 	result := bundletrust.Summary{BundleDigest: digest, CatalogDigest: bundle.CatalogDigest, SpecificationDigest: bundle.SpecificationDigest,
 		SourcePath: bundle.Catalog.Source.ResolvedPath, SourceSHA256: bundle.Catalog.Source.SHA256,
 		SourceVersion: bundle.Catalog.Source.Version, SurfaceDefault: string(bundle.Specification.Surface.Default),
-		IncludedCommandCount: len(bundle.Surface)}
+		IncludedCommandCount: len(bundle.Surface), Processors: make([]bundletrust.ProcessorSummary, len(bundle.Processors))}
+	for index, binding := range bundle.Processors {
+		observation := binding.Observation
+		result.Processors[index] = bundletrust.ProcessorSummary{
+			Contract: binding.Contract, AdapterKind: observation.Adapter.Kind, Version: observation.Version,
+			ResolvedPath: observation.Identity.ResolvedPath, SHA256: observation.Identity.SHA256, Size: observation.Identity.Size,
+			InputFormat: binding.InputFormat, OutputFormat: binding.OutputFormat,
+		}
+	}
 	for _, entry := range bundle.Specification.Commands {
 		if entry.Presence == tailoringbundle.PresenceExclude {
 			result.ExcludedCommandCount++
@@ -183,6 +249,9 @@ func summarize(bundle tailoringbundle.Bundle, digest string) bundletrust.Summary
 		}
 		if entry.Wrapper.Output != nil {
 			result.OutputTransformationCount++
+			if entry.Wrapper.Output.Kind == tailoringbundle.OutputKindOptimizer {
+				result.OptimizerResultCount++
+			}
 		} else {
 			result.SourceStreamResultCount++
 		}

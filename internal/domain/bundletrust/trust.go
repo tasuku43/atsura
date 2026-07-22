@@ -33,6 +33,29 @@ const (
 	SourceUnavailable SourceState = "unavailable"
 )
 
+// ProcessorState reports whether one exact bundle-bound processor executable
+// can still be identified without starting it.
+type ProcessorState string
+
+const (
+	ProcessorCurrent     ProcessorState = "current"
+	ProcessorDrifted     ProcessorState = "drifted"
+	ProcessorUnavailable ProcessorState = "unavailable"
+)
+
+// ProcessorSummary is the exact non-secret processor evidence shown before
+// adoption. It contains no output bytes or ambient configuration.
+type ProcessorSummary struct {
+	Contract     string
+	AdapterKind  string
+	Version      string
+	ResolvedPath string
+	SHA256       string
+	Size         int64
+	InputFormat  string
+	OutputFormat string
+}
+
 // Receipt records only exact reviewed bundle identity. Surface, wrapper, and
 // source facts are recomputed from the validated bundle whenever status is
 // requested.
@@ -67,6 +90,8 @@ type Summary struct {
 	AfterActionCount          int
 	OutputTransformationCount int
 	SourceStreamResultCount   int
+	OptimizerResultCount      int
+	Processors                []ProcessorSummary
 }
 
 func EmptyStore() Store {
