@@ -45,7 +45,7 @@ func goRuntimePlan(t *testing.T, path, callerArgs, appendArgs []string, output *
 		Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultInherit, Include: []string{}, Exclude: []string{}},
 		Wrapper: &tailoringbundle.Wrapper{
 			Kind: wrapperKind, Before: []tailoringbundle.StageAction{},
-			Invoke: tailoringbundle.Invocation{AppendArgs: appendArgs}, Output: output, After: []tailoringbundle.StageAction{},
+			Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: appendArgs}, Output: output, After: []tailoringbundle.StageAction{},
 		},
 	}
 	specification := tailoringbundle.SortSpecification(tailoringbundle.Specification{
@@ -162,7 +162,7 @@ func goIdentityEntry(path []string, optionDefault tailoringbundle.SurfaceDefault
 		Options: &tailoringbundle.OptionSurface{Default: optionDefault, Include: []string{}, Exclude: []string{}},
 		Wrapper: &tailoringbundle.Wrapper{
 			Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{},
-			Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{},
+			Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{}}, After: []tailoringbundle.StageAction{},
 		},
 	}
 }
@@ -384,6 +384,16 @@ func TestVerifySurfaceRejectsObservedGrammarAndTransforms(t *testing.T) {
 		bundle := goSurfaceBundle(t, []sourcecatalog.Command{goCommand("test")}, []tailoringbundle.CommandEntry{entry}, AdapterKind, ContractVersion, "go1.26.5")
 		assertGoAdmission(t, VerifySurface(bundle), ErrRuntimeWrapperOutput)
 	})
+}
+
+func TestWrapperClassifiersRejectOptionDefaults(t *testing.T) {
+	defaults := []tailoringbundle.OptionDefault{{Option: "--limit", Value: "30"}}
+	if identityWrapper(tailoringbundle.WrapperIdentity, []tailoringbundle.StageAction{}, defaults, []string{}, nil, []tailoringbundle.StageAction{}) {
+		t.Fatal("Go identity wrapper admitted an option default")
+	}
+	if optimizerWrapper(tailoringbundle.WrapperTransform, []tailoringbundle.StageAction{}, defaults, []string{"-json"}, goTestOptimizerOutput(), []tailoringbundle.StageAction{}) {
+		t.Fatal("Go optimizer wrapper admitted an option default")
+	}
 }
 
 func withGoInvocationArgs(t *testing.T, plan tailoringplan.Plan, afterTest []string) tailoringplan.Plan {

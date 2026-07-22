@@ -13,10 +13,20 @@ import (
 )
 
 func runtimePlan(t *testing.T, path []string, appendArgs []string, output *tailoringbundle.Output) tailoringplan.Plan {
+	return runtimePlanWithDefaults(t, path, []tailoringbundle.OptionDefault{}, appendArgs, output, []string{})
+}
+
+func runtimePlanWithDefaults(t *testing.T, path []string, defaults []tailoringbundle.OptionDefault, appendArgs []string, output *tailoringbundle.Output, callerTail []string) tailoringplan.Plan {
 	t.Helper()
+	options := []sourcecatalog.Option{{Name: "--json", TakesValue: true}}
+	for _, configured := range defaults {
+		if configured.Option != "--json" {
+			options = append(options, sourcecatalog.Option{Name: configured.Option, TakesValue: true})
+		}
+	}
 	command := sourcecatalog.Command{
 		Path: path, Summary: "List records", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin,
-		Options:          []sourcecatalog.Option{{Name: "--json", TakesValue: true}},
+		Options:          options,
 		StructuredOutput: []sourcecatalog.StructuredOutput{{Format: "json", SelectorFlag: "--json", Fields: []string{"number", "title"}}},
 	}
 	catalog := sourcecatalog.Sort(sourcecatalog.Catalog{
@@ -33,14 +43,14 @@ func runtimePlan(t *testing.T, path []string, appendArgs []string, output *tailo
 		t.Fatal(err)
 	}
 	wrapperKind := tailoringbundle.WrapperTransform
-	if output == nil && len(appendArgs) == 0 {
+	if output == nil && len(defaults) == 0 && len(appendArgs) == 0 {
 		wrapperKind = tailoringbundle.WrapperIdentity
 	}
 	entry := tailoringbundle.CommandEntry{
 		Command: path, Presence: tailoringbundle.PresenceInclude, Reason: "Return a reviewed compact result.",
 		Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultInherit, Include: []string{}, Exclude: []string{}},
 		Wrapper: &tailoringbundle.Wrapper{
-			Kind: wrapperKind, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: appendArgs}, Output: output, After: []tailoringbundle.StageAction{},
+			Kind: wrapperKind, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{OptionDefaults: append([]tailoringbundle.OptionDefault{}, defaults...), AppendArgs: appendArgs}, Output: output, After: []tailoringbundle.StageAction{},
 		},
 	}
 	specification := tailoringbundle.SortSpecification(tailoringbundle.Specification{
@@ -57,11 +67,17 @@ func runtimePlan(t *testing.T, path []string, appendArgs []string, output *tailo
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := tailoringplan.Build(bundleDigest, bundle, sourceprocess.Identity{ResolvedPath: "/opt/bin/gh", SHA256: strings.Repeat("a", 64), Size: 2048}, tailoringplan.Attempt{Executable: "gh", Args: path})
+	args := append(append([]string{}, path...), callerTail...)
+	plan, err := tailoringplan.Build(bundleDigest, bundle, sourceprocess.Identity{ResolvedPath: "/opt/bin/gh", SHA256: strings.Repeat("a", 64), Size: 2048}, tailoringplan.Attempt{Executable: "gh", Args: args})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return plan
+}
+
+func limitDefaultRuntimePlan(t *testing.T, callerTail ...string) tailoringplan.Plan {
+	t.Helper()
+	return runtimePlanWithDefaults(t, []string{"pr", "list"}, []tailoringbundle.OptionDefault{{Option: "--limit", Value: "30"}}, []string{}, nil, callerTail)
 }
 
 func transformRuntimePlan(t *testing.T, path ...string) tailoringplan.Plan {
@@ -115,7 +131,7 @@ func admittedSurfaceWrapper() tailoringbundle.Wrapper {
 	return tailoringbundle.Wrapper{
 		Kind:   tailoringbundle.WrapperTransform,
 		Before: []tailoringbundle.StageAction{},
-		Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--json=number,title"}},
+		Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{"--json=number,title"}},
 		Output: runtimeProjectionOutput(),
 		After:  []tailoringbundle.StageAction{},
 	}
@@ -185,6 +201,70 @@ func TestVerifyRuntimeProvesSupportedGitHubSourceStreamWrappers(t *testing.T) {
 			if err := verifier.VerifyRuntime(plan); err != nil {
 				t.Fatal(err)
 			}
+		})
+	}
+}
+
+func TestVerifyRuntimeAdmitsLimitDefaultAndCallerOverride(t *testing.T) {
+	tests := []struct {
+		name        string
+		callerTail  []string
+		wantArgs    []string
+		wantApplied int
+	}{
+		{name: "applied", callerTail: []string{}, wantArgs: []string{"pr", "list", "--limit=30"}, wantApplied: 1},
+		{name: "inline override", callerTail: []string{"--limit=2"}, wantArgs: []string{"pr", "list", "--limit=2"}, wantApplied: 0},
+		{name: "separated override", callerTail: []string{"--limit", "2"}, wantArgs: []string{"pr", "list", "--limit", "2"}, wantApplied: 0},
+		{name: "repeated override", callerTail: []string{"--limit=2", "--limit", "3"}, wantArgs: []string{"pr", "list", "--limit=2", "--limit", "3"}, wantApplied: 0},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			plan := limitDefaultRuntimePlan(t, test.callerTail...)
+			if !equalRuntimeStrings(plan.Stages.Invoke.Args, test.wantArgs) || len(plan.Stages.Invoke.OptionDefaults) != 1 || len(plan.Stages.Invoke.AppliedOptionDefaults) != test.wantApplied {
+				t.Fatalf("invoke = %+v, want args=%v applied=%d", plan.Stages.Invoke, test.wantArgs, test.wantApplied)
+			}
+			if err := VerifyRuntime(plan); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestVerifyRuntimeRejectsExplicitEmptyDefaultOverride(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		args []string
+	}{
+		{name: "inline", args: []string{"--limit="}},
+		{name: "separated", args: []string{"--limit", ""}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			plan := limitDefaultRuntimePlan(t, test.args...)
+			if len(plan.Stages.Invoke.AppliedOptionDefaults) != 0 {
+				t.Fatalf("explicit empty value applied defaults: %+v", plan.Stages.Invoke.AppliedOptionDefaults)
+			}
+			assertRuntimeAdmission(t, VerifyRuntime(plan), ErrRuntimeUnsupported, ErrRuntimeArgvGrammar)
+		})
+	}
+}
+
+func TestVerifyRuntimeRejectsDefaultsOutsideFiniteTupleEvenWhenSuppressed(t *testing.T) {
+	tests := []struct {
+		name       string
+		path       []string
+		configured tailoringbundle.OptionDefault
+		callerTail []string
+	}{
+		{name: "issue limit", path: []string{"issue", "list"}, configured: tailoringbundle.OptionDefault{Option: "--limit", Value: "30"}, callerTail: []string{"--limit=2"}},
+		{name: "pr state", path: []string{"pr", "list"}, configured: tailoringbundle.OptionDefault{Option: "--state", Value: "open"}, callerTail: []string{"--state=open"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			plan := runtimePlanWithDefaults(t, test.path, []tailoringbundle.OptionDefault{test.configured}, []string{}, nil, test.callerTail)
+			if len(plan.Stages.Invoke.AppliedOptionDefaults) != 0 {
+				t.Fatalf("suppressed default was applied: %+v", plan.Stages.Invoke.AppliedOptionDefaults)
+			}
+			assertRuntimeAdmission(t, VerifyRuntime(plan), ErrRuntimeUnsupported, ErrRuntimeArgvGrammar)
 		})
 	}
 }
@@ -323,11 +403,15 @@ func TestVerifySurfaceAdmitsOneCompleteSourceStreamSurface(t *testing.T) {
 	}{
 		{
 			name: "identity", path: []string{"pr", "list"},
-			wrapper: tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{}},
+			wrapper: tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{}}, After: []tailoringbundle.StageAction{}},
 		},
 		{
 			name: "append only", path: []string{"issue", "list"},
-			wrapper: tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--limit=1", "--label=one", "--label=two"}}, After: []tailoringbundle.StageAction{}},
+			wrapper: tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{"--limit=1", "--label=one", "--label=two"}}, After: []tailoringbundle.StageAction{}},
+		},
+		{
+			name: "default only", path: []string{"pr", "list"},
+			wrapper: tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{{Option: "--limit", Value: "30"}}, AppendArgs: []string{}}, After: []tailoringbundle.StageAction{}},
 		},
 	}
 	for _, test := range tests {
@@ -336,6 +420,31 @@ func TestVerifySurfaceAdmitsOneCompleteSourceStreamSurface(t *testing.T) {
 			if err := NewRuntimeVerifier().VerifySurface(bundle); err != nil {
 				t.Fatal(err)
 			}
+		})
+	}
+}
+
+func TestVerifySurfaceRejectsDefaultsOutsideFiniteTuple(t *testing.T) {
+	tests := []struct {
+		name   string
+		path   []string
+		option string
+		value  string
+	}{
+		{name: "issue limit", path: []string{"issue", "list"}, option: "--limit", value: "30"},
+		{name: "pr state", path: []string{"pr", "list"}, option: "--state", value: "open"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			options := []sourcecatalog.Option{{Name: "--json", TakesValue: true}, {Name: test.option, TakesValue: true}}
+			surface := tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultExclude, Include: []string{test.option}, Exclude: []string{}}
+			wrapper := tailoringbundle.Wrapper{
+				Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{},
+				Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{{Option: test.option, Value: test.value}}, AppendArgs: []string{}},
+				After:  []tailoringbundle.StageAction{},
+			}
+			bundle := runtimeSurfaceBundle(t, test.path, options, surface, wrapper)
+			assertRuntimeAdmission(t, VerifySurface(bundle), ErrRuntimeUnsupported, ErrRuntimeArgvGrammar)
 		})
 	}
 }
@@ -354,7 +463,7 @@ func TestVerifySurfaceAdmitsMixedTwoCommandSurface(t *testing.T) {
 	issueWrapper := tailoringbundle.Wrapper{
 		Kind:   tailoringbundle.WrapperTransform,
 		Before: []tailoringbundle.StageAction{},
-		Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--limit=1"}},
+		Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{"--limit=1"}},
 		After:  []tailoringbundle.StageAction{},
 	}
 	prSurface := baseSurface
@@ -463,7 +572,7 @@ func TestVerifySurfaceRejectsPartialSurfaces(t *testing.T) {
 		{
 			name: "missing fixed selector", path: []string{"pr", "list"}, options: baseOptions, surface: baseSurface,
 			wrapper: tailoringbundle.Wrapper{
-				Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--limit=1"}},
+				Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{"--limit=1"}},
 				Output: runtimeProjectionOutput(), After: []tailoringbundle.StageAction{},
 			},
 			legacy: ErrRuntimeSelector, category: ErrRuntimeSelectorConflict,
@@ -471,12 +580,12 @@ func TestVerifySurfaceRejectsPartialSurfaces(t *testing.T) {
 		{
 			name: "source stream exposed selector", path: []string{"pr", "list"}, options: baseOptions,
 			surface: tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultExclude, Include: []string{"--json"}, Exclude: []string{}},
-			wrapper: tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{}},
+			wrapper: tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{}}, After: []tailoringbundle.StageAction{}},
 			legacy:  ErrRuntimeSelector, category: ErrRuntimeSelectorConflict,
 		},
 		{
 			name: "source stream unmodeled append", path: []string{"pr", "list"}, options: baseOptions, surface: baseSurface,
-			wrapper: tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--unknown=1"}}, After: []tailoringbundle.StageAction{}},
+			wrapper: tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{"--unknown=1"}}, After: []tailoringbundle.StageAction{}},
 			legacy:  ErrRuntimeUnsupported, category: ErrRuntimeArgvGrammar,
 		},
 	}
@@ -489,6 +598,18 @@ func TestVerifySurfaceRejectsPartialSurfaces(t *testing.T) {
 }
 
 func ptrWrapper(value tailoringbundle.Wrapper) *tailoringbundle.Wrapper { return &value }
+
+func equalRuntimeStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
 
 func assertRuntimeAdmission(t *testing.T, err, legacy, category error) {
 	t.Helper()

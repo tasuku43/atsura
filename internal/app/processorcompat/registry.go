@@ -200,7 +200,7 @@ func (r *Registry) DefaultEntry(catalog sourcecatalog.Catalog, observation proce
 		Wrapper: &tailoringbundle.Wrapper{
 			Kind:   tailoringbundle.WrapperTransform,
 			Before: []tailoringbundle.StageAction{},
-			Invoke: tailoringbundle.Invocation{AppendArgs: []string{"-json"}},
+			Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{"-json"}},
 			Output: &tailoringbundle.Output{
 				Kind: tailoringbundle.OutputKindOptimizer,
 				Optimizer: &tailoringbundle.Optimizer{
@@ -263,6 +263,7 @@ func (r *Registry) VerifyPlan(plan tailoringplan.Plan) error {
 		return compatibilityError(ErrorPlan, "plan argv is outside the no-argument tuple")
 	}
 	if plan.Stages.Output == nil || !exactOptimizerOutput(*plan.Stages.Output) ||
+		len(plan.Stages.Invoke.OptionDefaults) != 0 || len(plan.Stages.Invoke.AppliedOptionDefaults) != 0 ||
 		len(plan.Stages.Invoke.AppendedArgs) != 1 || plan.Stages.Invoke.AppendedArgs[0] != "-json" {
 		return compatibilityError(ErrorPlan, "plan output stage is not canonical")
 	}
@@ -315,7 +316,8 @@ func exactOptionSurface(value tailoringbundle.OptionSurface) bool {
 
 func exactOptimizerWrapper(value tailoringbundle.Wrapper) bool {
 	return value.Kind == tailoringbundle.WrapperTransform && value.Before != nil && len(value.Before) == 0 &&
-		value.After != nil && len(value.After) == 0 && reflect.DeepEqual(value.Invoke.AppendArgs, []string{"-json"}) &&
+		value.After != nil && len(value.After) == 0 && value.Invoke.OptionDefaults != nil && len(value.Invoke.OptionDefaults) == 0 &&
+		reflect.DeepEqual(value.Invoke.AppendArgs, []string{"-json"}) &&
 		value.Output != nil && exactOptimizerOutput(*value.Output)
 }
 

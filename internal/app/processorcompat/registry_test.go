@@ -212,7 +212,7 @@ func TestVerifySurfaceAcceptsCanonicalTupleAndRejectsCompatibleLookingVariants(t
 		entry := tailoringbundle.CommandEntry{
 			Command: []string{"test"}, Presence: tailoringbundle.PresenceInclude, Reason: "identity",
 			Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultInherit, Include: []string{}, Exclude: []string{}},
-			Wrapper: &tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{}},
+			Wrapper: &tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{}}, After: []tailoringbundle.StageAction{}},
 		}
 		value := compileBundle(t, catalog, entry)
 		assertCompatibilityError(t, registry.VerifySurface(value), processorcompat.ErrSurface, processorcompat.ErrorSurface)

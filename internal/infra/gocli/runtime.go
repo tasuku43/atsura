@@ -94,12 +94,12 @@ func VerifyRuntime(plan tailoringplan.Plan) error {
 	}
 	switch plan.ResultMode {
 	case tailoringplan.ResultModeSourceStreamPassthrough:
-		if !identityWrapper(plan.WrapperKind, plan.Stages.Before, plan.Stages.Invoke.AppendedArgs, plan.Stages.Output, plan.Stages.After) || len(plan.Stages.Invoke.Args) != 1 || plan.Stages.Invoke.Args[0] != "test" {
+		if !identityWrapper(plan.WrapperKind, plan.Stages.Before, plan.Stages.Invoke.OptionDefaults, plan.Stages.Invoke.AppendedArgs, plan.Stages.Output, plan.Stages.After) || len(plan.Stages.Invoke.Args) != 1 || plan.Stages.Invoke.Args[0] != "test" {
 			return admissionError(ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
 		}
 	case tailoringplan.ResultModeOriginalPreservingOptimizer:
 		optimizer, present, err := plan.OptimizerPlan()
-		if err != nil || !present || !optimizerWrapper(plan.WrapperKind, plan.Stages.Before, plan.Stages.Invoke.AppendedArgs, plan.Stages.Output, plan.Stages.After) || optimizer.Input != "go_test_jsonl" || !optimizer.AllowOriginalOutput {
+		if err != nil || !present || !optimizerWrapper(plan.WrapperKind, plan.Stages.Before, plan.Stages.Invoke.OptionDefaults, plan.Stages.Invoke.AppendedArgs, plan.Stages.Output, plan.Stages.After) || optimizer.Input != "go_test_jsonl" || !optimizer.AllowOriginalOutput {
 			return admissionError(ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
 		}
 		if len(plan.Stages.Invoke.Args) != 2 || plan.Stages.Invoke.Args[0] != "test" || plan.Stages.Invoke.Args[1] != "-json" {
@@ -139,8 +139,8 @@ func VerifySurface(bundle tailoringbundle.Bundle) error {
 	if !exactTestJSONOutput(command.StructuredOutput) {
 		return admissionError(ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
 	}
-	if !identityWrapper(entry.Wrapper.Kind, entry.Wrapper.Before, entry.Wrapper.Invoke.AppendArgs, entry.Wrapper.Output, entry.Wrapper.After) &&
-		!optimizerWrapper(entry.Wrapper.Kind, entry.Wrapper.Before, entry.Wrapper.Invoke.AppendArgs, entry.Wrapper.Output, entry.Wrapper.After) {
+	if !identityWrapper(entry.Wrapper.Kind, entry.Wrapper.Before, entry.Wrapper.Invoke.OptionDefaults, entry.Wrapper.Invoke.AppendArgs, entry.Wrapper.Output, entry.Wrapper.After) &&
+		!optimizerWrapper(entry.Wrapper.Kind, entry.Wrapper.Before, entry.Wrapper.Invoke.OptionDefaults, entry.Wrapper.Invoke.AppendArgs, entry.Wrapper.Output, entry.Wrapper.After) {
 		return admissionError(ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
 	}
 	return nil
@@ -160,12 +160,12 @@ func exactTestCommand(path []string) bool {
 	return len(path) == 1 && path[0] == "test"
 }
 
-func identityWrapper(kind tailoringbundle.WrapperKind, before []tailoringbundle.StageAction, appendArgs []string, output *tailoringbundle.Output, after []tailoringbundle.StageAction) bool {
-	return kind == tailoringbundle.WrapperIdentity && len(before) == 0 && len(appendArgs) == 0 && output == nil && len(after) == 0
+func identityWrapper(kind tailoringbundle.WrapperKind, before []tailoringbundle.StageAction, defaults []tailoringbundle.OptionDefault, appendArgs []string, output *tailoringbundle.Output, after []tailoringbundle.StageAction) bool {
+	return kind == tailoringbundle.WrapperIdentity && len(before) == 0 && len(defaults) == 0 && len(appendArgs) == 0 && output == nil && len(after) == 0
 }
 
-func optimizerWrapper(kind tailoringbundle.WrapperKind, before []tailoringbundle.StageAction, appendArgs []string, output *tailoringbundle.Output, after []tailoringbundle.StageAction) bool {
-	return kind == tailoringbundle.WrapperTransform && len(before) == 0 && len(after) == 0 && len(appendArgs) == 1 && appendArgs[0] == "-json" && output != nil && output.Kind == tailoringbundle.OutputKindOptimizer && output.Projection == nil && output.Optimizer != nil && output.Optimizer.Input == "go_test_jsonl" && output.Optimizer.AllowOriginalOutput
+func optimizerWrapper(kind tailoringbundle.WrapperKind, before []tailoringbundle.StageAction, defaults []tailoringbundle.OptionDefault, appendArgs []string, output *tailoringbundle.Output, after []tailoringbundle.StageAction) bool {
+	return kind == tailoringbundle.WrapperTransform && len(before) == 0 && len(after) == 0 && len(defaults) == 0 && len(appendArgs) == 1 && appendArgs[0] == "-json" && output != nil && output.Kind == tailoringbundle.OutputKindOptimizer && output.Projection == nil && output.Optimizer != nil && output.Optimizer.Input == "go_test_jsonl" && output.Optimizer.AllowOriginalOutput
 }
 
 func exactTestJSONOutput(values []sourcecatalog.StructuredOutput) bool {

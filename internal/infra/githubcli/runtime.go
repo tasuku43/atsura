@@ -98,6 +98,9 @@ func VerifyRuntime(plan tailoringplan.Plan) error {
 	if _, ok := runtimeArgContracts[path]; !ok {
 		return admissionError(ErrRuntimeUnsupported, ErrRuntimeCommand, runtimeadmission.CategoryCommand)
 	}
+	if !admittedOptionDefaults(path, plan.Stages.Invoke.OptionDefaults) {
+		return admissionError(ErrRuntimeUnsupported, ErrRuntimeArgvGrammar, runtimeadmission.CategoryArgvGrammar)
+	}
 	output, present, err := plan.OutputPlan()
 	if err != nil {
 		return admissionError(ErrRuntimeUnsupported, ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
@@ -112,7 +115,7 @@ func VerifyRuntime(plan tailoringplan.Plan) error {
 		want = "--json=" + strings.Join(output.Select, ",")
 		wantMatches = 1
 	case tailoringplan.ResultModeSourceStreamPassthrough:
-		if present || !admittedSourceStreamWrapper(plan.WrapperKind, plan.Stages.Before, plan.Stages.Invoke.AppendedArgs, plan.Stages.Output, plan.Stages.After) {
+		if present || !admittedSourceStreamWrapper(plan.WrapperKind, plan.Stages.Before, plan.Stages.Invoke.OptionDefaults, plan.Stages.Invoke.AppendedArgs, plan.Stages.Output, plan.Stages.After) {
 			return admissionError(ErrRuntimeUnsupported, ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
 		}
 	default:
@@ -157,6 +160,9 @@ func verifySurfaceEntry(catalog sourcecatalog.Catalog, entry tailoringbundle.Sur
 	if !ok {
 		return admissionError(ErrRuntimeUnsupported, ErrRuntimeCommand, runtimeadmission.CategoryCommand)
 	}
+	if !admittedOptionDefaults(path, entry.Wrapper.Invoke.OptionDefaults) {
+		return admissionError(ErrRuntimeUnsupported, ErrRuntimeArgvGrammar, runtimeadmission.CategoryArgvGrammar)
+	}
 	wantedSelector := ""
 	wantedMatches := 0
 	if entry.Wrapper.Output != nil {
@@ -165,7 +171,7 @@ func verifySurfaceEntry(catalog sourcecatalog.Catalog, entry tailoringbundle.Sur
 		}
 		wantedSelector = "--json=" + strings.Join(entry.Wrapper.Output.Projection.Select, ",")
 		wantedMatches = 1
-	} else if !admittedSourceStreamWrapper(entry.Wrapper.Kind, entry.Wrapper.Before, entry.Wrapper.Invoke.AppendArgs, entry.Wrapper.Output, entry.Wrapper.After) {
+	} else if !admittedSourceStreamWrapper(entry.Wrapper.Kind, entry.Wrapper.Before, entry.Wrapper.Invoke.OptionDefaults, entry.Wrapper.Invoke.AppendArgs, entry.Wrapper.Output, entry.Wrapper.After) {
 		return admissionError(ErrRuntimeUnsupported, ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
 	}
 	matches, err := verifyRuntimeArgs(path, entry.Wrapper.Invoke.AppendArgs, wantedSelector)
@@ -205,15 +211,22 @@ func verifySurfaceEntry(catalog sourcecatalog.Catalog, entry tailoringbundle.Sur
 	return nil
 }
 
-func admittedSourceStreamWrapper(kind tailoringbundle.WrapperKind, before []tailoringbundle.StageAction, appendArgs []string, output *tailoringbundle.Output, after []tailoringbundle.StageAction) bool {
+func admittedOptionDefaults(path string, defaults []tailoringbundle.OptionDefault) bool {
+	if len(defaults) == 0 {
+		return true
+	}
+	return path == "pr list" && len(defaults) == 1 && defaults[0].Option == "--limit"
+}
+
+func admittedSourceStreamWrapper(kind tailoringbundle.WrapperKind, before []tailoringbundle.StageAction, defaults []tailoringbundle.OptionDefault, appendArgs []string, output *tailoringbundle.Output, after []tailoringbundle.StageAction) bool {
 	if len(before) != 0 || len(after) != 0 || output != nil {
 		return false
 	}
 	switch kind {
 	case tailoringbundle.WrapperIdentity:
-		return len(appendArgs) == 0
+		return len(defaults) == 0 && len(appendArgs) == 0
 	case tailoringbundle.WrapperTransform:
-		return len(appendArgs) != 0
+		return len(defaults) != 0 || len(appendArgs) != 0
 	default:
 		return false
 	}
@@ -310,7 +323,7 @@ func verifyRuntimeArgs(path string, arguments []string, wantedSelector string) (
 			}
 			continue
 		}
-		if index+1 >= len(arguments) || strings.HasPrefix(arguments[index+1], "-") {
+		if index+1 >= len(arguments) || arguments[index+1] == "" || strings.HasPrefix(arguments[index+1], "-") {
 			return 0, admissionError(ErrRuntimeUnsupported, ErrRuntimeArgvGrammar, runtimeadmission.CategoryArgvGrammar)
 		}
 		index++
