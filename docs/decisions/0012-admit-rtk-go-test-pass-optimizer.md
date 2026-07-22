@@ -8,7 +8,8 @@
   processor isolation, provenance, and native compatibility evidence
 - Extends: ADR 0007, ADR 0009, ADR 0010, and ADR 0011
 - Supersedes: None
-- Superseded by: None
+- Superseded in part by: ADR 0013 replaces the host-specific processor
+  environment clause
 
 ## Context
 
@@ -225,6 +226,11 @@ initial runtime matrix. Apart from the finite locale/timezone and OS-required
 variables recorded by the implementation, ambient environment and credentials
 are not inherited. The executable path is absolute and no shell or `PATH`
 lookup is used.
+
+ADR 0013 supersedes the preceding environment paragraph. The current contract
+is host-neutral `atsura.processor.rtk_isolated.v2`; it keeps the generic private
+roots and RTK-owned controls, removes the host-specific variable, and retires
+v1 observations and bundles.
 
 Successful processor completion requires status zero, empty stderr, bounded
 stdout, unchanged post-run processor identity, and one of exactly two stdout

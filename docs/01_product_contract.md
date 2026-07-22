@@ -583,7 +583,9 @@ identity, and attempt counts. Go contract 2 additionally records exact
 official artifact identity for the current maintained Linux/Darwin platform,
 runs exactly one isolated no-shell `rtk --version` probe, and returns canonical
 processor-observation schema 1. It does not discover, download, install, or
-configure RTK.
+configure RTK. The observation binds host-neutral environment contract
+`atsura.processor.rtk_isolated.v2`; retired v1 observations are incompatible
+and must not build or run a bundle.
 
 `spec init` emits an exclude-by-default specification containing one included
 verified command with inherited options and an identity wrapper. It does not

@@ -162,7 +162,7 @@ go run ./cmd/atr sample read --id smp_2f4a6c8e0b1d --format json
 go run ./cmd/atr --error-format json sample read --id smp_000000000000
 ```
 
-The root agent contract must be schema version 10 with `view: index`, reveal the
+The root agent contract must be schema version 12 with `view: index`, reveal the
 `sample` namespace and both exact paths, and contain no input, output,
 authentication, error, mutation, fixed-target, or workflow detail. Its
 `scope_request` must identify the selector fields and exact invocation template.
@@ -196,22 +196,22 @@ measurements were 1,517 bytes for root agent help, 5,359 bytes for exact
 `sample read` help, and 8,359 bytes for the `sample` namespace. The 512-byte
 limit continues to bound each root selection entry.
 
-With schema 10, measured on 2026-07-22 for the plan-result-mode catalog, the
-current root is 6,333 bytes, exact `sample read` help is 6,005 bytes, and the
-`sample` namespace is 8,916 bytes. Exact artifact contracts remain scoped:
-`source inspect` is 11,338 bytes, `spec init` is 10,651 bytes, `spec validate`
-is 11,843 bytes, `bundle build` is 8,546 bytes, `bundle status` is 7,687 bytes,
-`bundle trust` is 8,903 bytes, `bundle preview` is 16,887 bytes, `bundle execute`
-is 15,571 bytes, `wrapper render` is 11,511 bytes, and `wrapper run` is 16,127
-bytes. Preview's larger scoped contract
+With schema 12, measured on 2026-07-22 for the processor-aware catalog, the
+current root is 6,854 bytes, exact `sample read` help is 6,010 bytes, and the
+`sample` namespace is 8,921 bytes. Exact artifact contracts remain scoped:
+`source inspect` is 11,379 bytes, `processor inspect` is 12,119 bytes, `spec
+init` is 14,012 bytes, `spec validate` is 12,532 bytes, `bundle build` is
+11,342 bytes, `bundle status` is 8,643 bytes, `bundle trust` is 10,074 bytes,
+`bundle preview` is 21,233 bytes, `bundle execute` is 15,643 bytes, `wrapper
+render` is 12,908 bytes, and `wrapper run` is 22,105 bytes. Preview's larger scoped contract
 includes the versioned `wrapper-plan` JSON-pointer field/type inventory. The
 root contains selection entries rather than those complete invocation and
 failure contracts.
 
-Schema 10 retains the fixed derived-scale regression with six selected
+Schema 12 retains the fixed derived-scale regression with six selected
 commands, 18 producer endpoints, 18 consumer endpoints, and 324 implicit same-
-kind edges. The grouped document is 26,225 UTF-8 bytes; a pair-expanded
-representation of the same facts is 169,699 bytes. The fixed corpus has a
+kind edges. The grouped document is 26,230 UTF-8 bytes; a pair-expanded
+representation of the same facts is 169,704 bytes. The fixed corpus has a
 65,536-byte whole-response budget. The test expands the groups in memory and
 proves exact edge-set equality, so meeting the budget cannot delete producer
 fields, consumer inputs, usage, invocation contracts, or fault recovery. This
@@ -246,8 +246,8 @@ The sample is not evidence that a real API adapter is secure. A derived CLI repe
 ### Outcome
 
 Given one installed supported source CLI, a maintainer can produce exact
-catalog evidence, create and review a schema-3 purpose-specific surface, and
-compile one deterministic schema-2 bundle without starting a bundle-backed
+schema-2 catalog evidence, create and review a schema-4 purpose-specific
+surface, and compile one deterministic schema-3 bundle without starting a bundle-backed
 source invocation.
 
 ### Runnable probe
@@ -277,7 +277,9 @@ The same public inspection contract also accepts `--adapter go-cli` when `go
 version` records a stable Go 1.26.x effective-toolchain observation. It
 performs exactly `go version`, `go help`, and `go help test`, emits the same
 vendor-neutral catalog schema with all parsed root built-ins including `test`,
-and persists no raw help. The runtime contract admits only `test`; this
+and persists no raw help. Go CLI contract 2 admits only exact no-argument
+`test`, either as an identity source-stream wrapper or as the finite
+processor-bound optimizer; this
 alternate artifact path does not imply that arbitrary Go commands or arguments
 are executable. Scenario G owns the one admitted no-argument runtime.
 
@@ -287,10 +289,10 @@ rebound. `spec init` is the executable route to a catalog-bound draft.
 
 ### Recovery probes
 
-- A schema-1 or schema-2 specification returns `invalid_input` /
+- A schema-1, schema-2, or schema-3 specification returns `invalid_input` /
   `legacy_tailoring_schema`, starts no source process, and points to exact
   `spec` help.
-- A bundle-schema-1 document returns the same stable migration code and is not
+- A bundle-schema-1 or bundle-schema-2 document returns the same stable migration code and is not
   adopted or converted.
 - Catalog digest mismatch, unverified command provenance, unknown fields,
   aliases, multiple YAML documents, unsupported option overrides, and an
@@ -312,7 +314,7 @@ covered by Scenario G.
 
 ### Outcome
 
-Given one current schema-2 bundle, a maintainer can review its exact source,
+Given one current schema-3 bundle, a maintainer can review its exact source,
 surface, wrapper, and digest summary on a controlling terminal and explicitly
 adopt that purpose-specific CLI definition without granting source-operation
 permission.
@@ -334,9 +336,10 @@ bound. Known-path discovery takes one scoped-help invocation. The first status
 reports `not_adopted`. Trust displays the exact digest and compiled
 surface/wrapper summary on the controlling terminal, counts wrappers whose
 source streams may be returned without projection, emits the conditional
-control/secret warning when that count is nonzero, and records only the digest
+control/secret warning when that count is nonzero, includes any exact
+processor binding in the authority summary, and records only the digest
 after explicit confirmation. The final status reports `adopted: true`. Status
-and trust both report `source_process_attempts: 0`.
+and trust both report zero source and processor process attempts.
 
 ### Recovery probes
 
@@ -349,7 +352,7 @@ and trust both report `source_process_attempts: 0`.
 - A malformed or mismatched bundle fails strict loading before confirmation.
 - Output failure after confirmed adoption is non-retryable and points to status
   reconciliation rather than repeating the mutation.
-- An old exact-digest receipt remains inert for a schema-2 bundle with a
+- An old exact-digest receipt remains inert for a schema-3 bundle with a
   different digest; migration never copies or removes receipts automatically.
 
 This scenario validates an Atsura-owned adoption-store mutation. Adoption is
@@ -360,7 +363,7 @@ hidden commands are inaccessible through another route.
 
 ### Outcome
 
-Given one adopted current schema-2 bundle, a maintainer can resolve an exact
+Given one adopted current schema-3 bundle, a maintainer can resolve an exact
 attempted source invocation into its complete deterministic tailored wrapper
 plan and digest without starting the source executable.
 
@@ -385,22 +388,24 @@ option surface. If the match has cataloged descendants, a following non-dash
 token that does not complete a known child is ambiguous rather than assumed to
 be positional; the caller must put an inner `--` before positional data. The
 schema-2 JSON envelope contains `plan_digest`, `plan`, and
-`source_process_attempts`. Exact schema-10 agent help declares the nested plan
-as `wrapper-plan` version 4 and publishes its typed JSON-pointer inventory. The
+`source_process_attempts`. Exact schema-12 agent help declares the nested plan
+as `wrapper-plan` version 5 and publishes its typed JSON-pointer inventory. The
 plan binds:
 
 - bundle, catalog, and specification digests;
 - exact source path/hash/size/version and adapter kind/contract version;
 - matched command and explicit or inherited surface origin;
-- the exact schema-3 specification entry for an explicit match, or JSON `null`
+- the exact schema-4 specification entry for an explicit match, or JSON `null`
   for an inherited match;
 - reason, option surface, and wrapper kind;
-- exactly one result mode, `transformed_json` or
-  `source_stream_passthrough`;
+- exactly one result mode: `transformed_json`,
+  `source_stream_passthrough`, or `original_preserving_optimizer`;
 - original and transformed argv;
 - ordered before, invoke, output, and after stages; and
 - closed stdin, inherited working-directory and environment modes, plus maximum
-  attempts, timeout, stdout, and stderr bounds for a source invocation.
+  attempts, timeout, stdout, and stderr bounds for a source invocation; and
+- when selected, the exact processor contract, identity, fixed invocation,
+  isolated environment mode, bounds, and original-output allowance.
 
 The plan digest is the SHA-256 identity of the canonical complete plan.
 Repeating preview with identical validated evidence and argv returns the same
@@ -409,7 +414,7 @@ wrapper entry whose plan declares `source_stream_passthrough`; fixture coverage
 also exercises an inherited entry, an append-argv-only wrapper, and a typed
 transforming wrapper whose plan declares `transformed_json`. Every success and
 failure reports or proves
-`source_process_attempts: 0`; no provider credential or network call is needed.
+`source_process_attempts: 0`; preview also starts zero processor processes.
 
 ### Recovery probes
 
@@ -430,7 +435,8 @@ failure reports or proves
 - Legacy `plan preview --config` remains a zero-execution
   `legacy_tailoring_schema` diagnostic; it does not dispatch to `bundle
   preview` or read the retired policy as authority.
-- Changed bundle content, source path/hash/size, or malformed plan evidence
+- Changed bundle content, source path/hash/size, required processor
+  path/hash/size, or malformed plan evidence
   fails before any source-process attempt.
 - An output transform with no active cataloged selector, more than one, a
   conflicting input format, or a selector only after `--` fails before a plan.
@@ -446,7 +452,8 @@ exact attempted argv even when
 it already contains `--`; option-looking appended values then remain after the
 positional-only marker rather than being silently relocated. Preview requires
 one active cataloged selector matching the planned input format only for
-`transformed_json`; a source-stream plan has no output selector. Preview alone
+`transformed_json`; source-stream and optimizer plans have no caller-supplied
+output selector. Preview alone
 does not prove that a selector value encodes the requested select fields. The
 GitHub CLI compatibility contract in Scenario F makes that narrower command-
 and adapter-specific admission check before transformed execution.
@@ -456,17 +463,17 @@ and adapter-specific admission check before transformed execution.
 An agent that knows only the preview outcome reaches its scoped contract with
 at most two help-discovery invocations; a known path takes one. It can identify
 every plan field from the declared JSON contract, distinguish explicit from
-inherited surface origin and both result modes without reconstructing policy,
+inherited surface origin and all three result modes without reconstructing policy,
 and select every
 recovery command from structured faults. Routine external processing and
-source-process attempts are both zero. This acceptance proves plan inspection,
+source and processor process attempts are both zero. This acceptance proves plan inspection,
 not runtime application, raw execution, or ordinary-command activation.
 
 ## Scenario F: Atsura compatibility-admitted JSON transform execution
 
 ### Outcome
 
-Given one adopted schema-2 bundle containing a supported transform wrapper, a
+Given one adopted schema-3 bundle containing a supported transform wrapper, a
 maintainer can run one exact GitHub CLI `issue list` or `pr list` invocation and
 receive only the configured selected and renamed typed JSON fields.
 
@@ -574,8 +581,10 @@ Given one adopted runtime-admitted bundle and a stable installed or built
 caller-owned Linux or macOS shell, and invoke ordinary `gh` through any of the
 three finite result cases: transformed JSON, identity source stream, or append-
 argv-only source stream. The same product path admits ordinary no-argument `go
-test` for one identity-wrapped bundle carrying a recorded stable Go 1.26.x
-observation. No coding-agent-host
+test` for either an identity-wrapped bundle or the exact
+`atsura.output.rtk_go_test_pass.v1` optimizer bundle carrying a recorded stable
+Go 1.26.x observation. The optimizer additionally binds one explicitly
+inspected official RTK v0.43.0 executable. No coding-agent-host
 protocol or repository-source inspection is part of routine invocation.
 
 ### Runnable probe
@@ -653,7 +662,7 @@ unset -f gh
 ```
 
 That is the `transformed_json` case. Repeat the build/adopt/render/activate
-sequence with two separate schema-3 specifications:
+sequence with two separate schema-4 specifications:
 
 - keep the generated identity wrapper to obtain
   `source_stream_passthrough`, then invoke ordinary `gh pr list --limit=1`; and
@@ -666,8 +675,8 @@ covered by the maintained GitHub CLI runtime grammar. These are three reviewed
 bundles and three ordinary invocations, not runtime mode selection or fallback.
 
 For the nature-distinct second source, run from a reviewed Go module where the
-inspection probe records stable Go 1.26.x. The generated draft is already the only admitted
-identity wrapper, so no transform edit is needed:
+inspection probe records stable Go 1.26.x. Without processor evidence the
+generated draft remains the admitted identity wrapper:
 
 ```sh
 "$ATR" source inspect \
@@ -700,7 +709,7 @@ Inspection performs exactly three source attempts. Path/hash/size identify the
 direct `go` launcher; `Source.Version` is the possibly delegated effective
 toolchain observed by `go version` under the inspection working directory and
 environment. Preview performs zero and
-ordinary `go test` performs one. The finite registry selects Go CLI contract 1
+ordinary `go test` performs one. The finite registry selects Go CLI contract 2
 from the bundle and plan adapter kind; it does not introduce a Go-specific
 plan, executor, or result. `go test` remains source-owned `EffectExecute` and
 may compile and run repository code, use credentials or configuration, resolve
@@ -710,12 +719,58 @@ not repeat the version probe, so the same launcher may select or download a
 different toolchain because of module state, `GOTOOLCHAIN`, `GOROOT`, or related
 ambient inputs without a pre-start rejection.
 
+To exercise the finite optimizer, inspect one official RTK v0.43.0 executable
+from the pinned platform manifest and pass that observation explicitly through
+authoring and compilation:
+
+```sh
+"$ATR" processor inspect \
+  --adapter rtk \
+  --executable /absolute/path/to/rtk > /tmp/atsura-rtk.json
+
+"$ATR" spec init \
+  --catalog /tmp/atsura-go-catalog.json \
+  --processor /tmp/atsura-rtk.json \
+  -- test > /tmp/atsura-go-optimizer-spec.yaml
+
+"$ATR" spec validate \
+  --catalog /tmp/atsura-go-catalog.json \
+  --spec /tmp/atsura-go-optimizer-spec.yaml
+
+"$ATR" bundle build \
+  --catalog /tmp/atsura-go-catalog.json \
+  --spec /tmp/atsura-go-optimizer-spec.yaml \
+  --processor /tmp/atsura-rtk.json > /tmp/atsura-go-optimizer-bundle.json
+
+"$ATR" bundle trust --bundle /tmp/atsura-go-optimizer-bundle.json
+"$ATR" bundle preview \
+  --bundle /tmp/atsura-go-optimizer-bundle.json -- go test
+"$ATR" wrapper render \
+  --bundle /tmp/atsura-go-optimizer-bundle.json > /tmp/atsura-go-optimizer-wrapper.sh
+
+. /tmp/atsura-go-optimizer-wrapper.sh
+go test
+unset -f go
+```
+
+The caller still invokes only ordinary no-argument `go test`; wrapper-owned
+source argv is exactly `go test -json`, and fixed processor argv is
+`pipe --filter=go-test`. A strict eligible single-package pass returns the
+independently validated newline-free summary as `optimized` after one source
+and one processor attempt. A conventional ineligible result is returned
+byte-for-byte with its status as `preserved_before_processor` after one source
+and zero processor attempts. Controlled tests also prove the byte-identical
+`preserved_after_processor` disposition. After processor authority begins, a
+processor failure returns no source or processor bytes and never falls back.
+`bundle execute` deliberately rejects this result mode before source start;
+the ordinary wrapper is the finite runtime path.
+
 The generated function contains the complete `wrapper run` contract-version-1
 closure and always inserts the explicit `--` separator before `"$@"`. Users do
 not copy the bundle digest or runtime identity into a second command. On
 transformed success, ordinary `gh` stdout is exactly one compact JSON object or
 array plus LF and stderr is empty. The source JSON supplies container and value
-types, while the fresh schema-4 plan governs selection, rename, order, compact
+types, while the fresh schema-5 plan governs selection, rename, order, compact
 rendering, and `result_mode`. On a conventionally completed source-stream
 case, stdout and stderr are the exact separately bounded source bytes and the
 ordinary command returns the source status only after both final writes
@@ -723,9 +778,10 @@ complete. Atsura adds no LF, envelope, projection, or UTF-8 interpretation and
 makes no timing or stdout/stderr-interleaving claim.
 
 For each bundle, `wrapper render --format json` returns the same source in a
-schema-1 review envelope with its SHA-256, command name, contract, bundle
+schema-2 review envelope with its SHA-256, command name, contract, bundle
 locator/digest,
-current `atr` path/hash/size, and zero source attempts. That source digest is
+current `atr` path/hash/size, any required processor binding, and zero source
+and processor attempts. That source digest is
 review evidence. Sourcing or modifying the function is caller-owned, so it is
 not runtime attestation.
 
@@ -741,7 +797,8 @@ not runtime attestation.
   surface returns
   `wrapper_runtime_not_supported` before rendering.
 - A catalog recording a version outside stable Go 1.26.x, a non-`test` command,
-  a non-identity wrapper, any option or package pattern, `--`, or a test-binary argument returns
+  a wrapper other than the exact identity or finite optimizer form, any option
+  or package pattern, `--`, or a test-binary argument returns
   `wrapper_runtime_not_supported` before the Go test process starts. Expanding
   either the recorded source-version range or argv grammar requires new
   evidence. A later effective Go 1.27 selection by the same launcher is not
@@ -749,7 +806,8 @@ not runtime attestation.
 - A nil, unknown, duplicate, or misconfigured compatibility verifier fails as
   `adapter_contract`; the registry never tries the other source adapter.
 - A changed bundle digest, missing adoption, source drift, malformed closure,
-  or honest current-`atr` path/hash/size mismatch starts zero source processes
+  required processor drift, or honest current-`atr` path/hash/size mismatch
+  starts zero source and processor processes
   and points to render, status, or trust recovery as declared.
 - Empty forwarded argv still reaches `wrapper run` after its explicit `--`, but
   cannot resolve a cataloged command and fails `invalid_invocation` at zero
@@ -760,6 +818,14 @@ not runtime attestation.
 - A conventional source nonzero status in `source_stream_passthrough` returns
   the exact bounded streams and the same status; it is not an Atsura fault or a
   replay recommendation.
+- A conventional optimizer input that is skip, failure, malformed or unknown
+  JSON, empty, accompanied by source stderr, nonzero, or non-beneficial returns
+  exact source bytes and status as `preserved_before_processor` without
+  starting RTK. This is declared behavior, not fallback.
+- Processor start, wait, timeout, cancellation, limit, nonzero status, stderr,
+  identity drift, or unexpected output after eligible source execution is
+  non-retryable, exposes no captured bytes, and cannot select a preservation
+  disposition.
 - Signal/abnormal termination, timeout, cancellation, capture overflow, wait or
   identity uncertainty, and inconsistent process evidence are non-retryable,
   expose neither captured stream, and never select raw execution, another
@@ -782,7 +848,8 @@ reconstruction. Direct preview
 and wrapper application use the same fresh plan and plan digest for identical
 validated inputs; the generic fixture, not wrapper stdout, compares that
 evidence. Each admitted case has exactly one successful source attempt, the
-three-case GitHub fixture has three, the Go case has one, and every pre-start
+three-case GitHub fixture has three, each Go case has one source attempt, and
+the eligible optimizer case has one processor attempt. Every pre-start
 rejection has zero. Vendor-specific activation remains downstream.
 
 ## Scenario H: Exact installed-artifact transform and wrapper journey
@@ -795,10 +862,19 @@ transform journey on that target without a repository-built replacement
 binary, provider credential, provider network call, or undeclared parser. On
 Linux and macOS the same extracted executable must also render and serve the
 transformed-JSON, identity, and append-argv-only ordinary-command POSIX cases.
-Every native target must record stable Go 1.26.x inspection evidence through contract 1; Linux and
-macOS must additionally serve one exact identity-wrapped no-argument `go test`,
-while Windows proves the exact unsupported-render result at zero attempts for
-both source bundles while retaining the GitHub transform journey.
+Every native target must record stable Go 1.26.x inspection evidence through
+contract 2. Linux and macOS must additionally serve exact identity-wrapped
+no-argument `go test` and the finite processor-bound optimizer using the
+official RTK v0.43.0 artifact pinned for that target. Windows receives no RTK
+artifact and proves the exact unsupported-render result with zero Go wrapper
+source attempts and no processor evidence while retaining the GitHub transform
+journey.
+
+This section defines the optimizer-aware acceptance target. Evidence schema 5,
+aggregate schema 2, and the native workflow implement the mechanism, but have
+not yet passed the five-target matrix on one revision. The requirements below
+therefore do not assert a release-quality optimizer result for the current
+revision.
 
 ### Automated probe
 
@@ -816,9 +892,10 @@ four GitHub CLI inspection probes and the admitted `issue list` and `pr list`
 invocations. Its append-only JSONL log is outside public output.
 
 The replay starts from an isolated user-config root. Before starting the source
-fixture, packaged `atr` must return schema-10 root help plus exact `source
-inspect`, `spec init`, `spec validate`, `bundle preview`, `bundle execute`,
-`wrapper render`, and `wrapper run` scopes. It checks the complete
+fixture, packaged `atr` must return schema-12 root help plus exact `source
+inspect`, `processor inspect`, `spec init`, `spec validate`, `bundle build`,
+`bundle status`, `bundle trust`, `bundle preview`, `bundle execute`, `wrapper
+render`, and `wrapper run` scopes. It checks the complete
 catalog/specification output-schema field
 inventory and the exact ordered 27-fault preview and 41-fault execute recovery
 signatures rather than recognizing prose markers alone. It then obtains the
@@ -847,7 +924,7 @@ transformed-JSON `pr list` case, one identity case, and one output-less fixed-
 argv-append case. For each bundle they render JSON review material and raw
 function text from the exact extracted `atr`, compare the exact source and
 SHA-256, source that fixed material in an isolated generic POSIX shell, and
-invoke ordinary `gh`. Every wrapper/preview schema-4 plan identity must match
+invoke ordinary `gh`. Every wrapper/preview schema-5 plan identity must match
 in bounded fixture evidence and the append-only log must add exactly one source
 attempt per case. The transformed result must equal its compact JSON value.
 The other two must match the fixture's exact bounded stdout/stderr digests and
@@ -868,8 +945,30 @@ but requires `wrapper_platform_not_supported`, no Go wrapper case, one zero-
 attempt rejection, and zero Go wrapper source attempts. Isolation is fixture
 discipline, not an Atsura sandbox claim.
 
-The bounded journey document required for this source-stream candidate uses
-evidence schema 4. Linux/macOS retain the GitHub `wrapper_outcome:
+The schema-5 journey supplies the exact official RTK v0.43.0 archive
+only to the four POSIX rows. Before extraction it verifies target, archive name,
+size, and SHA-256 from the pinned processor manifest; after extraction it
+requires exactly one regular executable with the pinned binary identity. The
+packaged `atr` then performs explicit `processor inspect` and carries that
+schema-1 observation through schema-4 authoring, schema-3 compilation and
+adoption, schema-5 preview, render, and ordinary no-argument `go test`.
+Runtime source argv is exactly `go test -json`; processor argv is exactly
+`pipe --filter=go-test`.
+
+Each POSIX row must prove one strict pass as `optimized` and the reachable
+`preserved_before_processor` cases for skip, failure, and otherwise
+conventional ineligible input. It must also prove direct `bundle execute`
+rejects the optimizer before source start, processor drift rejects at
+preflight, and eligible post-source processor drift exposes no bytes or
+fallback. Windows proves structured unsupported rendering with zero source
+attempts, no processor artifact or evidence, and no optimizer case. The
+official fixed RTK tuple cannot
+deterministically manufacture byte-identical `preserved_after_processor` or
+arbitrary processor start/wait/status/stderr failures; controlled application
+and infrastructure truth-table tests own those branches.
+
+Historical bounded journey schema 4 was the pre-optimizer baseline.
+Linux/macOS retain the GitHub `wrapper_outcome:
 ordinary_command_verified`, an ordered three-entry `wrapper_cases` inventory,
 and `wrapper_source_process_attempts: 3`. Case names occur in the fixed order
 `transformed_json`, `identity`, `append_only`. Each case binds `name`,
@@ -879,7 +978,7 @@ and `wrapper_source_process_attempts: 3`. Case names occur in the fixed order
 `wrapper_outcome: platform_not_supported`, an empty `wrapper_cases` inventory,
 and zero attempts.
 
-The required `go_source` object separately binds
+Its `go_source` object separately binds
 `atsura.source.go_cli` contract 1, a recorded stable `go1.26.x` observation, three source-
 inspection attempts, `commands_verified: ["test"]`, and exact catalog, bundle,
 and plan digests. Linux/macOS record one `go_test_identity` case with identity
@@ -892,45 +991,75 @@ two direct success attempts plus induced failures, the fixed GitHub fixture-
 attempt total remains 13 on Linux/macOS and 10 on Windows. These are acceptance
 requirements, not a claim here that a gate run has passed.
 
+Evidence schema 4 does not support the current Go contract or the optimizer.
+Current schema 5 retains the base journey facts and additionally binds Go CLI
+contract 2, processor-observation schema 1, exact RTK artifact and
+executable identity, fixed processor invocation, schema-3 bundle and schema-5
+plan identities, source-fixture attempt counts, processor-inspection evidence,
+optimizer disposition and status, and bounded leak booleans. It stores no
+source or processor streams. Without an accepted external observer it does not
+claim processor-launch counts; controlled application and infrastructure tests
+own that truth. Schema 5 becomes release evidence only for an exact revision
+whose strict decoder, five native rows, aggregate, and publication dependency
+all pass; this document does not attest a moving worktree. It keeps the
+identity case in the outer `go_source` wrapper fields and
+the optimizer's separate bundle, plan, rendered-wrapper digest, cases, and
+faults in the nested `optimizer` object. That nested object also records exact
+caller/source/processor argv, formats, process modes, host-neutral
+`atsura.processor.rtk_isolated.v2`, one-attempt ceilings, timeouts, and byte
+bounds; v1 evidence is rejected.
+
 ### Platform acceptance
 
 CI runs this probe natively on Linux amd64, Linux arm64, macOS amd64, macOS
 arm64, and Windows amd64. The release workflow downloads the exact archive
 uploaded by its build job and blocks publication until all five native replays
 succeed. The four POSIX rows must close all three GitHub ordinary-command result
-cases plus the exact Go identity case; the Windows row must close both exact
-structured unsupported-render contracts and does not count as POSIX activation.
+cases, the exact Go identity case, and the required reachable optimizer cases;
+the Windows row must close the exact structured unsupported-render contracts
+before any source attempt, record no processor evidence, and not count as POSIX
+activation or optimizer support.
 Each job uploads a bounded
-document bound to its target, archive digest, and exact revision. A dependent
+document bound to its target, archive digest, exact revision, and, where
+applicable, processor artifact identity. A dependent
 job accepts exactly those five
-canonical documents, validates the complete fixed journey facts, and emits a
-path-free unattested digest index after recomputing all five candidate archive
-hashes. Cross-compilation, build metadata, aggregation of locally fabricated
-JSON, emulation, and the current host's local replay are not substitutes for
-the five native job results.
+canonical documents, pairs them with exactly five candidate Atsura archives,
+recomputes those candidate hashes, validates each applicable row's recorded
+processor identity against the code-pinned manifest, and emits a path-free
+unattested digest index. The native rows verify their supplied processor
+archives locally; those archives are not uploaded as Atsura release artifacts.
+Cross-compilation, build metadata, aggregation of locally fabricated JSON,
+emulation, and the current host's local replay are not substitutes for the five
+native job results.
 
 On 2026-07-22, the exact packaged Darwin/arm64 journey passed for revision
 `b4ade8c`, including ordinary-command activation. That bounded observation does
-not cover this later documentation tree, schema-4 source-stream plans, evidence
-schema 4, the identity or append-argv-only GitHub cases, the Go inspection and
-identity-wrapper case, Linux, macOS amd64, Windows, evidence aggregation,
-publication, or the complete release matrix; the tagged revision must replay
-every required row.
+not cover this later documentation tree, schema-5 source-stream or optimizer
+plans, current Go contract 2, RTK inspection or execution, the current schema-5/
+aggregate-schema-2 mechanism, the other native rows, publication, or the
+complete release matrix; the tagged revision must replay every required row.
 
 Exact scoped help is the public authoring contract: the source catalog exposes
 command paths, provenance, option grammar, structured output selector, and
-fields; schema-3 help exposes surface, option, wrapper, select, rename, and
-render constraints; execute help exposes the finite runtime-admission matrix;
-wrapper help exposes the renderer-produced closure, explicit `--` argv
-boundary, platform matrix, static review envelope, and the exact fresh-plan
-result-mode union.
+fields; schema-4 help exposes surface, option, wrapper, projection, optimizer,
+select, rename, and render constraints; processor help exposes explicit RTK
+inspection and observation identity; execute help exposes the finite runtime-
+admission matrix; wrapper help exposes the renderer-produced closure, explicit
+`--` argv boundary, platform matrix, schema-2 review envelope, and the exact
+fresh-plan result-mode union.
 The harness's deterministic YAML edit verifies those artifact contracts but
 does not erase the user's deliberate configuration-authoring step.
 
-This journey does not run RTK or validate an optimizer default. Pass-only `go
-test -json` with RTK's fixed `go-test` filter is the next research candidate,
-but skip-only, malformed, nonzero-status, and failure-order behavior remains
-unresolved and outside evidence schema 4.
+Historical evidence schema 4 did not run RTK or validate an optimizer default.
+Current schema 5 is the required proof mechanism for the already accepted
+`atsura.output.rtk_go_test_pass.v1` implementation; the release claim is not
+complete merely because local controlled tests or one platform pass. The
+processor portion records only explicitly observed identity, invocation,
+bounds, the processor-inspection attempt, source-fixture attempts,
+dispositions, status, and leak facts. Because the harness has no separate
+external observer contract, it makes no processor-launch-count claim and no
+claim that RTK creates a child process, accesses a filesystem path, or performs
+network activity.
 
 ## Review record
 

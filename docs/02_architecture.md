@@ -364,13 +364,16 @@ start. After admitted source success, identity is revalidated before processor
 start; a change at that phase is non-retryable with one source attempt and zero
 processor attempts. A processor failure after start is non-retryable.
 
-The processor runs with isolated configuration roots and a minimal environment.
-That contract limits what Atsura supplies; by itself it does not prove an
-absence of child processes, filesystem access outside those roots, or network
-attempts. Such absence facts remain unasserted until a platform-specific
-external observer contract is implemented and validated. Portable processor
-identity checks retain a check-to-exec race. A wrapper consumes the already
-compiled stage and never selects RTK at invocation time.
+The processor runs under host-neutral
+`atsura.processor.rtk_isolated.v2`, with isolated generic configuration roots
+and a minimal environment containing only finite OS/runtime facts and
+processor-owned RTK controls. It inherits no coding-agent-host variable; v1 is
+retired. That contract limits what Atsura supplies; by itself it does not prove
+an absence of child processes, filesystem access outside those roots, or
+network attempts. Such absence facts remain unasserted until a platform-
+specific external observer contract is implemented and validated. Portable
+processor identity checks retain a check-to-exec race. A wrapper consumes the
+already compiled stage and never selects RTK at invocation time.
 
 The registry contains exactly `atsura.output.rtk_go_test_pass.v1`, bound to
 source-catalog schema 2, Go CLI contract 2, a recorded stable Go 1.26.x
@@ -551,19 +554,26 @@ it. Platform evidence therefore belongs to the CI and release harness, while
 the deterministic catalog, specification, bundle, plan, and execution
 contracts remain owned by their production layers above.
 
-Evidence schema 4 is the pre-optimizer Go identity record and is insufficient
-for an optimizer release claim. Its versioned successor must retain that
-identity case and bind source-catalog schema 2, Go contract 2,
-processor-observation schema 1, the exact RTK artifact and contract, bundle and
-plan digests, optimized and honestly reachable pre-processor preservation
-outcomes, and source/processor attempt counts. Linux and Darwin require native
-official-artifact replay on amd64 and arm64. Windows must reject optimizer
-availability before a source attempt. The journey does not fabricate
+Historical evidence schema 4 is the pre-optimizer Go identity record and is
+insufficient for an optimizer release claim. Current evidence schema 5 retains
+that identity case and binds source-catalog schema 2, Go contract 2,
+processor-observation schema 1, the exact RTK artifact and contract, distinct
+bundle and plan digests, exact caller/source/processor argv, formats, process
+modes, v2 environment and bounds, optimized and honestly reachable pre-
+processor preservation outcomes, source-fixture attempt counts, and exact
+processor-inspection evidence. Aggregate schema 2 validates the fixed
+five-document/five-candidate set. Linux and Darwin require native official-
+artifact replay on amd64 and arm64. Windows must reject optimizer availability
+before a source attempt. An installed journey does not claim processor-launch
+counts without an accepted external observer; controlled application and
+infrastructure tests own that attempt truth. The journey does not fabricate
 `preserved_after_processor` or arbitrary processor faults when the official
 artifact cannot reach them; controlled application and infrastructure truth
-tables own those branches. Until this successor evidence and its native matrix
-pass on one revision, the implementation is not a release-quality platform
-claim.
+tables own those branches. Until schema 5 and its native matrix pass on one
+revision, the implementation is not a release-quality platform claim.
+Schema 5 keeps the identity case in the outer `go_source` wrapper fields
+and records the optimizer's distinct bundle, plan, rendered-wrapper digest,
+cases, and faults only in the nested `optimizer` object.
 
 ## Current milestone boundary
 

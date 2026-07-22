@@ -186,7 +186,7 @@ publicly inconsistent commit.
   requested.
 - Installed-artifact observation: each claimed official RTK artifact is pinned
   and replays the deterministic reachable cases listed above under
-  `atsura.processor.rtk_isolated.v1`. `preserved_after_processor` and processor
+  `atsura.processor.rtk_isolated.v2`. `preserved_after_processor` and processor
   failure/no-byte branches are verified by controlled application and
   infrastructure tests instead.
 - External observation: add child-process, filesystem, or network absence

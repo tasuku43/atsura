@@ -88,9 +88,10 @@ Because this changes default agent-facing presentation, this packet includes
       application/infrastructure tests and are not attributed to an unreachable
       official-RTK fixture.
 - [ ] Inspection and processor execution use fixed argv/stdin, no shell or PATH
-      lookup, and exact environment contract `atsura.processor.rtk_isolated.v1`,
-      including disabled telemetry/tee/TOML, isolated state/temp/data roots, and
-      a `CLAUDE_CONFIG_DIR` child that is deliberately not created.
+      lookup, and exact host-neutral environment contract
+      `atsura.processor.rtk_isolated.v2`, including disabled RTK telemetry/tee/
+      TOML, isolated generic state/temp/data/home roots, and no inherited
+      coding-agent-host variable.
 - [ ] Official RTK v0.43.0 archive checksum, extracted binary hash/size, version,
       platform tuple, commit, release URL, and Apache-2.0 provenance are pinned;
       RTK is not present in Atsura release archives.

@@ -321,8 +321,10 @@ plan schema 5. It binds exact caller argv `go test`, source argv
   platforms, shell fragments, and runtime discovery are rejected;
 - `processor inspect` accepts one explicit absolute path, verifies the exact
   maintained artifact identity for the current platform, runs `--version`
-  once without a shell under the isolated environment contract, and emits one
-  bounded canonical schema-1 observation with no ambient discovery or install;
+  once without a shell under host-neutral
+  `atsura.processor.rtk_isolated.v2`, and emits one bounded canonical schema-1
+  observation with no ambient discovery, coding-agent-host variable, or
+  install; retired v1 observations are rejected;
 - `spec init --processor` selects the optimizer only for the exact compatible
   Go catalog and explicit processor observation, while omission keeps the
   identity draft; `bundle build --processor` requires and binds that same
@@ -354,12 +356,14 @@ plan schema 5. It binds exact caller argv `go test`, source argv
   cannot safely fabricate; and
 - native release evidence replays the exact official artifact on all four
   claimed platforms, records Apache-2.0 provenance, verifies the supplied
-  isolated environment/root contract, and proves the optimized and reachable
-  pre-processor preservation journeys. It does not claim absence of child
+  isolated environment/root contract, exact caller/source/processor argv,
+  formats, modes, attempt ceilings, timeout and byte bounds, and proves the
+  optimized and reachable pre-processor preservation journeys. It does not
+  claim absence of child
   processes, outside-root filesystem access, or network attempts without a
-  separately implemented and validated external observer. Until that
-  optimizer-aware successor evidence passes, implementation completion is
-  distinct from a release-quality native claim.
+  separately implemented and validated external observer. Until evidence
+  schema 5 and aggregate schema 2 pass the five-target matrix on one revision,
+  implementation completion is distinct from a release-quality native claim.
 
 ADR 0009's rejected `git-log` tuple remains a negative fixture: executable
 identity, status zero, empty stderr, and smaller output never substitute for
@@ -505,7 +509,8 @@ The slice must prove:
   release-quality optimizer status additionally requires exact installed-
   artifact replay with the official RTK artifact on every claimed Linux and
   macOS native target, while Windows replays existing commands and the exact
-  unsupported-render result with zero processor attempts.
+  unsupported-render result with zero source attempts and no processor
+  artifact or evidence.
 
 Consumer conformance uses a non-shipped generic caller-owned activation fixture
 that invokes the exact installed `atr` artifact. It compares rendered bytes and
@@ -590,7 +595,8 @@ bytes in persisted or structured evidence.
   evidence. Linux and macOS activate deterministic `wrapper render` bytes and
   invoke the maintained GitHub and Go ordinary-command surfaces through the
   extracted runtime. Windows verifies exact structured unsupported rendering
-  without sourcing bytes or starting a wrapper source or processor. The Go
+  with no sourced bytes, zero wrapper source attempts, and no processor
+  artifact or evidence. The Go
   fixture sets `GOTOOLCHAIN=local`, disables download, and isolates module/cache
   roots; those are deterministic harness inputs, not production environment or
   effective-toolchain guarantees.
@@ -598,20 +604,33 @@ bytes in persisted or structured evidence.
   trust-store and processor-runner tests, the exact bundle-file fault mapping,
   and the complete CLI recovery matrix before packaging and replay. The release
   linter pins that exact step as well as the five base runner/target tuples.
-- Artifact-evidence aggregation owns the exact five-target base set. Existing
-  evidence schema 4 proves the pre-optimizer GitHub and Go identity-wrapper
-  journey and therefore cannot support an optimizer release claim. Its
-  optimizer-aware versioned successor must retain those base facts and add Go
+- The native journey opens each candidate archive once for one bounded read and
+  derives both the verified digest and extracted bytes from that value. Tests
+  replace the pathname after the read and prove that later path contents cannot
+  change the bytes selected for replay.
+- Artifact-evidence aggregate schema 2 owns the exact five-target base set.
+  Historical evidence schema 4 proves only the pre-optimizer GitHub and Go
+  identity-wrapper journey. Current schema 5 retains those base facts and adds Go
   CLI contract 2, processor-observation schema 1, the exact RTK identity and
-  invocation, schema-3 bundle and schema-5 plan identities, separate source and
-  processor attempt counts, disposition/status, and leak booleans. The four
-  Linux/macOS optimizer targets must prove `optimized` and reachable
-  `preserved_before_processor`; Windows records no optimizer case and zero
-  processor attempts. A dependent job pairs each document with the actual
-  candidate archive and exact official RTK artifact where applicable,
-  recomputes hashes, strictly rejects missing, extra, duplicate, symlinked,
-  malformed, or cross-revision inputs, and emits a path-free unattested digest
-  index. No candidate rebuild or replay substitute is admitted.
+  invocation, schema-3 bundle and schema-5 plan identities, exact caller/source/
+  processor argv, formats, modes, v2 environment and bounds, separate source
+  and processor-inspection evidence, disposition/status, source-fixture attempt
+  counts, and leak booleans. The four Linux/macOS optimizer targets must prove
+  `optimized` and reachable `preserved_before_processor`; Windows records no
+  optimizer case and no processor evidence. Installed evidence does not claim
+  processor-launch counts without an accepted external observer; controlled
+  application and infrastructure tests own that attempt truth. Each native
+  journey locally verifies the supplied RTK archive and extracted executable
+  against the code-pinned manifest; the processor archive is never uploaded as
+  an Atsura artifact. A dependent job pairs each document with the actual
+  candidate Atsura archive, validates the exact pinned processor identity
+  recorded by every applicable row, recomputes candidate hashes, strictly
+  rejects missing, extra, duplicate, symlinked, malformed, or cross-revision
+  inputs, and emits a path-free unattested digest index. No candidate rebuild
+  or replay substitute is admitted.
+  In schema 5, the outer `go_source` wrapper fields continue to
+  own the identity-wrapper baseline; its nested `optimizer` object owns a
+  separate bundle, plan, rendered-wrapper digest, cases, and faults.
 - Architecture and public guards own dependency direction and secret-free
   repository state.
 
@@ -675,14 +694,17 @@ revision:
 2. CI provides native Linux amd64/arm64, Darwin amd64/arm64, and Windows amd64
    base rows, with the exact official RTK v0.43.0 artifact supplied only to the
    four optimizer-supported rows;
-3. an optimizer-aware versioned successor to evidence schema 4 records Go CLI
+3. evidence schema 5 records Go CLI
    contract 2, processor-observation schema 1, exact RTK provenance and
-   identity, bundle/plan digests, optimized and reachable pre-processor
-   preservation cases, attempt counts, statuses, and bounded leak checks;
-4. Windows proves structured unsupported rendering and zero processor attempts
-   without claiming an optimizer;
-5. aggregation recomputes all candidate and processor hashes, rejects missing
-   or extra evidence, and the release publish job depends on that aggregate;
+   identity, bundle/plan digests, exact execution-contract facts, optimized and
+   reachable pre-processor preservation cases, source-fixture attempt counts,
+   processor-inspection evidence, statuses, and bounded leak checks;
+4. Windows proves structured unsupported rendering without receiving a
+   processor artifact or claiming an optimizer;
+5. aggregation recomputes every candidate Atsura archive hash, validates each
+   applicable row's recorded processor identity against the code-pinned
+   manifest, rejects missing or extra evidence, and the release publish job
+   depends on that aggregate;
    and
 6. every required native job succeeds. Emulation, cross-build metadata, local
    replay of one platform, or controlled synthetic processor tests cannot stand

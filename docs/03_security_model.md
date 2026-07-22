@@ -351,11 +351,13 @@ retain a check-to-exec race. A source failure starts no processor. A processor
 failure after source start is non-retryable and exposes neither processor
 stderr nor failed intermediate output.
 
-RTK itself checks ambient Claude configuration during startup. Atsura points
-`CLAUDE_CONFIG_DIR` at a deliberately absent child inside the isolated root so
-that RTK cannot consume that state. This is processor isolation, not a Claude
-adapter: Atsura never reads a host process, payload, settings file, hook,
-session, or permission value.
+RTK itself has been observed checking ambient Claude configuration during
+startup. Atsura does not model that host or set a host-specific redirect. The
+host-neutral `atsura.processor.rtk_isolated.v2` contract rejects the entire
+ambient environment and supplies fresh private generic home, XDG, temporary,
+state, and application-data roots plus finite RTK-owned controls. An ambient
+host variable is therefore not inherited, and default host configuration is
+outside the isolated home. Retired v1 evidence fails compatibility checks.
 
 Successful processor status is not semantic validation. The one admitted tuple
 is `atsura.output.rtk_go_test_pass.v1`: source-catalog schema 2, Go contract 2,
@@ -482,26 +484,39 @@ render` and `wrapper run` contracts. On Linux and macOS the native journey must
 compare deterministic rendered bytes and digest, activate those bytes in a
 generic caller-owned POSIX shell, invoke the ordinary command, and retain only
 the plan-declared result. On Windows it must obtain the exact structured
-`wrapper_platform_not_supported` result with zero wrapper source and processor
-attempts and no rendered digest; that is regression evidence, not POSIX
-activation or optimizer support.
+`wrapper_platform_not_supported` result with zero wrapper source attempts, no
+processor evidence, and no rendered digest; that is regression evidence, not
+POSIX activation or optimizer support.
 
-Bounded journey evidence schema 4 predates the optimizer and binds only Go
-adapter contract 1 and the identity-wrapper journey. It is insufficient to
-support a release-quality claim for the accepted contract. A versioned
-successor must bind Go adapter contract 2, processor-observation schema 1, the
+The native journey opens each candidate release archive once for one bounded
+read, then derives both its digest and extracted bytes from that same in-memory
+value. A pathname replacement cannot make validation cover bytes different
+from those executed by the journey.
+
+Historical bounded journey evidence schema 4 predates the optimizer and binds
+only Go adapter contract 1 and the identity-wrapper journey. It is insufficient
+to support a release-quality claim for the accepted contract. Current schema 5
+binds Go adapter contract 2, processor-observation schema 1, the
 exact `atsura.output.rtk_go_test_pass.v1` identity and invocation, processor
-path/hash/size/version, catalog/specification/bundle/plan digests, both source
-and processor attempt counts, result disposition, status, and the same bounded
-leak checks. On Linux amd64, Linux arm64, Darwin amd64, and Darwin arm64, native
-replay must prove an `optimized` strict pass and the reachable
+path/hash/size/version, catalog/specification/bundle/plan digests, exact caller/
+source/processor argv, formats, process modes, v2 isolation and bounds, both
+source fixture attempt counts and processor-inspection evidence, result
+disposition, status, and the same bounded leak checks. It does not claim
+processor-launch counts without an accepted external observer; controlled
+application and infrastructure tests own that attempt truth. On Linux amd64,
+Linux arm64, Darwin amd64, and Darwin arm64, native replay must prove an
+`optimized` strict pass and the reachable
 `preserved_before_processor` path through the packaged wrapper. Windows must
-continue to prove structured unsupported behavior with zero attempts and no
-optimizer claim. Controlled application and infrastructure tests, rather than
-the official-artifact journey, own synthetic `preserved_after_processor` and
-arbitrary processor-failure branches. No source or processor stream may enter
-the evidence document. These are required evidence conditions; this section
-does not assert that the optimizer-aware native matrix has passed.
+continue to prove structured unsupported behavior with zero source attempts,
+no processor evidence, and no optimizer claim. Controlled application and
+infrastructure tests, rather than the official-artifact journey, own synthetic
+`preserved_after_processor` and arbitrary processor-failure branches. No source
+or processor stream may enter the evidence document. These are required
+evidence conditions; this section does not assert that the optimizer-aware
+native matrix has passed. Schema 5 preserves the identity-wrapper
+baseline in the outer `go_source` fields and confines the optimizer's distinct
+bundle, plan, rendered-wrapper digest, cases, and faults to the nested
+`optimizer` object.
 
 The native Go fixture fixes `GOTOOLCHAIN=local`, disables download, and isolates
 module/cache roots so that one replay is deterministic. Those are harness-owned
