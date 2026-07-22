@@ -491,6 +491,8 @@ func verifyCollisionFaults(
 		if err := writePrivate(commandPath, []byte("foreign fixture\n")); err != nil {
 			return err
 		}
+		// #nosec G302 -- the fixture must look like a foreign executable shim;
+		// it remains owner-only inside the isolated journey store.
 		return os.Chmod(commandPath, 0o700)
 	}, nil); err != nil {
 		return nil, nil, err
