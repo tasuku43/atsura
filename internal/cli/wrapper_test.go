@@ -388,6 +388,38 @@ func TestWrapperCatalogDeclaresCompleteFacadeFaultInventories(t *testing.T) {
 	assertCommandErrorCodes(t, run.Agent.Errors, wantRun)
 }
 
+func TestWrapperArtifactCatalogDeclaresExactFaultInventories(t *testing.T) {
+	install, _ := DefaultCatalog().Lookup("wrapper install")
+	status, _ := DefaultCatalog().Lookup("wrapper status")
+	remove, _ := DefaultCatalog().Lookup("wrapper remove")
+
+	wantInstall := []string{
+		"bundle_file_not_found", "bundle_file_permission_denied", "unsafe_bundle_file", "bundle_file_too_large", "bundle_file_read_failed", "invalid_bundle_file", "legacy_tailoring_schema", "bundle_digest_mismatch",
+		"invalid_wrapper_binding", "invalid_bundle_trust_store", "bundle_not_adopted", "bundle_source_drift", "source_executable_not_found", "source_identity_unavailable", "unsafe_source_executable", "source_identity_changed", "invalid_source_identity",
+		"invalid_processor_executable", "unsafe_processor_executable", "processor_identity_unavailable", "processor_identity_changed", "invalid_processor_identity", "bundle_processor_drift",
+		"wrapper_runtime_not_supported", "wrapper_runtime_unavailable", "internal_error", "invalid_arguments", "wrapper_artifact_render_failed",
+		"wrapper_artifact_platform_not_supported", "invalid_wrapper_artifact", "wrapper_artifact_store_contract", "wrapper_artifact_store_unsafe", "wrapper_artifact_capacity_exceeded", "wrapper_artifact_not_found", "wrapper_artifact_collision", "wrapper_artifact_tampered",
+		"wrapper_artifact_mutation_uncertain", "invalid_mutation_contract", "missing_mutation_action", "missing_mutation_policy", "mutation_rejected", "unclassified_mutation_outcome",
+		"output_contract_exceeded", "output_encoding_failed", "mutation_output_write_failed", "operation_canceled",
+	}
+	assertCommandErrorCodes(t, install.Agent.Errors, wantInstall)
+
+	wantStatus := []string{
+		"invalid_arguments",
+		"wrapper_artifact_platform_not_supported", "invalid_wrapper_artifact", "wrapper_artifact_store_contract", "wrapper_artifact_store_unsafe", "wrapper_artifact_capacity_exceeded", "wrapper_artifact_not_found", "wrapper_artifact_collision", "wrapper_artifact_tampered",
+		"wrapper_artifact_status_unavailable", "output_contract_exceeded", "output_encoding_failed", "internal_error", "output_write_failed", "operation_canceled",
+	}
+	assertCommandErrorCodes(t, status.Agent.Errors, wantStatus)
+
+	wantRemove := []string{
+		"invalid_arguments",
+		"wrapper_artifact_platform_not_supported", "invalid_wrapper_artifact", "wrapper_artifact_store_contract", "wrapper_artifact_store_unsafe", "wrapper_artifact_capacity_exceeded", "wrapper_artifact_not_found", "wrapper_artifact_collision", "wrapper_artifact_tampered",
+		"wrapper_artifact_mutation_uncertain", "invalid_mutation_contract", "missing_mutation_action", "missing_mutation_policy", "mutation_rejected", "unclassified_mutation_outcome",
+		"output_contract_exceeded", "output_encoding_failed", "internal_error", "mutation_output_write_failed", "operation_canceled",
+	}
+	assertCommandErrorCodes(t, remove.Agent.Errors, wantRemove)
+}
+
 func TestWrapperRunModeNeutralRecoveriesMatchScopedHelp(t *testing.T) {
 	declarations := exactRecoveryHelp(t, "wrapper run")
 	wantRuntime := fault.NextAction{Command: "help wrapper run", Reason: "Review the supported generated-wrapper runtime contract."}
@@ -550,6 +582,21 @@ func TestWrapperInstallEmitsManagedPathAndFixedCreateIntentWithoutReference(t *t
 	assertJSONKeys(t, payload, []string{"already_installed", "bin_path", "command", "path", "processor_process_attempts", "source_process_attempts"})
 	if bytes.Contains(stdout.Bytes(), []byte(`"reference"`)) || stderr.Len() != 0 {
 		t.Fatalf("stdout=%s stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+func TestWrapperStatusEmitsExactEmptyArtifactCollection(t *testing.T) {
+	stub, _, _ := testWrapperShimService(t)
+	stub.statusResult = wrappershimcmd.StatusResult{Artifacts: []wrappershimcmd.Artifact{}}
+	var stdout, stderr bytes.Buffer
+	command := New(strings.NewReader(""), &stdout, &stderr)
+	command.wrapperShims = stub
+	if code := command.RunContext(context.Background(), []string{"wrapper", "status"}); code != ExitOK {
+		t.Fatalf("code=%d stderr=%q", code, stderr.String())
+	}
+	want := "{\"schema_version\":1,\"artifacts\":[]}\n"
+	if stdout.String() != want || stderr.Len() != 0 || stub.statusCalls != 1 {
+		t.Fatalf("stdout=%q want=%q stderr=%q calls=%d", stdout.String(), want, stderr.String(), stub.statusCalls)
 	}
 }
 

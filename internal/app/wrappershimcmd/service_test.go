@@ -350,6 +350,60 @@ func TestCancellationBeforeTaskStartsMakesZeroCalls(t *testing.T) {
 	}
 }
 
+func TestInstallRejectsNilAndTypedNilPortsBeforeAnyCall(t *testing.T) {
+	tests := []struct {
+		name     string
+		port     string
+		typedNil bool
+	}{
+		{name: "nil materializer", port: "materializer"},
+		{name: "typed nil materializer", port: "materializer", typedNil: true},
+		{name: "nil renderer", port: "renderer"},
+		{name: "typed nil renderer", port: "renderer", typedNil: true},
+		{name: "nil store", port: "store"},
+		{name: "typed nil store", port: "store", typedNil: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			binding := testBinding(t)
+			materializer := &fakeMaterializer{binding: binding}
+			renderer := &fakeRenderer{material: testMaterial(t)}
+			store := &fakeStore{binPath: filepath.Join(t.TempDir(), "bin")}
+
+			var materializerPort MaterializerPort = materializer
+			var rendererPort RendererPort = renderer
+			var storePort StorePort = store
+			switch test.port {
+			case "materializer":
+				materializerPort = nil
+				if test.typedNil {
+					materializerPort = (*fakeMaterializer)(nil)
+				}
+			case "renderer":
+				rendererPort = nil
+				if test.typedNil {
+					rendererPort = (*fakeRenderer)(nil)
+				}
+			case "store":
+				storePort = nil
+				if test.typedNil {
+					storePort = (*fakeStore)(nil)
+				}
+			default:
+				t.Fatalf("unknown port %q", test.port)
+			}
+
+			service := New("linux", materializerPort, rendererPort, storePort)
+			if _, err := service.Install(context.Background(), installIntent(), binding.BundleLocator); err == nil {
+				t.Fatal("install with incomplete wiring succeeded")
+			}
+			if materializer.calls != 0 || renderer.calls != 0 || store.binCalls != 0 || store.installCalls != 0 {
+				t.Fatalf("calls materialize/render/bin/install=%d/%d/%d/%d", materializer.calls, renderer.calls, store.binCalls, store.installCalls)
+			}
+		})
+	}
+}
+
 func assertFault(t *testing.T, err error, code string, kind fault.Kind, retryable bool) {
 	t.Helper()
 	public, ok := fault.PublicCopy(err)
