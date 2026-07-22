@@ -5,20 +5,25 @@ kept in `goal.md`, `plan.md`, and ADR 0012.
 
 ## Current behavior
 
-- Atsura currently supports strict JSON projection and exact source-stream
-  passthrough results; no processor result exists in specification schema 3,
-  bundle schema 2, or plan schema 4.
-- Go CLI contract 1 inspects `go version`, `go help`, and `go help test`, then
-  admits only identity no-argument `go test` with source-stream passthrough.
-- Source-catalog schema 1 models structured selectors as double-dash flags, so
-  exact Go `-json` evidence requires a versioned selector-vocabulary change.
-- The finite application runtime registry dispatches source compatibility by
-  namespaced adapter kind; production contains no coding-agent host process,
+- The implementation now contains the typed original-preserving optimizer
+  result, processor observation/compatibility contracts, strict Go pass-event
+  admission, and isolated processor execution boundary.
+- Go CLI contract 2 records the exact `go_test_jsonl` selector `-json`
+  separately from the empty caller option surface and admits only the reviewed
+  no-argument `go test` tuple.
+- Application truth tables distinguish `preserved_before_processor`,
+  `preserved_after_processor`, and `optimized`, enforce truthful source and
+  processor attempts, and suppress all intermediate bytes on processor faults.
+- The finite application runtime registries keep source and processor
+  compatibility separate; production contains no coding-agent host process,
   settings, hook-input rewrite, or vendor-specific core schema.
-- `main` at `146201a` passed local full, security, public, and release gates and
-  GitHub Actions run `29891859068`, including the five-target native aggregate.
-- The capability ledger reports original-preserving optimization and RTK
-  authoring defaults as deferred.
+- Processor inspection, explicit authoring evidence, bundle identity binding,
+  wrapper plan application, and projection-facade rejection have focused
+  implementation tests. Native installed-artifact evidence and canonical gates
+  are not yet completion evidence for this packet.
+- `main` at `146201a` was the last recorded pre-iteration revision with local
+  full, security, public, and release gates plus GitHub Actions run
+  `29891859068`; that result does not validate the current optimizer change.
 
 ## Relevant structure
 
@@ -77,27 +82,47 @@ kept in `goal.md`, `plan.md`, and ADR 0012.
   `Go test: 28 passed in 1 packages` with no trailing newline.
 - Hostile official-artifact observations, 2026-07-22: skip-only was
   misclassified, malformed lines were omitted, failure status was lost, and
-  two-package failure order varied across repeated processes. An isolated
-  pass-only pipe invocation required no file write or observed network attempt.
+  two-package failure order varied across repeated processes.
+- A prior isolated pass-only invocation did not report a file write or network
+  attempt, but it did not use a reviewed external child-process/filesystem/
+  network observer contract. It is research context only and is not acceptance
+  evidence for absence of those effects.
+- For the admitted pass fixture, Atsura independently requires a strictly
+  smaller 31-byte summary before starting RTK. Official RTK v0.43.0
+  deterministically emits that same summary for the admitted grammar.
+  Consequently, the fixed artifact has no deterministic
+  `preserved_after_processor` fixture; that postcondition remains a required
+  controlled application truth-table case.
+- The fixed official executable and argv expose no deterministic input that
+  produces processor start, timeout, signal, cancellation, nonzero, stderr,
+  overflow, post-run identity drift, unexpected-output, or cleanup faults.
+  Those mandatory one-attempt/no-byte branches are controlled application/
+  infrastructure tests, not installed official-artifact cases. Preflight and
+  eligible post-source drift remain deterministic installed-wrapper cases
+  because the journey controls replacement between the relevant identity
+  checks.
+- The checked-in pass fixture is 1,273 bytes with SHA-256
+  `a876a23b60dad0984d822f98c2ed5a94f82e368e985bdd19e5bd5bb90a733885`.
+  Its independent answer key has SHA-256
+  `060e4e2ee88ced24bc53d5916f953588c252165134250c2f24c7fd5d0ab67a95`.
+  The exact newline-free 31-byte summary has SHA-256
+  `a4f3dee01192dc3d1e710a3301d7f9f35bf7e7f14135b4a96ce398dc3af043b4`.
 
 ## Unknowns
 
-- [ ] Exact public processor-observation schema names and fault codes; decide in
-      contract tests before implementation.
-- [ ] Exact version increments for agent help, capability ledger, and native
-      evidence after tracing all generated consumers.
+- [ ] Exact remaining version increments for agent help, capability ledger, and
+      native evidence after tracing all generated consumers.
 - [ ] Whether Linux amd64/arm64 and Darwin amd64/arm64 can run the pinned
       official RTK artifact under the exact isolation contract; answer with
       native CI. Windows is explicitly outside this optimizer runtime matrix.
 - [ ] Whether a platform needs a minimal OS-specific environment variable not
       present in the portable base; answer with isolated native fixtures and
       document only observed additions.
-- [ ] Exact token comparison for the frozen pass fixture; answer after the
-      typed fixture and independent answer key are checked in.
-- [ ] The linked `go.yaml.in/yaml/v3` module carries an upstream Apache NOTICE,
-      while the current Atsura archive has no `THIRD_PARTY_NOTICES`. This
-      pre-existing release-compliance gap is independent of RTK and needs its
-      own reviewed notice fix before publication.
+- [ ] Platform-specific external observer contracts for child-process,
+      filesystem, and network activity. No absence claim is accepted until the
+      observer, event grammar, bounds, and failure semantics are proved.
+- [ ] A vendor-neutral tokenizer contract. Token counts are intentionally not
+      asserted for this evidence; exact byte count and hash are authoritative.
 - [ ] Later source/RTK tuples, versions, filters, auto-install UX, RTK internal
       reuse, and coding-agent adapters remain outside this iteration.
 

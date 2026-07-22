@@ -76,12 +76,17 @@ Because this changes default agent-facing presentation, this packet includes
       `preserved_before_processor` and one source/zero processor attempts.
 - [ ] Valid processor output distinguishes `preserved_after_processor` from
       `optimized`; the former is byte-identical to admitted input, while the
-      latter equals the independent summary and is strictly shorter.
+      latter equals the independent summary and is strictly shorter. This is a
+      required controlled application/infrastructure truth table, not an
+      official-artifact case for the fixed RTK invocation.
 - [ ] Missing/drifted processor preflight starts neither process; eligible
       post-source processor drift starts one source/zero processor; processor
       start, timeout, signal, cancellation, nonzero, stderr, overflow, identity
       drift, or unexpected stdout starts one source/one processor and exposes no
       source or processor bytes. All are non-retryable once source may have run.
+      The one-processor-attempt branches are required controlled
+      application/infrastructure tests and are not attributed to an unreachable
+      official-RTK fixture.
 - [ ] Inspection and processor execution use fixed argv/stdin, no shell or PATH
       lookup, and exact environment contract `atsura.processor.rtk_isolated.v1`,
       including disabled telemetry/tee/TOML, isolated state/temp/data roots, and
@@ -89,15 +94,21 @@ Because this changes default agent-facing presentation, this packet includes
 - [ ] Official RTK v0.43.0 archive checksum, extracted binary hash/size, version,
       platform tuple, commit, release URL, and Apache-2.0 provenance are pinned;
       RTK is not present in Atsura release archives.
-- [ ] Installed-artifact evidence replays optimized, both preservation phases,
-      rejection,
-      drift, failure, no-unexpected-file, and bounded no-network cases on every
-      claimed optimizer platform (Linux amd64/arm64 and Darwin amd64/arm64),
-      proves Windows does not claim the optimizer, and compares semantic
-      results rather than aggregate file existence.
-- [ ] Presentation evidence uses one typed pass fixture and answer key, records
-      the deliberate information loss, exact before/after bytes and hashes, and
-      excludes semantically ineligible cases before token comparison.
+- [ ] Installed-artifact evidence verifies exact official RTK identity and
+      provenance, then replays only deterministic reachable cases on every
+      claimed optimizer platform (Linux amd64/arm64 and Darwin amd64/arm64):
+      optimized; `preserved_before_processor` for skip, failure, and other
+      ineligible results; projection-facade rejection; preflight drift; and
+      eligible post-source drift. It proves Windows does not claim the optimizer
+      and compares semantic results rather than aggregate file existence.
+- [ ] Installed evidence makes no child-process, filesystem, or network absence
+      claim unless a platform-specific external observer contract has first
+      been implemented and validated. Isolation remains mandatory even when
+      those observations are not yet available.
+- [x] Presentation evidence uses one typed pass fixture and answer key, records
+      the deliberate information loss and exact 1,273-to-31 byte comparison and
+      hashes, excludes semantically ineligible cases, and makes no token claim
+      without an accepted vendor-neutral tokenizer contract.
 - [ ] Capability ledger and durable product, architecture, security, harness,
       release, and public-boundary documents describe only the implemented
       finite contract and retain RTK/host unknowns outside it.

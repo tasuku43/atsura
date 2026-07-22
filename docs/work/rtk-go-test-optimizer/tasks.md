@@ -33,29 +33,54 @@
 
 ## Implement
 
-- [ ] Add failing processor domain, observation codec, and compatibility tests.
-- [ ] Implement processor inspection and fixed RTK v0.43.0 observation.
-- [ ] Implement the finite processor compatibility registry.
-- [ ] Migrate specification, bundle, plan, result, trust, and schema contracts.
-- [ ] Add source-catalog schema 2 single-dash selector evidence and exact Go
+- [x] Add processor domain, observation codec, and compatibility tests.
+      Evidence: commits `5ddc29f`, `59881f8`, and `d6b58c5`.
+- [x] Implement processor inspection and fixed RTK v0.43.0 observation.
+      Evidence: commits `5ddc29f` and `3fdadaf`.
+- [x] Implement the finite processor compatibility registry.
+      Evidence: commit `59881f8`.
+- [x] Migrate specification, bundle, plan, result, trust, and schema contracts.
+      Evidence: commits `abac36d`, `a190995`, and `240cf9a`.
+- [x] Add source-catalog schema 2 single-dash selector evidence and exact Go
       contract-2 `test -json` admission without RTK policy in Go.
-- [ ] Implement the frozen LF/record/field/action/lifecycle Go pass validator,
+      Evidence: commit `abac36d`.
+- [x] Implement the frozen LF/record/field/action/lifecycle Go pass validator,
       strict-size eligibility, and summary oracle.
-- [ ] Implement isolated exact-identity processor execution and cleanup.
+      Evidence: commits `cea7f1c` and `d6b58c5`.
+- [x] Implement isolated exact-identity processor execution and cleanup.
+      Evidence: commit `5ddc29f`.
 - [ ] Extend shared plan application and wrapper delivery; keep bundle execute
-      projection-only with a zero-source optimizer rejection.
+      projection-only with a zero-source optimizer rejection. Shared plan
+      application and the two application facades are complete in commits
+      `a36a0d0` and `cdb006d`; production CLI delivery remains in progress.
 - [ ] Register CLI inputs/faults/help and update capability/schema/provenance
       ledgers.
-- [ ] Add hostile output, cancellation, drift, no-leak, and delivery tests.
-- [ ] Add frozen presentation fixture, answer key, and before/after evidence.
-- [ ] Add native installed-artifact journeys and semantic aggregate validation.
+- [x] Add controlled hostile-output, cancellation, drift, no-leak, valid
+      `preserved_after_processor`, and processor-failure truth tables.
+      Evidence: commits `5ddc29f`, `cea7f1c`, and `a36a0d0`. The controlled
+      `preserved_after_processor` and processor one-attempt failure/no-byte
+      branches are not official-artifact journey claims.
+- [x] Add the frozen presentation fixture, independent answer key, and exact
+      byte/hash comparison without an unsupported token claim. Evidence: commit
+      `06e572c` and `presentation-evidence.md`.
+- [x] Pin exact official RTK artifact and dependency provenance without
+      redistributing RTK. Evidence: commit `5a1c9a0`.
+- [ ] Add native installed-artifact journeys and semantic aggregate validation
+      for only deterministic reachable official-RTK cases: optimized;
+      `preserved_before_processor` skip/fail/ineligible; projection-facade
+      rejection; preflight drift; eligible post-source drift; and Windows
+      unsupported.
+- [x] Remove unsupported child-process/filesystem/network absence claims from
+      the evidence contract. External observer contracts remain an explicit
+      unknown and must precede any future claim.
 - [ ] Propagate durable conclusions through product, architecture, security,
       harness, release, and public-boundary docs.
 - [ ] Commit each coherent concern after focused verification.
 
 ## Verify
 
-- [ ] Focused tests pass. Evidence:
+- [x] Focused tests pass. Evidence: `go test ./internal/infra/gotestjson
+      ./internal/app/planapply ./internal/infra/processorexec` on 2026-07-22.
 - [ ] `task check` passes. Evidence:
 - [ ] `task security` passes. Evidence:
 - [ ] `task public:check` passes. Evidence:

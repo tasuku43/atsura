@@ -339,8 +339,11 @@ and bundle. Explicit inspection is a small, attributable handoff.
   and plan bind path, size, hash, version, and platform; runtime validates
   identity before source, before processor start, and after processor exit.
 - RTK may access ambient host, configuration, credentials, or networks.
-  Execution receives a minimal isolated environment, and native fixtures record
-  bounded filesystem and network observations without claiming an OS sandbox.
+  Execution receives a minimal isolated environment. Absence of child-process,
+  filesystem, or network activity is not inferred from that environment:
+  installed evidence may make such a claim only after a platform-specific
+  external observer contract records it. No such observer contract is accepted
+  by this decision yet, and no OS sandbox claim is made.
 - Go event grammar or runtime toolchain selection may evolve after inspection.
   Strict recorded-version admission plus field, action, lifecycle, identity,
   and exact-output checks make new behavior ineligible or fail closed without
@@ -377,10 +380,22 @@ and bundle. Explicit inspection is a small, attributable handoff.
   compatibility tests make processor inspection and the default discoverable
   without exposing arbitrary processor execution.
 - Installed-artifact journeys replay the four claimed official RTK `v0.43.0`
-  native artifacts,
-  verify archive and binary identities, exercise optimized and preserved
-  results plus drift/failure cases, and record bounded no-file/no-network
-  observations.
+  native artifacts and verify archive and binary identities. They exercise only
+  deterministic cases reachable through the fixed admitted invocation:
+  `optimized`; `preserved_before_processor` for skip, failure, and other
+  ineligible source results; projection-facade rejection before source start;
+  processor preflight drift; eligible post-source processor drift; and Windows
+  optimizer non-support before source start.
+- `preserved_after_processor` and the one-processor-attempt failure/no-byte
+  branches remain mandatory application and infrastructure truth-table tests.
+  The exact admitted RTK artifact and fixed argv have no deterministic fixture
+  that produces those branches, so installed-artifact journeys do not claim to
+  exercise them. This evidence boundary does not weaken the runtime
+  postcondition, no-fallback rule, no-byte fault rule, attempt accounting, or
+  processor identity checks.
+- Native child-process, filesystem, or network claims require an explicit
+  external observer contract. Until one is implemented and validated for a
+  platform, installed evidence records no such absence claim.
 - Shared schemas and architecture lint reject RTK-specific fields outside the
   finite processor adapter/manifest and reject coding-agent host fields
   everywhere in the core.
@@ -421,11 +436,16 @@ requires a successor review.
 - Focused domain, application, infrastructure, CLI, hostile-output, and schema
   tests described above.
 - Same-fixture presentation evidence showing the exact pass-only semantic loss
-  and byte/token comparison, with ineligible fixtures excluded rather than
-  scored as successful optimizations.
+  and byte comparison, with ineligible fixtures excluded rather than scored as
+  successful optimizations. Token counts are not asserted without an accepted
+  vendor-neutral tokenizer contract.
 - Installed `atr` wrapper journeys with exact official RTK artifacts on Linux
-  amd64/arm64 and Darwin amd64/arm64; the Windows journey proves the optimizer
-  remains unavailable before source start.
+  amd64/arm64 and Darwin amd64/arm64 cover only the deterministic reachable
+  cases listed under mechanical enforcement; the Windows journey proves the
+  optimizer remains unavailable before source start. Controlled application
+  and infrastructure truth tables separately prove
+  `preserved_after_processor` and processor one-attempt failure/no-byte
+  behavior.
 - `task check`, `task security`, `task public:check`, and
   `task release:check`.
 

@@ -119,7 +119,31 @@ processor preflight -> exact go test -json once -> conventional result
 - Native evidence downloads only pinned official public artifacts, verifies
   checksums before extraction, and never checks an RTK binary into the repo or
   Atsura archive.
-- The bounded file/network observation is evidence, not an OS sandbox claim.
+- The isolated environment is a runtime invariant, not evidence that RTK starts
+  no child process or performs no filesystem or network activity. Those claims
+  require platform-specific external observer contracts and remain unasserted
+  until such observers are implemented and validated. No OS sandbox claim is
+  made.
+
+### Evidence partition
+
+- Installed journeys using the exact official RTK artifacts cover only cases
+  reachable deterministically through `rtk pipe --filter=go-test`: optimized;
+  `preserved_before_processor` for skip, failure, and other ineligible source
+  results; projection-facade rejection; processor preflight drift; eligible
+  post-source processor drift; and Windows optimizer non-support.
+- Controlled application and infrastructure truth tables cover
+  `preserved_after_processor` plus processor start, timeout, signal,
+  cancellation, nonzero, stderr, overflow, post-run identity drift, unexpected
+  stdout, and cleanup failure. They retain the one-attempt/no-byte/no-fallback
+  requirements but are not described as official-artifact journeys.
+- Archive checksum, extracted binary identity, version, platform, fixed argv,
+  stdin, isolation, and semantic-result evidence remain mandatory. Source
+  attempts are observed by the controlled source fixture; processor-attempt
+  truth remains mandatory in application/infrastructure tests and becomes an
+  installed-evidence claim only when an external observer proves it. External
+  child-process, filesystem, and network observations are separate contracts
+  and are not claimed until proven.
 
 ## Implementation slices
 
@@ -160,9 +184,14 @@ publicly inconsistent commit.
 - Human handoff: installation remains outside Atsura; exact path inspection and
   recovery instructions state that no credential or host configuration is
   requested.
-- Manual observation: each claimed official RTK artifact processes one
-  synthetic pass fixture under `atsura.processor.rtk_isolated.v1` with no
-  unexpected file or bounded network attempt.
+- Installed-artifact observation: each claimed official RTK artifact is pinned
+  and replays the deterministic reachable cases listed above under
+  `atsura.processor.rtk_isolated.v1`. `preserved_after_processor` and processor
+  failure/no-byte branches are verified by controlled application and
+  infrastructure tests instead.
+- External observation: add child-process, filesystem, or network absence
+  claims only after an explicit observer contract is implemented and validated
+  on the claimed platform; until then these facts remain unasserted.
 - Required profiles: `task check`, `task security`, `task public:check`, and
   `task release:check` on one revision.
 - Generated/artifact checks: clean generated diff, official checksum/binary
