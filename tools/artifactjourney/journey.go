@@ -632,11 +632,12 @@ func runPOSIXCaller(ctx context.Context, runner journeyRunner, wrapperPath strin
 	}
 	runContext, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
-	// #nosec G204 -- /bin/sh is the fixed generic caller fixture; the validated
-	// wrapper path and finite hostile argv are positional values, generated
-	// source is read by dot, and "$@" forwards without reconstruction.
 	shellArgs := []string{"-s", "--", wrapperPath}
 	shellArgs = append(shellArgs, callerArgs...)
+	// /bin/sh is the fixed generic caller fixture. The validated wrapper path
+	// and finite hostile argv are positional values; "$@" does not reconstruct
+	// them as shell source.
+	// #nosec G204 -- every variable value is passed as a positional argument.
 	command := exec.CommandContext(runContext, "/bin/sh", shellArgs...)
 	command.Dir = runner.directory
 	command.Env = replaceEnvironment(runner.environment, map[string]string{fixtureModeEnv: "success"})
