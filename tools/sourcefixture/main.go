@@ -155,7 +155,9 @@ func classifyInvocation(args []string) (invocation, bool) {
 		return invocation{kind: "probe", response: prListHelpFixture}, true
 	case "issue\x00list\x00--limit=1\x00--json=number,title,state":
 		return invocation{kind: "runtime", runtime: true, command: "issue list"}, true
-	case "pr\x00list\x00--limit=1\x00--json=number,title,state":
+	case "pr\x00list\x00--limit=30\x00--json=number,title,state":
+		return invocation{kind: "runtime", runtime: true, command: "pr list"}, true
+	case "pr\x00list\x00--limit=2\x00--json=number,title,state":
 		return invocation{kind: "runtime", runtime: true, command: "pr list"}, true
 	case "pr\x00list\x00--search=space value;$(touch atsura-artifact-injection)\x00--label=first\x00--label=Unicode 雪\x00--repo=-dash":
 		return invocation{kind: "runtime", runtime: true, command: identityStreamCommand}, true

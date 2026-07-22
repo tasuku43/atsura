@@ -202,20 +202,24 @@ type preparedProcessor struct {
 	metadata       processormanifest.TargetMetadata
 }
 
-// wrapperCaseEvidence retains only identities, digests, conventional status,
-// and attempt counts. Source bytes remain confined to the native replay.
+// wrapperCaseEvidence retains only argv and defaulting facts, identities,
+// digests, conventional status, and attempt counts. Source bytes remain
+// confined to the native replay.
 type wrapperCaseEvidence struct {
-	Name                  string   `json:"name"`
-	WrapperKind           string   `json:"wrapper_kind"`
-	ResultMode            string   `json:"result_mode"`
-	CallerArgv            []string `json:"caller_argv"`
-	BundleDigest          string   `json:"bundle_digest"`
-	PlanDigest            string   `json:"plan_digest"`
-	WrapperSourceSHA256   string   `json:"wrapper_source_sha256"`
-	StdoutSHA256          string   `json:"stdout_sha256"`
-	StderrSHA256          string   `json:"stderr_sha256"`
-	SourceExitCode        int      `json:"source_exit_code"`
-	SourceProcessAttempts int      `json:"source_process_attempts"`
+	Name                  string                          `json:"name"`
+	WrapperKind           string                          `json:"wrapper_kind"`
+	ResultMode            string                          `json:"result_mode"`
+	CallerArgv            []string                        `json:"caller_argv"`
+	SourceArgv            []string                        `json:"source_argv"`
+	OptionDefaults        []tailoringbundle.OptionDefault `json:"option_defaults"`
+	AppliedOptionDefaults []tailoringbundle.OptionDefault `json:"applied_option_defaults"`
+	BundleDigest          string                          `json:"bundle_digest"`
+	PlanDigest            string                          `json:"plan_digest"`
+	WrapperSourceSHA256   string                          `json:"wrapper_source_sha256"`
+	StdoutSHA256          string                          `json:"stdout_sha256"`
+	StderrSHA256          string                          `json:"stderr_sha256"`
+	SourceExitCode        int                             `json:"source_exit_code"`
+	SourceProcessAttempts int                             `json:"source_process_attempts"`
 }
 
 type commandOutcome struct {
@@ -357,6 +361,14 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 	if err != nil {
 		return evidenceDocument{}, fmt.Errorf("multi-command pull-request journey preparation failed: %w", err)
 	}
+	var prOverrideJourney preparedCommandJourney
+	if configuration.goos == "linux" || configuration.goos == "darwin" {
+		prOverrideJourney, err = prepareDefaultOverrideJourney(ctx, runner, prJourney, attemptLog, 4)
+		if err != nil {
+			return evidenceDocument{}, fmt.Errorf("multi-command pull-request override preparation failed: %w", err)
+		}
+		multiCommandBoundaries = append(multiCommandBoundaries, prOverrideJourney.boundaries...)
+	}
 	zeroAttemptRejections := prJourney.zeroAttemptRejections
 
 	for _, conflict := range []string{"--web", "--jq=.[]", "--template={{.number}}"} {
@@ -456,8 +468,8 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 		return evidenceDocument{}, fmt.Errorf("multi-command issue evidence is not distinct from direct issue evidence")
 	}
 	wrapperInputs := []packagedWrapperInput{{
-		name: "transformed_json", journey: prJourney,
-		callerArgs: []string{"pr", "list", "--limit=1"},
+		name: "default_applied", journey: prJourney,
+		callerArgs: []string{"pr", "list"},
 		wantStdout: []byte("[{\"id\":101,\"title\":\"Review policy\",\"state\":\"OPEN\"}]\n"),
 		wantStderr: []byte{}, wantExitCode: 0,
 	}}
@@ -478,6 +490,11 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 		}
 		appendArgs := []string{"issue", "list", "--search=append value", "--label=one", "--label=two"}
 		wrapperInputs = append(wrapperInputs,
+			packagedWrapperInput{
+				name: "default_overridden", journey: prOverrideJourney, callerArgs: []string{"pr", "list", "--limit=2"},
+				wantStdout: []byte("[{\"id\":101,\"title\":\"Review policy\",\"state\":\"OPEN\"}]\n"),
+				wantStderr: []byte{}, wantExitCode: 0,
+			},
 			packagedWrapperInput{
 				name: "append_only", journey: multiIssueJourney, callerArgs: appendArgs,
 				wantStdout: []byte{'A', 'P', 'P', ':', 0xff, 0x00},
@@ -527,7 +544,7 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 		return evidenceDocument{}, fmt.Errorf("fixture attempt sequence is invalid")
 	}
 
-	return evidenceDocument{SchemaVersion: 7, ArtifactJourney: artifactJourneyEvidence{
+	return evidenceDocument{SchemaVersion: 8, ArtifactJourney: artifactJourneyEvidence{
 		Target: configuration.goos + "/" + configuration.goarch, ObservedHost: runtime.GOOS + "/" + runtime.GOARCH,
 		ArchiveName: filepath.Base(archivePath), ArchiveSHA256: digest,
 		Version: strings.TrimPrefix(configuration.tag, "v"), Revision: configuration.revision, HelpContractsVerified: len(helpEvidence.outputs),
@@ -550,6 +567,9 @@ type preparedCommandJourney struct {
 	wrapperKind           string
 	resultMode            string
 	baseInvocation        []string
+	sourceArgv            []string
+	optionDefaults        []tailoringbundle.OptionDefault
+	appliedOptionDefaults []tailoringbundle.OptionDefault
 	zeroAttemptRejections int
 	boundaries            [][]byte
 }
@@ -606,7 +626,7 @@ func verifyPackagedWrappers(
 	existingAttempts int,
 	workRoot string,
 ) (packagedWrapperEvidence, error) {
-	if len(inputs) == 0 || inputs[0].name != "transformed_json" {
+	if len(inputs) == 0 || inputs[0].name != "default_applied" {
 		return packagedWrapperEvidence{}, fmt.Errorf("wrapper case inventory is invalid")
 	}
 	if goos == "windows" {
@@ -637,7 +657,7 @@ func verifyPackagedWrappers(
 	if goos != "linux" && goos != "darwin" {
 		return packagedWrapperEvidence{}, fmt.Errorf("wrapper journey target is unsupported")
 	}
-	if len(inputs) != 3 || inputs[1].name != "append_only" || inputs[2].name != "identity" {
+	if len(inputs) != 4 || inputs[1].name != "default_overridden" || inputs[2].name != "append_only" || inputs[3].name != "identity" {
 		return packagedWrapperEvidence{}, fmt.Errorf("POSIX wrapper case inventory is invalid")
 	}
 	for index, input := range inputs {
@@ -646,16 +666,22 @@ func verifyPackagedWrappers(
 		}
 	}
 	if inputs[0].journey.bundleDigest != inputs[1].journey.bundleDigest ||
+		inputs[0].journey.bundleDigest != inputs[2].journey.bundleDigest ||
 		inputs[0].journey.bundlePath() != inputs[1].journey.bundlePath() ||
+		inputs[0].journey.bundlePath() != inputs[2].journey.bundlePath() ||
 		inputs[0].journey.planDigest == inputs[1].journey.planDigest ||
+		inputs[0].journey.planDigest == inputs[2].journey.planDigest ||
+		inputs[1].journey.planDigest == inputs[2].journey.planDigest ||
 		inputs[0].journey.wrapperKind != "transform" || inputs[0].journey.resultMode != "transformed_json" ||
-		inputs[1].journey.wrapperKind != "transform" || inputs[1].journey.resultMode != "source_stream_passthrough" {
+		inputs[1].journey.wrapperKind != "transform" || inputs[1].journey.resultMode != "transformed_json" ||
+		inputs[2].journey.wrapperKind != "transform" || inputs[2].journey.resultMode != "source_stream_passthrough" {
 		return packagedWrapperEvidence{}, fmt.Errorf("multi-command wrapper binding is invalid")
 	}
-	if inputs[2].journey.bundleDigest == inputs[0].journey.bundleDigest ||
-		inputs[2].journey.planDigest == inputs[0].journey.planDigest ||
-		inputs[2].journey.planDigest == inputs[1].journey.planDigest ||
-		inputs[2].journey.wrapperKind != "identity" || inputs[2].journey.resultMode != "source_stream_passthrough" {
+	if inputs[3].journey.bundleDigest == inputs[0].journey.bundleDigest ||
+		inputs[3].journey.planDigest == inputs[0].journey.planDigest ||
+		inputs[3].journey.planDigest == inputs[1].journey.planDigest ||
+		inputs[3].journey.planDigest == inputs[2].journey.planDigest ||
+		inputs[3].journey.wrapperKind != "identity" || inputs[3].journey.resultMode != "source_stream_passthrough" {
 		return packagedWrapperEvidence{}, fmt.Errorf("identity wrapper evidence is not independent")
 	}
 	runtimeDigest, runtimeSize, err := regularFileIdentity(executablePath)
@@ -701,8 +727,10 @@ func verifyPackagedWrappers(
 	if err != nil {
 		return packagedWrapperEvidence{}, err
 	}
-	if err := validateWrapperRenderEvidence(sharedDocument, inputs[1].journey, "gh", executablePath, runtimeDigest, runtimeSize, sharedDigest); err != nil {
-		return packagedWrapperEvidence{}, fmt.Errorf("shared wrapper does not bind the issue plan bundle: %w", err)
+	for _, input := range inputs[1:3] {
+		if err := validateWrapperRenderEvidence(sharedDocument, input.journey, "gh", executablePath, runtimeDigest, runtimeSize, sharedDigest); err != nil {
+			return packagedWrapperEvidence{}, fmt.Errorf("shared wrapper does not bind the %s plan bundle: %w", input.name, err)
+		}
 	}
 	declaration, declarationErr := help.fault("wrapper run", "bundle_binding_mismatch")
 	if declarationErr != nil || declaration.Kind != "rejected" || declaration.Retryable {
@@ -772,8 +800,10 @@ func verifyPackagedWrappers(
 		}
 		result.cases = append(result.cases, wrapperCaseEvidence{
 			Name: input.name, WrapperKind: input.journey.wrapperKind, ResultMode: input.journey.resultMode,
-			CallerArgv:   append([]string{}, input.callerArgs...),
-			BundleDigest: input.journey.bundleDigest, PlanDigest: input.journey.planDigest,
+			CallerArgv: append([]string{}, input.callerArgs...), SourceArgv: append([]string{}, input.journey.sourceArgv...),
+			OptionDefaults:        cloneOptionDefaultEvidence(input.journey.optionDefaults),
+			AppliedOptionDefaults: cloneOptionDefaultEvidence(input.journey.appliedOptionDefaults),
+			BundleDigest:          input.journey.bundleDigest, PlanDigest: input.journey.planDigest,
 			WrapperSourceSHA256: sourceDigest, StdoutSHA256: digestBytes(invocation.stdout), StderrSHA256: digestBytes(invocation.stderr),
 			SourceExitCode: invocation.exitCode, SourceProcessAttempts: 1,
 		})
@@ -787,8 +817,11 @@ func verifyPackagedWrappers(
 	if err := invoke(inputs[1], sharedWrapperPath, sharedDigest, sharedFile, existingAttempts+2); err != nil {
 		return packagedWrapperEvidence{}, err
 	}
+	if err := invoke(inputs[2], sharedWrapperPath, sharedDigest, sharedFile, existingAttempts+3); err != nil {
+		return packagedWrapperEvidence{}, err
+	}
 
-	_, identitySource, identityDigest, err := render(inputs[2], existingAttempts+2)
+	_, identitySource, identityDigest, err := render(inputs[3], existingAttempts+3)
 	if err != nil {
 		return packagedWrapperEvidence{}, err
 	}
@@ -803,7 +836,7 @@ func verifyPackagedWrappers(
 	if err != nil || identityFile.sha256 != identityDigest || identityFile.size != int64(len(identitySource)) {
 		return packagedWrapperEvidence{}, fmt.Errorf("identity caller-owned fixture identity is invalid")
 	}
-	if err := invoke(inputs[2], identityWrapperPath, identityDigest, identityFile, existingAttempts+3); err != nil {
+	if err := invoke(inputs[3], identityWrapperPath, identityDigest, identityFile, existingAttempts+4); err != nil {
 		return packagedWrapperEvidence{}, err
 	}
 	return result, nil
@@ -921,7 +954,7 @@ func expectedTailoredHelp(bundleDigest, view string) ([]byte, error) {
 			"Source summary: List pull requests",
 			"Tailoring reason: Return one reviewed compact result.",
 			"Options:",
-			"  --limit=<value> (value required)",
+			"  --limit=<value> (value required; default when omitted: \"30\")",
 		)
 	default:
 		return nil, fmt.Errorf("tailored help view is unsupported")
@@ -1100,7 +1133,7 @@ func verifyGoSourceJourney(
 	}
 	previewPayload, err := decodePreview(preview.stdout)
 	if err != nil || previewPayload.SourceProcessAttempts != 0 || !digestValue(previewPayload.PlanDigest) ||
-		previewPayload.Plan.SchemaVersion != 5 ||
+		previewPayload.Plan.SchemaVersion != tailoringplan.SchemaVersion ||
 		previewPayload.Plan.WrapperKind != "identity" || previewPayload.Plan.ResultMode != "source_stream_passthrough" {
 		return goSourceEvidence{}, nil, fmt.Errorf("Go source preview evidence is invalid")
 	}
@@ -1113,7 +1146,9 @@ func verifyGoSourceJourney(
 	journey := preparedCommandJourney{
 		bundleDigest: bundleDigest, planDigest: previewPayload.PlanDigest,
 		wrapperKind: string(previewPayload.Plan.WrapperKind), resultMode: string(previewPayload.Plan.ResultMode),
-		baseInvocation: baseInvocation,
+		baseInvocation: baseInvocation, sourceArgv: append([]string{}, previewPayload.Plan.Stages.Invoke.Args...),
+		optionDefaults:        cloneOptionDefaultEvidence(previewPayload.Plan.Stages.Invoke.OptionDefaults),
+		appliedOptionDefaults: cloneOptionDefaultEvidence(previewPayload.Plan.Stages.Invoke.AppliedOptionDefaults),
 	}
 	boundaries = append(boundaries, draft.stdout, validation.stdout, built.stdout, status.stdout, preview.stdout)
 	evidence := goSourceEvidence{
@@ -1203,8 +1238,10 @@ func verifyGoSourceJourney(
 	evidence.WrapperOutcome = "ordinary_command_verified"
 	evidence.WrapperCases = []wrapperCaseEvidence{{
 		Name: "go_test_identity", WrapperKind: journey.wrapperKind, ResultMode: journey.resultMode,
-		CallerArgv:   []string{"test"},
-		BundleDigest: journey.bundleDigest, PlanDigest: journey.planDigest, WrapperSourceSHA256: identitySourceDigest,
+		CallerArgv: []string{"test"}, SourceArgv: append([]string{}, journey.sourceArgv...),
+		OptionDefaults:        cloneOptionDefaultEvidence(journey.optionDefaults),
+		AppliedOptionDefaults: cloneOptionDefaultEvidence(journey.appliedOptionDefaults),
+		BundleDigest:          journey.bundleDigest, PlanDigest: journey.planDigest, WrapperSourceSHA256: identitySourceDigest,
 		StdoutSHA256: digestBytes(identityInvocation.stdout), StderrSHA256: digestBytes(identityInvocation.stderr),
 		SourceExitCode: identityInvocation.exitCode, SourceProcessAttempts: 1,
 	}}
@@ -1255,7 +1292,7 @@ func verifyGoSourceJourney(
 	}
 	optimizerPreviewPayload, err := decodePreview(optimizerPreview.stdout)
 	if err != nil || optimizerPreviewPayload.SourceProcessAttempts != 0 || !digestValue(optimizerPreviewPayload.PlanDigest) ||
-		optimizerPreviewPayload.Plan.SchemaVersion != 5 || optimizerPreviewPayload.Plan.WrapperKind != "transform" ||
+		optimizerPreviewPayload.Plan.SchemaVersion != tailoringplan.SchemaVersion || optimizerPreviewPayload.Plan.WrapperKind != "transform" ||
 		optimizerPreviewPayload.Plan.ResultMode != "original_preserving_optimizer" {
 		return goSourceEvidence{}, nil, fmt.Errorf("Go optimizer preview evidence is invalid")
 	}
@@ -1268,7 +1305,9 @@ func verifyGoSourceJourney(
 	optimizerJourney := preparedCommandJourney{
 		bundleDigest: optimizerBundleDigest, planDigest: optimizerPreviewPayload.PlanDigest,
 		wrapperKind: string(optimizerPreviewPayload.Plan.WrapperKind), resultMode: string(optimizerPreviewPayload.Plan.ResultMode),
-		baseInvocation: optimizerBaseInvocation,
+		baseInvocation: optimizerBaseInvocation, sourceArgv: append([]string{}, optimizerPreviewPayload.Plan.Stages.Invoke.Args...),
+		optionDefaults:        cloneOptionDefaultEvidence(optimizerPreviewPayload.Plan.Stages.Invoke.OptionDefaults),
+		appliedOptionDefaults: cloneOptionDefaultEvidence(optimizerPreviewPayload.Plan.Stages.Invoke.AppliedOptionDefaults),
 	}
 	if err := requireGoTestAttempts(goAttemptLog, 1); err != nil {
 		return goSourceEvidence{}, nil, fmt.Errorf("Go optimizer preparation started the source")
@@ -1592,6 +1631,13 @@ func (j preparedCommandJourney) bundlePath() string {
 	return j.baseInvocation[1]
 }
 
+func cloneOptionDefaultEvidence(values []tailoringbundle.OptionDefault) []tailoringbundle.OptionDefault {
+	if values == nil {
+		return nil
+	}
+	return append([]tailoringbundle.OptionDefault{}, values...)
+}
+
 func decodeWrapperRender(value []byte) (wrapperRenderDocument, error) {
 	decoder := json.NewDecoder(bytes.NewReader(value))
 	decoder.DisallowUnknownFields()
@@ -1775,7 +1821,7 @@ func prepareMultiCommandWrapperJourneys(
 	if err != nil || validateStatus(preAdoptionStatus.stdout, bundleDigest, bundletrust.StateNotAdopted) != nil {
 		return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("multi-command pre-adoption status evidence is invalid")
 	}
-	prBaseInvocation := []string{"--bundle", bundlePath, "--", "gh", "pr", "list", "--limit=1"}
+	prBaseInvocation := []string{"--bundle", bundlePath, "--", "gh", "pr", "list"}
 	issueBaseInvocation := []string{
 		"--bundle", bundlePath, "--", "gh", "issue", "list",
 		"--search=append value", "--label=one", "--label=two",
@@ -1819,7 +1865,9 @@ func prepareMultiCommandWrapperJourneys(
 		prEvidence.Plan.SchemaVersion != tailoringplan.SchemaVersion || prEvidence.Plan.BundleDigest != bundleDigest ||
 		prEvidence.Plan.WrapperKind != tailoringbundle.WrapperTransform || prEvidence.Plan.ResultMode != tailoringplan.ResultModeTransformedJSON ||
 		!reflect.DeepEqual(prEvidence.Plan.MatchedCommand, []string{"pr", "list"}) ||
-		!reflect.DeepEqual(prEvidence.Plan.Stages.Invoke.Args, []string{"pr", "list", "--limit=1", "--json=number,title,state"}) {
+		!reflect.DeepEqual(prEvidence.Plan.Stages.Invoke.Args, []string{"pr", "list", "--limit=30", "--json=number,title,state"}) ||
+		!reflect.DeepEqual(prEvidence.Plan.Stages.Invoke.OptionDefaults, []tailoringbundle.OptionDefault{{Option: "--limit", Value: "30"}}) ||
+		!reflect.DeepEqual(prEvidence.Plan.Stages.Invoke.AppliedOptionDefaults, []tailoringbundle.OptionDefault{{Option: "--limit", Value: "30"}}) {
 		return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("multi-command pull-request preview evidence is invalid")
 	}
 	issuePreview, err := runner.success(ctx, "success", append([]string{"bundle", "preview"}, issueBaseInvocation...)...)
@@ -1832,6 +1880,7 @@ func prepareMultiCommandWrapperJourneys(
 		issueEvidence.Plan.WrapperKind != tailoringbundle.WrapperTransform || issueEvidence.Plan.ResultMode != tailoringplan.ResultModeSourceStreamPassthrough ||
 		!reflect.DeepEqual(issueEvidence.Plan.MatchedCommand, []string{"issue", "list"}) ||
 		!reflect.DeepEqual(issueEvidence.Plan.Stages.Invoke.Args, []string{"issue", "list", "--search=append value", "--label=one", "--label=two", "--limit=1"}) ||
+		len(issueEvidence.Plan.Stages.Invoke.OptionDefaults) != 0 || len(issueEvidence.Plan.Stages.Invoke.AppliedOptionDefaults) != 0 ||
 		issueEvidence.PlanDigest == prEvidence.PlanDigest {
 		return preparedCommandJourney{}, preparedCommandJourney{}, nil, fmt.Errorf("multi-command issue preview evidence is invalid")
 	}
@@ -1846,14 +1895,58 @@ func prepareMultiCommandWrapperJourneys(
 	prJourney := preparedCommandJourney{
 		bundleDigest: bundleDigest, planDigest: prEvidence.PlanDigest,
 		wrapperKind: string(prEvidence.Plan.WrapperKind), resultMode: string(prEvidence.Plan.ResultMode),
-		baseInvocation: prBaseInvocation, zeroAttemptRejections: zeroAttemptRejections,
+		baseInvocation: prBaseInvocation, sourceArgv: append([]string{}, prEvidence.Plan.Stages.Invoke.Args...),
+		optionDefaults:        cloneOptionDefaultEvidence(prEvidence.Plan.Stages.Invoke.OptionDefaults),
+		appliedOptionDefaults: cloneOptionDefaultEvidence(prEvidence.Plan.Stages.Invoke.AppliedOptionDefaults),
+		zeroAttemptRejections: zeroAttemptRejections,
 	}
 	issueJourney := preparedCommandJourney{
 		bundleDigest: bundleDigest, planDigest: issueEvidence.PlanDigest,
 		wrapperKind: string(issueEvidence.Plan.WrapperKind), resultMode: string(issueEvidence.Plan.ResultMode),
-		baseInvocation: issueBaseInvocation,
+		baseInvocation: issueBaseInvocation, sourceArgv: append([]string{}, issueEvidence.Plan.Stages.Invoke.Args...),
+		optionDefaults:        cloneOptionDefaultEvidence(issueEvidence.Plan.Stages.Invoke.OptionDefaults),
+		appliedOptionDefaults: cloneOptionDefaultEvidence(issueEvidence.Plan.Stages.Invoke.AppliedOptionDefaults),
 	}
 	return prJourney, issueJourney, boundaries, nil
+}
+
+func prepareDefaultOverrideJourney(
+	ctx context.Context,
+	runner journeyRunner,
+	base preparedCommandJourney,
+	attemptLog string,
+	existingAttempts int,
+) (preparedCommandJourney, error) {
+	if ctx == nil || base.bundlePath() == "" || base.bundleDigest == "" || base.planDigest == "" {
+		return preparedCommandJourney{}, fmt.Errorf("default override journey input is invalid")
+	}
+	baseInvocation := []string{"--bundle", base.bundlePath(), "--", "gh", "pr", "list", "--limit=2"}
+	preview, err := runner.success(ctx, "success", append([]string{"bundle", "preview"}, baseInvocation...)...)
+	if err != nil {
+		return preparedCommandJourney{}, fmt.Errorf("default override preview failed")
+	}
+	evidence, err := decodePreview(preview.stdout)
+	declared := []tailoringbundle.OptionDefault{{Option: "--limit", Value: "30"}}
+	if err != nil || evidence.SourceProcessAttempts != 0 || !digestValue(evidence.PlanDigest) ||
+		evidence.Plan.SchemaVersion != tailoringplan.SchemaVersion || evidence.Plan.BundleDigest != base.bundleDigest ||
+		evidence.Plan.WrapperKind != tailoringbundle.WrapperTransform || evidence.Plan.ResultMode != tailoringplan.ResultModeTransformedJSON ||
+		!reflect.DeepEqual(evidence.Plan.MatchedCommand, []string{"pr", "list"}) ||
+		!reflect.DeepEqual(evidence.Plan.Stages.Invoke.Args, []string{"pr", "list", "--limit=2", "--json=number,title,state"}) ||
+		!reflect.DeepEqual(evidence.Plan.Stages.Invoke.OptionDefaults, declared) || len(evidence.Plan.Stages.Invoke.AppliedOptionDefaults) != 0 ||
+		evidence.PlanDigest == base.planDigest {
+		return preparedCommandJourney{}, fmt.Errorf("default override preview evidence is invalid")
+	}
+	if err := requireAttempts(attemptLog, existingAttempts); err != nil {
+		return preparedCommandJourney{}, fmt.Errorf("default override preview started the source fixture")
+	}
+	return preparedCommandJourney{
+		bundleDigest: base.bundleDigest, planDigest: evidence.PlanDigest,
+		wrapperKind: string(evidence.Plan.WrapperKind), resultMode: string(evidence.Plan.ResultMode),
+		baseInvocation: baseInvocation, sourceArgv: append([]string{}, evidence.Plan.Stages.Invoke.Args...),
+		optionDefaults:        cloneOptionDefaultEvidence(evidence.Plan.Stages.Invoke.OptionDefaults),
+		appliedOptionDefaults: cloneOptionDefaultEvidence(evidence.Plan.Stages.Invoke.AppliedOptionDefaults),
+		boundaries:            [][]byte{preview.stdout},
+	}, nil
 }
 
 func prepareCommandJourney(
@@ -1950,7 +2043,7 @@ func prepareCommandJourney(
 		return preparedCommandJourney{}, fmt.Errorf("adopted preview failed")
 	}
 	previewEvidence, err := decodePreview(preview.stdout)
-	if err != nil || previewEvidence.SourceProcessAttempts != 0 || !digestValue(previewEvidence.PlanDigest) || previewEvidence.Plan.SchemaVersion != 5 || previewEvidence.Plan.WrapperKind != "transform" || previewEvidence.Plan.ResultMode != "transformed_json" {
+	if err != nil || previewEvidence.SourceProcessAttempts != 0 || !digestValue(previewEvidence.PlanDigest) || previewEvidence.Plan.SchemaVersion != tailoringplan.SchemaVersion || previewEvidence.Plan.WrapperKind != "transform" || previewEvidence.Plan.ResultMode != "transformed_json" {
 		return preparedCommandJourney{}, fmt.Errorf("adopted preview evidence is invalid")
 	}
 	if err := requireAttempts(attemptLog, existingAttempts); err != nil {
@@ -1960,8 +2053,11 @@ func prepareCommandJourney(
 	return preparedCommandJourney{
 		bundleDigest: bundleDigest, planDigest: previewEvidence.PlanDigest,
 		wrapperKind: string(previewEvidence.Plan.WrapperKind), resultMode: string(previewEvidence.Plan.ResultMode),
-		baseInvocation: baseInvocation, zeroAttemptRejections: zeroAttemptRejections,
-		boundaries: [][]byte{draft.stdout, transformedSpecification, validation.stdout, built.stdout, preAdoptionStatus.stdout, adoptedStatus.stdout, preview.stdout},
+		baseInvocation: baseInvocation, sourceArgv: append([]string{}, previewEvidence.Plan.Stages.Invoke.Args...),
+		optionDefaults:        cloneOptionDefaultEvidence(previewEvidence.Plan.Stages.Invoke.OptionDefaults),
+		appliedOptionDefaults: cloneOptionDefaultEvidence(previewEvidence.Plan.Stages.Invoke.AppliedOptionDefaults),
+		zeroAttemptRejections: zeroAttemptRejections,
+		boundaries:            [][]byte{draft.stdout, transformedSpecification, validation.stdout, built.stdout, preAdoptionStatus.stdout, adoptedStatus.stdout, preview.stdout},
 	}, nil
 }
 
@@ -2038,7 +2134,8 @@ func prepareSourceStreamJourney(
 	if name == "identity" {
 		wantedKind = "identity"
 	}
-	if err != nil || previewEvidence.SourceProcessAttempts != 0 || !digestValue(previewEvidence.PlanDigest) || previewEvidence.Plan.SchemaVersion != 5 || string(previewEvidence.Plan.WrapperKind) != wantedKind || previewEvidence.Plan.ResultMode != "source_stream_passthrough" {
+	if err != nil || previewEvidence.SourceProcessAttempts != 0 || !digestValue(previewEvidence.PlanDigest) || previewEvidence.Plan.SchemaVersion != tailoringplan.SchemaVersion || string(previewEvidence.Plan.WrapperKind) != wantedKind || previewEvidence.Plan.ResultMode != "source_stream_passthrough" ||
+		len(previewEvidence.Plan.Stages.Invoke.OptionDefaults) != 0 || len(previewEvidence.Plan.Stages.Invoke.AppliedOptionDefaults) != 0 {
 		return preparedCommandJourney{}, fmt.Errorf("source-stream preview evidence is invalid")
 	}
 	if err := requireAttempts(attemptLog, existingAttempts); err != nil {
@@ -2047,8 +2144,10 @@ func prepareSourceStreamJourney(
 	return preparedCommandJourney{
 		bundleDigest: bundleDigest, planDigest: previewEvidence.PlanDigest,
 		wrapperKind: string(previewEvidence.Plan.WrapperKind), resultMode: string(previewEvidence.Plan.ResultMode),
-		baseInvocation: baseInvocation,
-		boundaries:     [][]byte{draft.stdout, specification, validation.stdout, built.stdout, status.stdout, preview.stdout},
+		baseInvocation: baseInvocation, sourceArgv: append([]string{}, previewEvidence.Plan.Stages.Invoke.Args...),
+		optionDefaults:        cloneOptionDefaultEvidence(previewEvidence.Plan.Stages.Invoke.OptionDefaults),
+		appliedOptionDefaults: cloneOptionDefaultEvidence(previewEvidence.Plan.Stages.Invoke.AppliedOptionDefaults),
+		boundaries:            [][]byte{draft.stdout, specification, validation.stdout, built.stdout, status.stdout, preview.stdout},
 	}, nil
 }
 
@@ -2093,7 +2192,7 @@ var bundlePreviewHelpFaults = []helpFaultDeclaration{
 	expectedHelpFault("bundle_file_too_large", "invalid_input", false, "bundle build", "Build a bundle within the 2 MiB limit."),
 	expectedHelpFault("bundle_file_read_failed", "unavailable", true, "bundle status", "Retry after the bundle file is readable."),
 	expectedHelpFault("invalid_bundle_file", "invalid_input", false, "bundle build", "Rebuild and review strict canonical bundle JSON."),
-	expectedHelpFault("legacy_tailoring_schema", "invalid_input", false, "help bundle build", "Rebuild with a schema-4 specification and bundle schema 3."),
+	expectedHelpFault("legacy_tailoring_schema", "invalid_input", false, "help bundle build", "Rebuild with a schema-5 specification and bundle schema 4."),
 	expectedHelpFault("bundle_digest_mismatch", "rejected", false, "bundle build", "Rebuild and review the changed bundle content."),
 	expectedHelpFault("invalid_bundle_trust_store", "rejected", false, "bundle status", "Repair or reconcile invalid user-local adoption state."),
 	expectedHelpFault("bundle_not_adopted", "rejected", false, "bundle trust", "Review and adopt the exact bundle digest before previewing a plan."),
@@ -2123,7 +2222,7 @@ var bundleExecuteHelpFaults = []helpFaultDeclaration{
 	expectedHelpFault("bundle_file_too_large", "invalid_input", false, "bundle build", "Build a bundle within the 2 MiB limit."),
 	expectedHelpFault("bundle_file_read_failed", "unavailable", true, "bundle status", "Retry after the bundle file is readable."),
 	expectedHelpFault("invalid_bundle_file", "invalid_input", false, "bundle build", "Rebuild and review strict canonical bundle JSON."),
-	expectedHelpFault("legacy_tailoring_schema", "invalid_input", false, "help bundle build", "Rebuild with a schema-4 specification and bundle schema 3."),
+	expectedHelpFault("legacy_tailoring_schema", "invalid_input", false, "help bundle build", "Rebuild with a schema-5 specification and bundle schema 4."),
 	expectedHelpFault("bundle_digest_mismatch", "rejected", false, "bundle build", "Rebuild and review the changed bundle content."),
 	expectedHelpFault("invalid_bundle_trust_store", "rejected", false, "bundle status", "Repair or reconcile invalid user-local adoption state."),
 	expectedHelpFault("bundle_not_adopted", "rejected", false, "bundle trust", "Review and adopt the exact bundle digest before execution."),
@@ -2168,7 +2267,7 @@ func wrapperBundleFileHelpFaults(command, invalidReason string) []helpFaultDecla
 		expectedHelpFault("bundle_file_too_large", "invalid_input", false, "bundle build", "Build a bundle within the 2 MiB limit."),
 		expectedHelpFault("bundle_file_read_failed", "unavailable", true, "bundle status", "Retry after the bundle file is readable."),
 		expectedHelpFault("invalid_bundle_file", "invalid_input", false, "bundle build", "Rebuild and review strict canonical bundle JSON."),
-		expectedHelpFault("legacy_tailoring_schema", "invalid_input", false, "help bundle build", "Rebuild with a schema-4 specification and bundle schema 3."),
+		expectedHelpFault("legacy_tailoring_schema", "invalid_input", false, "help bundle build", "Rebuild with a schema-5 specification and bundle schema 4."),
 		expectedHelpFault("bundle_digest_mismatch", "rejected", false, "bundle build", "Rebuild and review the changed bundle content."),
 	}
 }
@@ -2441,6 +2540,9 @@ var tailoringSpecificationSchemaFields = []helpSchemaFieldProjection{
 	schemaArray("/commands/*/wrapper/before", "object"),
 	schemaField("/commands/*/wrapper/invoke", "object", true),
 	schemaArray("/commands/*/wrapper/invoke/append_args", "string"),
+	schemaArray("/commands/*/wrapper/invoke/option_defaults", "object"),
+	schemaField("/commands/*/wrapper/invoke/option_defaults/*/option", "string", true),
+	schemaField("/commands/*/wrapper/invoke/option_defaults/*/value", "string", true),
 	schemaField("/commands/*/wrapper/kind", "string", true),
 	schemaField("/commands/*/wrapper/output", "object", false),
 	schemaField("/commands/*/wrapper/output/kind", "string", true),
@@ -2607,7 +2709,7 @@ func validateWrapperRenderOutput(command helpCommandProjection) error {
 
 func validateWrapperRunOutput(command helpCommandProjection) error {
 	output := command.Contract.Output
-	wantedReference := helpOutputSchemaReference{Command: "bundle preview", Field: "plan", ID: "wrapper-plan", Version: 5}
+	wantedReference := helpOutputSchemaReference{Command: "bundle preview", Field: "plan", ID: "wrapper-plan", Version: tailoringplan.SchemaVersion}
 	success := func(disposition, stdout, stderr, exitStatus, framing, projection, crossStreamOrder string, stdoutLimit, stderrLimit, sourceAttempts, processorAttempts int) helpPlanResultSuccessProjection {
 		return helpPlanResultSuccessProjection{
 			Disposition: disposition, Stdout: stdout, Stderr: stderr, ExitStatus: exitStatus,
@@ -2790,10 +2892,10 @@ func validateScopedHelp(path string, value []byte) (helpCommandProjection, error
 	case "spec init":
 		if command.Usage != "atr spec init --catalog <path> [--processor <inspection.json>] -- <command>" || validateInputs(command.Contract.Inputs, []helpInputProjection{
 			input("--catalog", "flag", "single"), typedInput("--processor", "flag", "text", "single", false), input("command", "argument", "repeatable"),
-		}) != nil || !strings.Contains(command.Summary, "schema-4") || !strings.Contains(command.Contract.Outcome, "finite registry-owned optimizer") {
+		}) != nil || !strings.Contains(command.Summary, "schema-5") || !strings.Contains(command.Contract.Outcome, "finite registry-owned optimizer") {
 			return helpCommandProjection{}, fmt.Errorf("specification baseline contract is incomplete")
 		}
-		if err := validateOutputSchema(command, "specification", "tailoring-specification", 4, tailoringSpecificationSchemaFields); err != nil {
+		if err := validateOutputSchema(command, "specification", "tailoring-specification", tailoringbundle.SpecificationSchemaVersion, tailoringSpecificationSchemaFields); err != nil {
 			return helpCommandProjection{}, fmt.Errorf("specification schema is incomplete")
 		}
 		for _, marker := range []string{"Without --processor", "With --processor", "output.kind=projection", "Optimizers require", "Arbitrary shell"} {
@@ -2805,7 +2907,7 @@ func validateScopedHelp(path string, value []byte) (helpCommandProjection, error
 		if command.Usage != "atr spec validate --catalog <path> --spec <path>" || validateInputs(command.Contract.Inputs, []helpInputProjection{input("--catalog", "flag", "single"), input("--spec", "flag", "single")}) != nil {
 			return helpCommandProjection{}, fmt.Errorf("specification validation invocation contract is incomplete")
 		}
-		if err := validateOutputSchema(command, "specification", "tailoring-specification", 4, tailoringSpecificationSchemaFields); err != nil {
+		if err := validateOutputSchema(command, "specification", "tailoring-specification", tailoringbundle.SpecificationSchemaVersion, tailoringSpecificationSchemaFields); err != nil {
 			return helpCommandProjection{}, fmt.Errorf("normalized specification schema is incomplete")
 		}
 	case "bundle build":
@@ -2816,7 +2918,7 @@ func validateScopedHelp(path string, value []byte) (helpCommandProjection, error
 		}) != nil {
 			return helpCommandProjection{}, fmt.Errorf("bundle build contract is incomplete")
 		}
-		for _, marker := range []string{"schema-4 specification", "optimizer specification requires exactly one explicit --processor", "without an optimizer rejects that option", "no processor inspection or execution"} {
+		for _, marker := range []string{"schema-5 specification", "optimizer specification requires exactly one explicit --processor", "without an optimizer rejects that option", "no processor inspection or execution"} {
 			if !strings.Contains(prerequisites, marker) {
 				return helpCommandProjection{}, fmt.Errorf("bundle build marker is missing")
 			}
@@ -3174,7 +3276,7 @@ func validateAttemptSequence(value []byte, goos string) error {
 	for _, mode := range []string{"command_failure", "stderr", "malformed", "missing_field", "success"} {
 		expected = append(expected, fixtureAttemptRecord{
 			SchemaVersion: 1, Kind: "runtime", Mode: mode,
-			Argv: []string{"pr", "list", "--limit=1", "--json=number,title,state"},
+			Argv: []string{"pr", "list", "--limit=30", "--json=number,title,state"},
 		})
 	}
 	expected = append(expected, fixtureAttemptRecord{
@@ -3186,7 +3288,11 @@ func validateAttemptSequence(value []byte, goos string) error {
 		expected = append(expected,
 			fixtureAttemptRecord{
 				SchemaVersion: 1, Kind: "runtime", Mode: "success",
-				Argv: []string{"pr", "list", "--limit=1", "--json=number,title,state"},
+				Argv: []string{"pr", "list", "--limit=30", "--json=number,title,state"},
+			},
+			fixtureAttemptRecord{
+				SchemaVersion: 1, Kind: "runtime", Mode: "success",
+				Argv: []string{"pr", "list", "--limit=2", "--json=number,title,state"},
 			},
 			fixtureAttemptRecord{
 				SchemaVersion: 1, Kind: "runtime", Mode: "success",
@@ -3330,7 +3436,7 @@ func validateIdentityDraft(value tailoringbundle.Specification, command []string
 			},
 			Wrapper: &tailoringbundle.Wrapper{
 				Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{},
-				Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{},
+				Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{}}, After: []tailoringbundle.StageAction{},
 			},
 		}},
 	}
@@ -3341,6 +3447,10 @@ func validateIdentityDraft(value tailoringbundle.Specification, command []string
 }
 
 func projectionCommandEntry(command []string) tailoringbundle.CommandEntry {
+	optionDefaults := []tailoringbundle.OptionDefault{}
+	if reflect.DeepEqual(command, []string{"pr", "list"}) {
+		optionDefaults = []tailoringbundle.OptionDefault{{Option: "--limit", Value: "30"}}
+	}
 	return tailoringbundle.CommandEntry{
 		Command: append([]string{}, command...), Presence: tailoringbundle.PresenceInclude,
 		Reason: "Return one reviewed compact result.",
@@ -3349,7 +3459,7 @@ func projectionCommandEntry(command []string) tailoringbundle.CommandEntry {
 		},
 		Wrapper: &tailoringbundle.Wrapper{
 			Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{},
-			Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--json=number,title,state"}},
+			Invoke: tailoringbundle.Invocation{OptionDefaults: optionDefaults, AppendArgs: []string{"--json=number,title,state"}},
 			Output: &tailoringbundle.Output{
 				Kind: tailoringbundle.OutputKindProjection,
 				Projection: &tailoringbundle.Projection{
@@ -3371,7 +3481,7 @@ func appendOnlyCommandEntry(command []string) tailoringbundle.CommandEntry {
 		},
 		Wrapper: &tailoringbundle.Wrapper{
 			Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{},
-			Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--limit=1"}}, After: []tailoringbundle.StageAction{},
+			Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{"--limit=1"}}, After: []tailoringbundle.StageAction{},
 		},
 	}
 }
@@ -3386,7 +3496,7 @@ func identityCommandEntry(command []string) tailoringbundle.CommandEntry {
 		},
 		Wrapper: &tailoringbundle.Wrapper{
 			Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{},
-			Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{},
+			Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{}}, After: []tailoringbundle.StageAction{},
 		},
 	}
 }
@@ -3518,7 +3628,7 @@ func decodeBundleDigest(value []byte) (string, error) {
 			} `json:"bundle"`
 		} `json:"build"`
 	}
-	if err := json.Unmarshal(value, &document); err != nil || document.SchemaVersion != 2 || document.Build.Bundle.SchemaVersion != 3 || !digestValue(document.Build.BundleDigest) {
+	if err := json.Unmarshal(value, &document); err != nil || document.SchemaVersion != 2 || document.Build.Bundle.SchemaVersion != tailoringbundle.BundleSchemaVersion || !digestValue(document.Build.BundleDigest) {
 		return "", fmt.Errorf("invalid bundle document")
 	}
 	return document.Build.BundleDigest, nil
@@ -3609,6 +3719,7 @@ func validateGoIdentityPreviewPlan(plan tailoringplan.Plan, bundleDigest string,
 		!reflect.DeepEqual(plan.OriginalArgv, []string{source.ResolvedPath, "test"}) ||
 		!reflect.DeepEqual(plan.TransformedArgv, []string{source.ResolvedPath, "test"}) ||
 		!reflect.DeepEqual(plan.Stages.Invoke.Args, []string{"test"}) ||
+		len(plan.Stages.Invoke.OptionDefaults) != 0 || len(plan.Stages.Invoke.AppliedOptionDefaults) != 0 ||
 		plan.Stages.Invoke.MaxAttempts != 1 || plan.Stages.Invoke.TimeoutMillis != sourceprocess.MaxTimeout.Milliseconds() ||
 		plan.Stages.Invoke.StdoutLimitBytes != sourceprocess.MaxStdoutBytes ||
 		plan.Stages.Invoke.StderrLimitBytes != sourceprocess.MaxStderrBytes {
@@ -3630,7 +3741,8 @@ func validateGoOptimizerPreviewPlan(
 	if plan.BundleDigest != bundleDigest || plan.CatalogDigest != inspection.CatalogDigest ||
 		plan.Source.RequestedExecutable != source.RequestedExecutable || plan.Source.ResolvedPath != source.ResolvedPath ||
 		plan.Source.Version != source.Version || plan.Processor == nil ||
-		!reflect.DeepEqual(plan.Processor.Observation, observation) {
+		!reflect.DeepEqual(plan.Processor.Observation, observation) ||
+		len(plan.Stages.Invoke.OptionDefaults) != 0 || len(plan.Stages.Invoke.AppliedOptionDefaults) != 0 {
 		return nil, fmt.Errorf("optimizer plan does not match inspected source and processor evidence")
 	}
 	invoke := plan.Stages.Invoke

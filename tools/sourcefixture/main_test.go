@@ -55,7 +55,11 @@ func TestListRuntimeSuccessForPullRequestsAndIssues(t *testing.T) {
 		title  string
 	}{
 		{
-			name: "pull requests", args: []string{"pr", "list", "--limit=1", "--json=number,title,state"},
+			name: "pull requests with applied default", args: []string{"pr", "list", "--limit=30", "--json=number,title,state"},
+			number: 101, title: "Review policy",
+		},
+		{
+			name: "pull requests with caller override", args: []string{"pr", "list", "--limit=2", "--json=number,title,state"},
 			number: 101, title: "Review policy",
 		},
 		{
@@ -128,7 +132,7 @@ func TestOrdinarySourceStreamFixturesRequireExactReviewedArgv(t *testing.T) {
 }
 
 func TestRuntimeFailureModesDoNotChangeProbeBehavior(t *testing.T) {
-	args := []string{"pr", "list", "--limit=1", "--json=number,title,state"}
+	args := []string{"pr", "list", "--limit=30", "--json=number,title,state"}
 	tests := []struct {
 		mode         string
 		wantExit     int
@@ -178,8 +182,9 @@ func TestRuntimeRequiresExactReviewedArgvAndMode(t *testing.T) {
 	for _, args := range [][]string{
 		{"pr", "list", "--json=number,title,state"},
 		{"pr", "list", "--limit", "1", "--json=number,title,state"},
-		{"pr", "list", "--json=number,title,state", "--limit=1"},
-		{"pr", "list", "--limit=1", "--json=title,number,state"},
+		{"pr", "list", "--json=number,title,state", "--limit=30"},
+		{"pr", "list", "--limit=1", "--json=number,title,state"},
+		{"pr", "list", "--limit=30", "--json=title,number,state"},
 		{"issue", "list", "--limit=2", "--json=number,title,state"},
 	} {
 		exit, stdout, stderr := fixtureRun(args, map[string]string{})
@@ -200,7 +205,7 @@ func TestAttemptLogIsAppendOnlyJSONLines(t *testing.T) {
 		t.Fatalf("version exit=%d stderr=%q", exit, stderr)
 	}
 	environment[modeEnvironment] = modeMissingField
-	if exit, _, stderr := fixtureRun([]string{"pr", "list", "--limit=1", "--json=number,title,state"}, environment); exit != exitOK || stderr != "" {
+	if exit, _, stderr := fixtureRun([]string{"pr", "list", "--limit=30", "--json=number,title,state"}, environment); exit != exitOK || stderr != "" {
 		t.Fatalf("runtime exit=%d stderr=%q", exit, stderr)
 	}
 	raw, err := os.ReadFile(path)
@@ -222,7 +227,7 @@ func TestAttemptLogIsAppendOnlyJSONLines(t *testing.T) {
 	if records[0].SchemaVersion != 1 || records[0].Kind != "probe" || records[0].Mode != modeSuccess || strings.Join(records[0].Argv, " ") != "version" {
 		t.Fatalf("first=%+v", records[0])
 	}
-	if records[1].Kind != "runtime" || records[1].Mode != modeMissingField || strings.Join(records[1].Argv, " ") != "pr list --limit=1 --json=number,title,state" {
+	if records[1].Kind != "runtime" || records[1].Mode != modeMissingField || strings.Join(records[1].Argv, " ") != "pr list --limit=30 --json=number,title,state" {
 		t.Fatalf("second=%+v", records[1])
 	}
 	if runtime.GOOS != "windows" {

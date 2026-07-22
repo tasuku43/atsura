@@ -180,7 +180,7 @@ func TestCombineCommandSpecificationsProducesOneCanonicalMixedSurface(t *testing
 	}
 }
 
-func TestLoadSpecificationDraftUsesStrictSchemaFourCodec(t *testing.T) {
+func TestLoadSpecificationDraftUsesStrictSchemaFiveCodec(t *testing.T) {
 	wanted := identityDraftSpecification("pr")
 	encoded, err := specyaml.Encode(wanted)
 	if err != nil {
@@ -208,7 +208,7 @@ func identityDraftSpecification(command string) tailoringbundle.Specification {
 			},
 			Wrapper: &tailoringbundle.Wrapper{
 				Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{},
-				Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{},
+				Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{}}, After: []tailoringbundle.StageAction{},
 			},
 		}},
 	}
@@ -468,15 +468,16 @@ func TestAttemptsFaultsAndCanariesAreStrict(t *testing.T) {
 		{SchemaVersion: 1, Kind: "probe", Mode: "success", Argv: []string{"help", "reference"}},
 		{SchemaVersion: 1, Kind: "probe", Mode: "success", Argv: []string{"issue", "list", "--help"}},
 		{SchemaVersion: 1, Kind: "probe", Mode: "success", Argv: []string{"pr", "list", "--help"}},
-		{SchemaVersion: 1, Kind: "runtime", Mode: "command_failure", Argv: []string{"pr", "list", "--limit=1", "--json=number,title,state"}},
-		{SchemaVersion: 1, Kind: "runtime", Mode: "stderr", Argv: []string{"pr", "list", "--limit=1", "--json=number,title,state"}},
-		{SchemaVersion: 1, Kind: "runtime", Mode: "malformed", Argv: []string{"pr", "list", "--limit=1", "--json=number,title,state"}},
-		{SchemaVersion: 1, Kind: "runtime", Mode: "missing_field", Argv: []string{"pr", "list", "--limit=1", "--json=number,title,state"}},
-		{SchemaVersion: 1, Kind: "runtime", Mode: "success", Argv: []string{"pr", "list", "--limit=1", "--json=number,title,state"}},
+		{SchemaVersion: 1, Kind: "runtime", Mode: "command_failure", Argv: []string{"pr", "list", "--limit=30", "--json=number,title,state"}},
+		{SchemaVersion: 1, Kind: "runtime", Mode: "stderr", Argv: []string{"pr", "list", "--limit=30", "--json=number,title,state"}},
+		{SchemaVersion: 1, Kind: "runtime", Mode: "malformed", Argv: []string{"pr", "list", "--limit=30", "--json=number,title,state"}},
+		{SchemaVersion: 1, Kind: "runtime", Mode: "missing_field", Argv: []string{"pr", "list", "--limit=30", "--json=number,title,state"}},
+		{SchemaVersion: 1, Kind: "runtime", Mode: "success", Argv: []string{"pr", "list", "--limit=30", "--json=number,title,state"}},
 		{SchemaVersion: 1, Kind: "runtime", Mode: "success", Argv: []string{"issue", "list", "--limit=1", "--json=number,title,state"}},
 	}
 	wrapperRecords := []fixtureAttemptRecord{
-		{SchemaVersion: 1, Kind: "runtime", Mode: "success", Argv: []string{"pr", "list", "--limit=1", "--json=number,title,state"}},
+		{SchemaVersion: 1, Kind: "runtime", Mode: "success", Argv: []string{"pr", "list", "--limit=30", "--json=number,title,state"}},
+		{SchemaVersion: 1, Kind: "runtime", Mode: "success", Argv: []string{"pr", "list", "--limit=2", "--json=number,title,state"}},
 		{SchemaVersion: 1, Kind: "runtime", Mode: "success", Argv: []string{
 			"issue", "list", "--search=append value", "--label=one", "--label=two", "--limit=1",
 		}},
@@ -731,7 +732,13 @@ func TestWrapperResultDigestsMatchOrderedEvidenceContract(t *testing.T) {
 		stderrHash string
 	}{
 		{
-			name:   "transformed_json",
+			name:   "default_applied",
+			stdout: []byte("[{\"id\":101,\"title\":\"Review policy\",\"state\":\"OPEN\"}]\n"), stderr: []byte{},
+			stdoutHash: "277258cb99075f67f56acb96a0d7a340644442f0147385cbfef6634897437ade",
+			stderrHash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+		},
+		{
+			name:   "default_overridden",
 			stdout: []byte("[{\"id\":101,\"title\":\"Review policy\",\"state\":\"OPEN\"}]\n"), stderr: []byte{},
 			stdoutHash: "277258cb99075f67f56acb96a0d7a340644442f0147385cbfef6634897437ade",
 			stderrHash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -775,7 +782,8 @@ func TestExpectedTailoredHelpViewsAreExact(t *testing.T) {
 			"  --label=<value> (value required)\n  --search=<value> (value required)\n"},
 		{name: "pr_namespace", want: header + "Commands:\n  pr list\n"},
 		{name: "pr_exact_command", want: header + "Command: pr list\nSource summary: List pull requests\n" +
-			"Tailoring reason: Return one reviewed compact result.\nOptions:\n  --limit=<value> (value required)\n"},
+			"Tailoring reason: Return one reviewed compact result.\nOptions:\n" +
+			"  --limit=<value> (value required; default when omitted: \"30\")\n"},
 	}
 	for _, test := range tests {
 		got, err := expectedTailoredHelp(digest, test.name)
