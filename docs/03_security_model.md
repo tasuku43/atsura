@@ -560,8 +560,8 @@ no processor evidence, and no optimizer claim. Controlled application and
 infrastructure tests, rather than the official-artifact journey, own synthetic
 `preserved_after_processor` and arbitrary processor-failure branches. No source
 or processor stream may enter the evidence document. These are required
-evidence conditions; this section does not assert that the schema-6 native
-matrix has passed. The inherited schema-5 optimizer shape preserves the
+evidence conditions; the bounded observation below records the exact revision
+that satisfied them. The inherited schema-5 optimizer shape preserves the
 identity-wrapper baseline in the outer `go_source` fields and confines the
 optimizer's distinct bundle, plan, rendered-wrapper digest, cases, and faults
 to the nested `optimizer` object.

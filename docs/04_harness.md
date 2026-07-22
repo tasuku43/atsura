@@ -716,7 +716,7 @@ true on the same tree:
     processors, or coding-agent-host adaptation outside explicit migration and
     superseded-history contexts.
 
-Implementation completion is not yet a release-quality installed-artifact
+Implementation acceptance alone is not a release-quality installed-artifact
 claim. That claim additionally requires all of the following for the exact
 candidate revision:
 
@@ -740,10 +740,11 @@ candidate revision:
    replay of one platform, or controlled synthetic processor tests cannot stand
    in for another platform's native evidence.
 
-Observed evidence: CI run 29910455312 passed all six conditions on 2026-07-22
-for revision `01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. This is bounded
-historical evidence for that tree; any later candidate must run the same gate
-again.
+Observed evidence: a clean detached-worktree `task release:check` and CI run
+29910455312 together passed all six conditions on 2026-07-22 for revision
+`01c05a45e8b00f09d63d3c6551d3a5df393c41b5`. This is bounded historical
+evidence for that tree; any later candidate must run both the local release
+gate and native workflow again.
 
 Neither gate claims raw execution, richer argv transforms, persistent wrapper
 installation or executable shims, Windows POSIX activation, arbitrary
