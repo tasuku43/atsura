@@ -21,7 +21,7 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
 )
 
-const SchemaVersion = 5
+const SchemaVersion = 6
 
 var (
 	ErrInvalidInvocation        = errors.New("invalid tailored invocation")
@@ -75,16 +75,18 @@ const (
 
 // Invocation is the exact no-shell source invocation produced by the wrapper.
 type Invocation struct {
-	Executable           string               `json:"executable"`
-	Args                 []string             `json:"args"`
-	AppendedArgs         []string             `json:"appended_args"`
-	StdinMode            StdinMode            `json:"stdin_mode"`
-	WorkingDirectoryMode WorkingDirectoryMode `json:"working_directory_mode"`
-	EnvironmentMode      EnvironmentMode      `json:"environment_mode"`
-	MaxAttempts          int                  `json:"max_attempts"`
-	TimeoutMillis        int64                `json:"timeout_millis"`
-	StdoutLimitBytes     int                  `json:"stdout_limit_bytes"`
-	StderrLimitBytes     int                  `json:"stderr_limit_bytes"`
+	Executable            string                          `json:"executable"`
+	Args                  []string                        `json:"args"`
+	OptionDefaults        []tailoringbundle.OptionDefault `json:"option_defaults"`
+	AppliedOptionDefaults []tailoringbundle.OptionDefault `json:"applied_option_defaults"`
+	AppendedArgs          []string                        `json:"appended_args"`
+	StdinMode             StdinMode                       `json:"stdin_mode"`
+	WorkingDirectoryMode  WorkingDirectoryMode            `json:"working_directory_mode"`
+	EnvironmentMode       EnvironmentMode                 `json:"environment_mode"`
+	MaxAttempts           int                             `json:"max_attempts"`
+	TimeoutMillis         int64                           `json:"timeout_millis"`
+	StdoutLimitBytes      int                             `json:"stdout_limit_bytes"`
+	StderrLimitBytes      int                             `json:"stderr_limit_bytes"`
 }
 
 type StdinMode string
@@ -175,7 +177,14 @@ func Build(bundleDigest string, bundle tailoringbundle.Bundle, current sourcepro
 		return Plan{}, err
 	}
 
-	transformedArgs := append([]string{}, attempt.Args...)
+	optionDefaults := cloneOptionDefaults(entry.Wrapper.Invoke.OptionDefaults)
+	appliedOptionDefaults := appliedDefaults(optionDefaults, attempt.Args[len(command.Path):])
+	transformedArgs := make([]string, 0, len(attempt.Args)+len(appliedOptionDefaults)+len(entry.Wrapper.Invoke.AppendArgs))
+	transformedArgs = append(transformedArgs, command.Path...)
+	for _, optionDefault := range appliedOptionDefaults {
+		transformedArgs = append(transformedArgs, optionDefault.Option+"="+optionDefault.Value)
+	}
+	transformedArgs = append(transformedArgs, attempt.Args[len(command.Path):]...)
 	transformedArgs = append(transformedArgs, entry.Wrapper.Invoke.AppendArgs...)
 	if entry.Wrapper.Output != nil {
 		if err := validateOutputSelector(command, *entry.Wrapper.Output, transformedArgs[len(command.Path):]); err != nil {
@@ -243,16 +252,18 @@ func Build(bundleDigest string, bundle tailoringbundle.Bundle, current sourcepro
 			Order:  []StageKind{StageBefore, StageInvoke, StageOutput, StageAfter},
 			Before: append([]tailoringbundle.StageAction{}, entry.Wrapper.Before...),
 			Invoke: Invocation{
-				Executable:           bundle.Catalog.Source.ResolvedPath,
-				Args:                 append([]string{}, transformedArgs...),
-				AppendedArgs:         append([]string{}, entry.Wrapper.Invoke.AppendArgs...),
-				StdinMode:            StdinModeClosed,
-				WorkingDirectoryMode: WorkingDirectoryModeInherit,
-				EnvironmentMode:      EnvironmentModeInherit,
-				MaxAttempts:          1,
-				TimeoutMillis:        sourceprocess.MaxTimeout.Milliseconds(),
-				StdoutLimitBytes:     sourceprocess.MaxStdoutBytes,
-				StderrLimitBytes:     sourceprocess.MaxStderrBytes,
+				Executable:            bundle.Catalog.Source.ResolvedPath,
+				Args:                  append([]string{}, transformedArgs...),
+				OptionDefaults:        optionDefaults,
+				AppliedOptionDefaults: cloneOptionDefaults(appliedOptionDefaults),
+				AppendedArgs:          append([]string{}, entry.Wrapper.Invoke.AppendArgs...),
+				StdinMode:             StdinModeClosed,
+				WorkingDirectoryMode:  WorkingDirectoryModeInherit,
+				EnvironmentMode:       EnvironmentModeInherit,
+				MaxAttempts:           1,
+				TimeoutMillis:         sourceprocess.MaxTimeout.Milliseconds(),
+				StdoutLimitBytes:      sourceprocess.MaxStdoutBytes,
+				StderrLimitBytes:      sourceprocess.MaxStderrBytes,
 			},
 			Output: cloneOutput(entry.Wrapper.Output),
 			After:  append([]tailoringbundle.StageAction{}, entry.Wrapper.After...),
@@ -341,13 +352,26 @@ func (p Plan) Validate() error {
 	if !reflect.DeepEqual(p.Stages.Order, []StageKind{StageBefore, StageInvoke, StageOutput, StageAfter}) {
 		return invalidPlan("stage order is invalid")
 	}
-	if p.Stages.Before == nil || p.Stages.After == nil || p.Stages.Invoke.Args == nil || p.Stages.Invoke.AppendedArgs == nil {
+	if p.Stages.Before == nil || p.Stages.After == nil || p.Stages.Invoke.Args == nil || p.Stages.Invoke.OptionDefaults == nil || p.Stages.Invoke.AppliedOptionDefaults == nil || p.Stages.Invoke.AppendedArgs == nil {
 		return invalidPlan("stage lists must be explicit")
 	}
-	wantArgs := append([]string{}, p.OriginalArgv[1:]...)
+	callerArgs := p.OriginalArgv[1:]
+	callerTail := callerArgs[len(p.MatchedCommand):]
+	if err := validatePlanOptionDefaults(p.Stages.Invoke.OptionDefaults, p.Stages.Invoke.AppendedArgs, callerTail); err != nil {
+		return invalidPlan("option defaults: %v", err)
+	}
+	wantAppliedOptionDefaults := appliedDefaults(p.Stages.Invoke.OptionDefaults, callerTail)
+	if !reflect.DeepEqual(wantAppliedOptionDefaults, p.Stages.Invoke.AppliedOptionDefaults) {
+		return invalidPlan("applied option defaults do not match original argv")
+	}
+	wantArgs := append([]string{}, p.MatchedCommand...)
+	for _, optionDefault := range wantAppliedOptionDefaults {
+		wantArgs = append(wantArgs, optionDefault.Option+"="+optionDefault.Value)
+	}
+	wantArgs = append(wantArgs, callerTail...)
 	wantArgs = append(wantArgs, p.Stages.Invoke.AppendedArgs...)
 	if !reflect.DeepEqual(wantArgs, p.Stages.Invoke.Args) {
-		return invalidPlan("invoke args are not the exact original args plus appended args")
+		return invalidPlan("invoke args do not contain the exact applied defaults, caller tail, and appended args")
 	}
 	if p.Stages.Invoke.StdinMode != StdinModeClosed || p.Stages.Invoke.WorkingDirectoryMode != WorkingDirectoryModeInherit || p.Stages.Invoke.EnvironmentMode != EnvironmentModeInherit {
 		return invalidPlan("source process framing is invalid")
@@ -357,11 +381,11 @@ func (p Plan) Validate() error {
 	}
 	switch p.WrapperKind {
 	case tailoringbundle.WrapperIdentity:
-		if len(p.Stages.Before) != 0 || len(p.Stages.After) != 0 || len(p.Stages.Invoke.AppendedArgs) != 0 || p.Stages.Output != nil {
+		if len(p.Stages.Before) != 0 || len(p.Stages.After) != 0 || len(p.Stages.Invoke.OptionDefaults) != 0 || len(p.Stages.Invoke.AppliedOptionDefaults) != 0 || len(p.Stages.Invoke.AppendedArgs) != 0 || p.Stages.Output != nil {
 			return invalidPlan("identity wrapper contains a transformation")
 		}
 	case tailoringbundle.WrapperTransform:
-		if len(p.Stages.Before) != 0 || len(p.Stages.After) != 0 || (len(p.Stages.Invoke.AppendedArgs) == 0 && p.Stages.Output == nil) {
+		if len(p.Stages.Before) != 0 || len(p.Stages.After) != 0 || (len(p.Stages.Invoke.OptionDefaults) == 0 && len(p.Stages.Invoke.AppendedArgs) == 0 && p.Stages.Output == nil) {
 			return invalidPlan("transform wrapper is incomplete")
 		}
 		if p.Stages.Output != nil {
@@ -380,7 +404,10 @@ func (p Plan) Validate() error {
 		wrapper := tailoringbundle.Wrapper{
 			Kind:   p.WrapperKind,
 			Before: append([]tailoringbundle.StageAction{}, p.Stages.Before...),
-			Invoke: tailoringbundle.Invocation{AppendArgs: append([]string{}, p.Stages.Invoke.AppendedArgs...)},
+			Invoke: tailoringbundle.Invocation{
+				OptionDefaults: cloneOptionDefaults(p.Stages.Invoke.OptionDefaults),
+				AppendArgs:     append([]string{}, p.Stages.Invoke.AppendedArgs...),
+			},
 			Output: cloneOutput(p.Stages.Output),
 			After:  append([]tailoringbundle.StageAction{}, p.Stages.After...),
 		}
@@ -600,6 +627,91 @@ func validateTailoredOptions(command sourcecatalog.Command, surface tailoringbun
 	return nil
 }
 
+// appliedDefaults returns the declaration-ordered subset whose exact long
+// option name is absent from the caller's active option region. Build invokes
+// this only after caller grammar validation; the scan deliberately stops at
+// the first exact positional-only marker and does not interpret short aliases.
+func appliedDefaults(defaults []tailoringbundle.OptionDefault, callerTail []string) []tailoringbundle.OptionDefault {
+	present := make(map[string]struct{}, len(defaults))
+	for _, argument := range callerTail {
+		if argument == "--" {
+			break
+		}
+		if !strings.HasPrefix(argument, "--") {
+			continue
+		}
+		name, _, _ := strings.Cut(argument, "=")
+		present[name] = struct{}{}
+	}
+
+	result := make([]tailoringbundle.OptionDefault, 0, len(defaults))
+	for _, optionDefault := range defaults {
+		if _, exists := present[optionDefault.Option]; exists {
+			continue
+		}
+		result = append(result, optionDefault)
+	}
+	return result
+}
+
+// validatePlanOptionDefaults proves the finite structural facts available in
+// a detached plan. Catalog arity, tailored membership, and selector ownership
+// remain bundle-owned, but malformed values, duplicates, append overlap, and
+// incomplete explicit caller forms still fail without recovering the bundle.
+func validatePlanOptionDefaults(defaults []tailoringbundle.OptionDefault, appendArgs, callerTail []string) error {
+	if len(defaults)+len(appendArgs) > tailoringbundle.MaxWrapperArguments {
+		return fmt.Errorf("combined option defaults and appended args exceed their bound")
+	}
+	appended := activeLongOptionNames(appendArgs)
+	configured := make(map[string]struct{}, len(defaults))
+	for _, optionDefault := range defaults {
+		if !strings.HasPrefix(optionDefault.Option, "--") || !validStableName(strings.TrimPrefix(optionDefault.Option, "--")) {
+			return fmt.Errorf("option %q is invalid", optionDefault.Option)
+		}
+		if err := validateText(optionDefault.Value, sourceprocess.MaxArgumentBytes); err != nil {
+			return fmt.Errorf("option %q value: %v", optionDefault.Option, err)
+		}
+		if _, exists := configured[optionDefault.Option]; exists {
+			return fmt.Errorf("option %q is duplicated", optionDefault.Option)
+		}
+		configured[optionDefault.Option] = struct{}{}
+		if _, exists := appended[optionDefault.Option]; exists {
+			return fmt.Errorf("option %q overlaps appended args", optionDefault.Option)
+		}
+	}
+
+	for index := 0; index < len(callerTail); index++ {
+		argument := callerTail[index]
+		if argument == "--" {
+			break
+		}
+		name, _, inline := strings.Cut(argument, "=")
+		if _, exists := configured[name]; !exists || inline {
+			continue
+		}
+		if index+1 >= len(callerTail) || callerTail[index+1] == "--" || strings.HasPrefix(callerTail[index+1], "-") {
+			return fmt.Errorf("caller option %q requires a value", name)
+		}
+		index++
+	}
+	return nil
+}
+
+func activeLongOptionNames(arguments []string) map[string]struct{} {
+	result := make(map[string]struct{})
+	for _, argument := range arguments {
+		if argument == "--" {
+			break
+		}
+		if !strings.HasPrefix(argument, "--") {
+			continue
+		}
+		name, _, _ := strings.Cut(argument, "=")
+		result[name] = struct{}{}
+	}
+	return result
+}
+
 func validateOutputSelector(command sourcecatalog.Command, output tailoringbundle.Output, args []string) error {
 	input, ok := outputInput(output)
 	if !ok {
@@ -717,6 +829,13 @@ func cloneOptions(value tailoringbundle.OptionSurface) tailoringbundle.OptionSur
 	return tailoringbundle.OptionSurface{Default: value.Default, Include: append([]string{}, value.Include...), Exclude: append([]string{}, value.Exclude...)}
 }
 
+func cloneOptionDefaults(values []tailoringbundle.OptionDefault) []tailoringbundle.OptionDefault {
+	if values == nil {
+		return nil
+	}
+	return append([]tailoringbundle.OptionDefault{}, values...)
+}
+
 func cloneOutput(value *tailoringbundle.Output) *tailoringbundle.Output {
 	if value == nil {
 		return nil
@@ -769,6 +888,7 @@ func cloneCommandEntry(value tailoringbundle.CommandEntry) tailoringbundle.Comma
 	if value.Wrapper != nil {
 		copy := *value.Wrapper
 		copy.Before = append([]tailoringbundle.StageAction{}, value.Wrapper.Before...)
+		copy.Invoke.OptionDefaults = cloneOptionDefaults(value.Wrapper.Invoke.OptionDefaults)
 		copy.Invoke.AppendArgs = append([]string{}, value.Wrapper.Invoke.AppendArgs...)
 		copy.Output = cloneOutput(value.Wrapper.Output)
 		copy.After = append([]tailoringbundle.StageAction{}, value.Wrapper.After...)

@@ -21,7 +21,7 @@ func planCatalog() sourcecatalog.Catalog {
 		Commands: []sourcecatalog.Command{
 			{Path: []string{"item"}, Summary: "Manage items", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin, Options: []sourcecatalog.Option{}, StructuredOutput: []sourcecatalog.StructuredOutput{}},
 			{Path: []string{"item", "delete"}, Summary: "Delete an item", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin, Options: []sourcecatalog.Option{{Name: "--force", TakesValue: false}}, StructuredOutput: []sourcecatalog.StructuredOutput{}},
-			{Path: []string{"item", "list"}, Summary: "List items", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin, Options: []sourcecatalog.Option{{Name: "--format", TakesValue: true}, {Name: "--json", TakesValue: true}, {Name: "--verbose", TakesValue: false}}, StructuredOutput: []sourcecatalog.StructuredOutput{{Format: "json", SelectorFlag: "--json", Fields: []string{"id", "name"}}}},
+			{Path: []string{"item", "list"}, Summary: "List items", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin, Options: []sourcecatalog.Option{{Name: "--format", TakesValue: true}, {Name: "--json", TakesValue: true}, {Name: "--limit", TakesValue: true}, {Name: "--verbose", TakesValue: false}}, StructuredOutput: []sourcecatalog.StructuredOutput{{Format: "json", SelectorFlag: "--json", Fields: []string{"id", "name"}}}},
 			{Path: []string{"plugin", "run"}, Summary: "Run a plugin", Provenance: sourcecatalog.ProvenanceUnverifiedDynamic, Options: []sourcecatalog.Option{}, StructuredOutput: []sourcecatalog.StructuredOutput{}},
 		},
 	}
@@ -59,7 +59,7 @@ func identityEntry(command ...string) tailoringbundle.CommandEntry {
 	return tailoringbundle.CommandEntry{
 		Command: command, Presence: tailoringbundle.PresenceInclude, Reason: "Needed for this purpose.",
 		Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultInherit, Include: []string{}, Exclude: []string{}},
-		Wrapper: &tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{}},
+		Wrapper: &tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{}}, After: []tailoringbundle.StageAction{}},
 	}
 }
 
@@ -69,9 +69,27 @@ func transformEntry() tailoringbundle.CommandEntry {
 		Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultInherit, Include: []string{}, Exclude: []string{"--verbose"}},
 		Wrapper: &tailoringbundle.Wrapper{
 			Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{},
-			Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--json=id,name"}},
+			Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{"--json=id,name"}},
 			Output: &tailoringbundle.Output{Kind: tailoringbundle.OutputKindProjection, Projection: &tailoringbundle.Projection{Input: "json", Select: []string{"id", "name"}, Rename: []tailoringbundle.Rename{{From: "id", To: "item_id"}}, Render: "compact_json"}},
 			After:  []tailoringbundle.StageAction{},
+		},
+	}
+}
+
+func defaultTransformEntry() tailoringbundle.CommandEntry {
+	return tailoringbundle.CommandEntry{
+		Command: []string{"item", "list"}, Presence: tailoringbundle.PresenceInclude, Reason: "Apply reviewed defaults.",
+		Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultInherit, Include: []string{}, Exclude: []string{"--verbose"}},
+		Wrapper: &tailoringbundle.Wrapper{
+			Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{},
+			Invoke: tailoringbundle.Invocation{
+				OptionDefaults: []tailoringbundle.OptionDefault{
+					{Option: "--limit", Value: "30"},
+					{Option: "--format", Value: "compact"},
+				},
+				AppendArgs: []string{"fixed-tail"},
+			},
+			After: []tailoringbundle.StageAction{},
 		},
 	}
 }
@@ -122,7 +140,7 @@ func TestBuildProducesDeterministicCompleteTransformPlan(t *testing.T) {
 			t.Fatalf("plan contains retired field %s: %s", forbidden, encoded)
 		}
 	}
-	for _, required := range []string{`"schema_version":5`, `"result_mode":"transformed_json"`, `"before":[]`, `"after":[]`, `"output":{`, `"surface_origin":"explicit"`} {
+	for _, required := range []string{`"schema_version":6`, `"result_mode":"transformed_json"`, `"option_defaults":[]`, `"applied_option_defaults":[]`, `"before":[]`, `"after":[]`, `"output":{`, `"surface_origin":"explicit"`} {
 		if !strings.Contains(string(encoded), required) {
 			t.Fatalf("plan missing %s: %s", required, encoded)
 		}
@@ -144,7 +162,7 @@ func TestBuildDistinguishesInheritedSurfaceAndIdentityWrapper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.SurfaceOrigin != SurfaceOriginInherited || plan.SpecificationEntry != nil || plan.WrapperKind != tailoringbundle.WrapperIdentity || plan.ResultMode != ResultModeSourceStreamPassthrough || plan.Stages.Output != nil || len(plan.Stages.Invoke.AppendedArgs) != 0 {
+	if plan.SurfaceOrigin != SurfaceOriginInherited || plan.SpecificationEntry != nil || plan.WrapperKind != tailoringbundle.WrapperIdentity || plan.ResultMode != ResultModeSourceStreamPassthrough || plan.Stages.Output != nil || len(plan.Stages.Invoke.OptionDefaults) != 0 || len(plan.Stages.Invoke.AppliedOptionDefaults) != 0 || len(plan.Stages.Invoke.AppendedArgs) != 0 {
 		t.Fatalf("plan = %+v", plan)
 	}
 	if _, present, err := plan.OutputPlan(); err != nil || present {
@@ -258,6 +276,116 @@ func TestBuildEnforcesOptionSurfaceAndDeterministicForms(t *testing.T) {
 	}
 }
 
+func TestBuildAppliesOptionDefaultsWithExactCallerPrecedenceAndOrdering(t *testing.T) {
+	bundle, digest := planBundle(t, tailoringbundle.SurfaceDefaultExclude, defaultTransformEntry())
+	declared := []tailoringbundle.OptionDefault{
+		{Option: "--limit", Value: "30"},
+		{Option: "--format", Value: "compact"},
+	}
+	tests := []struct {
+		name        string
+		callerTail  []string
+		wantApplied []tailoringbundle.OptionDefault
+		wantArgs    []string
+	}{
+		{
+			name: "omitted values apply in declaration order", callerTail: []string{"active"}, wantApplied: declared,
+			wantArgs: []string{"item", "list", "--limit=30", "--format=compact", "active", "fixed-tail"},
+		},
+		{
+			name: "inline caller value suppresses one default", callerTail: []string{"--limit=2", "active"}, wantApplied: declared[1:],
+			wantArgs: []string{"item", "list", "--format=compact", "--limit=2", "active", "fixed-tail"},
+		},
+		{
+			name: "separated caller value suppresses one default", callerTail: []string{"--limit", "2", "active"}, wantApplied: declared[1:],
+			wantArgs: []string{"item", "list", "--format=compact", "--limit", "2", "active", "fixed-tail"},
+		},
+		{
+			name: "inline empty caller value suppresses one default", callerTail: []string{"--limit=", "active"}, wantApplied: declared[1:],
+			wantArgs: []string{"item", "list", "--format=compact", "--limit=", "active", "fixed-tail"},
+		},
+		{
+			name: "separated empty caller value suppresses one default", callerTail: []string{"--limit", "", "active"}, wantApplied: declared[1:],
+			wantArgs: []string{"item", "list", "--format=compact", "--limit", "", "active", "fixed-tail"},
+		},
+		{
+			name: "repeated caller values remain exact", callerTail: []string{"--limit=2", "--limit", "3"}, wantApplied: declared[1:],
+			wantArgs: []string{"item", "list", "--format=compact", "--limit=2", "--limit", "3", "fixed-tail"},
+		},
+		{
+			name: "caller options suppress every matching default", callerTail: []string{"--format=wide", "--limit=2"}, wantApplied: []tailoringbundle.OptionDefault{},
+			wantArgs: []string{"item", "list", "--format=wide", "--limit=2", "fixed-tail"},
+		},
+		{
+			name: "matching text after positional marker does not suppress", callerTail: []string{"--", "--limit=2", "--format", "wide"}, wantApplied: declared,
+			wantArgs: []string{"item", "list", "--limit=30", "--format=compact", "--", "--limit=2", "--format", "wide", "fixed-tail"},
+		},
+	}
+
+	var appliedDigest, overriddenDigest string
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			attemptArgs := append([]string{"item", "list"}, test.callerTail...)
+			plan, err := Build(digest, bundle, currentIdentity(), Attempt{Executable: "fixture", Args: attemptArgs})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(plan.Stages.Invoke.OptionDefaults, declared) {
+				t.Fatalf("declared defaults = %#v", plan.Stages.Invoke.OptionDefaults)
+			}
+			if !reflect.DeepEqual(plan.Stages.Invoke.AppliedOptionDefaults, test.wantApplied) {
+				t.Fatalf("applied defaults = %#v, want %#v", plan.Stages.Invoke.AppliedOptionDefaults, test.wantApplied)
+			}
+			if !reflect.DeepEqual(plan.Stages.Invoke.Args, test.wantArgs) {
+				t.Fatalf("invoke args = %#v, want %#v", plan.Stages.Invoke.Args, test.wantArgs)
+			}
+			wantTransformed := append([]string{"/opt/bin/fixture"}, test.wantArgs...)
+			if !reflect.DeepEqual(plan.TransformedArgv, wantTransformed) {
+				t.Fatalf("transformed argv = %#v, want %#v", plan.TransformedArgv, wantTransformed)
+			}
+			planDigest, err := plan.Digest()
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch test.name {
+			case "omitted values apply in declaration order":
+				appliedDigest = planDigest
+			case "caller options suppress every matching default":
+				overriddenDigest = planDigest
+			}
+		})
+	}
+	if appliedDigest == "" || overriddenDigest == "" || appliedDigest == overriddenDigest {
+		t.Fatalf("applied and overridden plan digests = %q %q", appliedDigest, overriddenDigest)
+	}
+}
+
+func TestBuildCanonicalizesOneDefaultTokenAndAllowsDefaultOnlyTransform(t *testing.T) {
+	entry := defaultTransformEntry()
+	entry.Wrapper.Invoke.OptionDefaults = []tailoringbundle.OptionDefault{{Option: "--limit", Value: "-5 value;$(ignored)"}}
+	entry.Wrapper.Invoke.AppendArgs = []string{}
+	bundle, digest := planBundle(t, tailoringbundle.SurfaceDefaultExclude, entry)
+	plan, err := Build(digest, bundle, currentIdentity(), Attempt{Executable: "fixture", Args: []string{"item", "list"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"item", "list", "--limit=-5 value;$(ignored)"}
+	if plan.WrapperKind != tailoringbundle.WrapperTransform || plan.ResultMode != ResultModeSourceStreamPassthrough || !reflect.DeepEqual(plan.Stages.Invoke.Args, want) {
+		t.Fatalf("default-only plan = %+v", plan)
+	}
+}
+
+func TestShortOptionDoesNotActAsAnExactLongOptionOverride(t *testing.T) {
+	defaults := []tailoringbundle.OptionDefault{{Option: "--limit", Value: "30"}}
+	if got := appliedDefaults(defaults, []string{"-L", "2"}); !reflect.DeepEqual(got, defaults) {
+		t.Fatalf("appliedDefaults() = %#v, want %#v", got, defaults)
+	}
+	bundle, digest := planBundle(t, tailoringbundle.SurfaceDefaultExclude, defaultTransformEntry())
+	if _, err := Build(digest, bundle, currentIdentity(), Attempt{Executable: "fixture", Args: []string{"item", "list", "-L", "2"}}); !errors.Is(err, ErrInvalidInvocation) {
+		t.Fatalf("short caller option error = %v", err)
+	}
+}
+
 func TestBuildRequiresOneActiveStructuredOutputSelector(t *testing.T) {
 	entry := transformEntry()
 	entry.Wrapper.Invoke.AppendArgs = []string{}
@@ -350,6 +478,96 @@ func TestPlanValidationAndDigestDetectMutation(t *testing.T) {
 	}
 }
 
+func TestPlanValidationReDerivesOptionDefaultDecisionsAndInvocation(t *testing.T) {
+	bundle, digest := planBundle(t, tailoringbundle.SurfaceDefaultExclude, defaultTransformEntry())
+	attempt := Attempt{Executable: "fixture", Args: []string{"item", "list", "active"}}
+	tests := []struct {
+		name   string
+		mutate func(*Plan)
+	}{
+		{name: "legacy schema", mutate: func(plan *Plan) { plan.SchemaVersion = 5 }},
+		{name: "configured option", mutate: func(plan *Plan) {
+			plan.Stages.Invoke.OptionDefaults[0].Option = "--Bad"
+			plan.SpecificationEntry.Wrapper.Invoke.OptionDefaults[0].Option = "--Bad"
+		}},
+		{name: "configured value", mutate: func(plan *Plan) {
+			plan.Stages.Invoke.OptionDefaults[0].Value = ""
+			plan.SpecificationEntry.Wrapper.Invoke.OptionDefaults[0].Value = ""
+		}},
+		{name: "configured order", mutate: func(plan *Plan) {
+			plan.Stages.Invoke.OptionDefaults[0], plan.Stages.Invoke.OptionDefaults[1] = plan.Stages.Invoke.OptionDefaults[1], plan.Stages.Invoke.OptionDefaults[0]
+			plan.SpecificationEntry.Wrapper.Invoke.OptionDefaults[0], plan.SpecificationEntry.Wrapper.Invoke.OptionDefaults[1] = plan.SpecificationEntry.Wrapper.Invoke.OptionDefaults[1], plan.SpecificationEntry.Wrapper.Invoke.OptionDefaults[0]
+		}},
+		{name: "configured defaults absent", mutate: func(plan *Plan) { plan.Stages.Invoke.OptionDefaults = nil }},
+		{name: "applied option", mutate: func(plan *Plan) { plan.Stages.Invoke.AppliedOptionDefaults[0].Option = "--format" }},
+		{name: "applied value", mutate: func(plan *Plan) { plan.Stages.Invoke.AppliedOptionDefaults[0].Value = "31" }},
+		{name: "applied order", mutate: func(plan *Plan) {
+			plan.Stages.Invoke.AppliedOptionDefaults[0], plan.Stages.Invoke.AppliedOptionDefaults[1] = plan.Stages.Invoke.AppliedOptionDefaults[1], plan.Stages.Invoke.AppliedOptionDefaults[0]
+		}},
+		{name: "applied subset", mutate: func(plan *Plan) {
+			plan.Stages.Invoke.AppliedOptionDefaults = plan.Stages.Invoke.AppliedOptionDefaults[:1]
+		}},
+		{name: "applied defaults absent", mutate: func(plan *Plan) { plan.Stages.Invoke.AppliedOptionDefaults = nil }},
+		{name: "invoke args", mutate: func(plan *Plan) { plan.Stages.Invoke.Args[2] = "--limit=31" }},
+		{name: "transformed argv", mutate: func(plan *Plan) { plan.TransformedArgv[3] = "--limit=31" }},
+		{name: "original caller", mutate: func(plan *Plan) { plan.OriginalArgv = []string{"fixture", "item", "list", "--limit=2", "active"} }},
+		{name: "caller default missing separated value", mutate: func(plan *Plan) {
+			plan.OriginalArgv = []string{"fixture", "item", "list", "--limit"}
+		}},
+		{name: "caller default followed by positional marker", mutate: func(plan *Plan) {
+			plan.OriginalArgv = []string{"fixture", "item", "list", "--limit", "--", "active"}
+		}},
+		{name: "duplicate coordinated defaults", mutate: func(plan *Plan) {
+			plan.Stages.Invoke.OptionDefaults[1].Option = "--limit"
+			plan.SpecificationEntry.Wrapper.Invoke.OptionDefaults[1].Option = "--limit"
+		}},
+		{name: "unsafe coordinated default", mutate: func(plan *Plan) {
+			plan.Stages.Invoke.OptionDefaults[0].Value = "bad\nvalue"
+			plan.SpecificationEntry.Wrapper.Invoke.OptionDefaults[0].Value = "bad\nvalue"
+		}},
+		{name: "coordinated append overlap", mutate: func(plan *Plan) {
+			plan.Stages.Invoke.AppendedArgs = []string{"--limit=1"}
+			plan.SpecificationEntry.Wrapper.Invoke.AppendArgs = []string{"--limit=1"}
+		}},
+		{name: "combined transform bound", mutate: func(plan *Plan) {
+			values := make([]tailoringbundle.OptionDefault, tailoringbundle.MaxWrapperArguments+1)
+			for index := range values {
+				values[index] = tailoringbundle.OptionDefault{Option: "--limit", Value: "30"}
+			}
+			plan.Stages.Invoke.OptionDefaults = values
+			plan.SpecificationEntry.Wrapper.Invoke.OptionDefaults = append([]tailoringbundle.OptionDefault{}, values...)
+		}},
+		{name: "specification default", mutate: func(plan *Plan) { plan.SpecificationEntry.Wrapper.Invoke.OptionDefaults[0].Value = "31" }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			plan, err := Build(digest, bundle, currentIdentity(), attempt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			test.mutate(&plan)
+			if err := plan.Validate(); !errors.Is(err, ErrInvalidPlan) {
+				t.Fatalf("Validate() error = %v", err)
+			}
+			if mutatedDigest, err := plan.Digest(); err == nil || mutatedDigest != "" {
+				t.Fatalf("Digest() = %q, error = %v", mutatedDigest, err)
+			}
+		})
+	}
+
+	overridden, err := Build(digest, bundle, currentIdentity(), Attempt{Executable: "fixture", Args: []string{"item", "list", "--limit=2"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	overridden.Stages.Invoke.AppliedOptionDefaults = append(
+		[]tailoringbundle.OptionDefault{overridden.Stages.Invoke.OptionDefaults[0]},
+		overridden.Stages.Invoke.AppliedOptionDefaults...,
+	)
+	if err := overridden.Validate(); !errors.Is(err, ErrInvalidPlan) {
+		t.Fatalf("forged caller-suppressed default Validate() error = %v", err)
+	}
+}
+
 func TestPlanValidationRejectsMissingUnknownAndContradictoryResultModes(t *testing.T) {
 	transformBundle, transformDigest := planBundle(t, tailoringbundle.SurfaceDefaultExclude, transformEntry())
 	transformPlan, err := Build(transformDigest, transformBundle, currentIdentity(), Attempt{Executable: "fixture", Args: []string{"item", "list"}})
@@ -382,7 +600,9 @@ func TestPlanValidationRejectsMissingUnknownAndContradictoryResultModes(t *testi
 }
 
 func TestBuildDetachesPlanFromBundle(t *testing.T) {
-	bundle, digest := planBundle(t, tailoringbundle.SurfaceDefaultExclude, transformEntry())
+	entry := transformEntry()
+	entry.Wrapper.Invoke.OptionDefaults = []tailoringbundle.OptionDefault{{Option: "--limit", Value: "30"}}
+	bundle, digest := planBundle(t, tailoringbundle.SurfaceDefaultExclude, entry)
 	attempt := Attempt{Executable: "fixture", Args: []string{"item", "list"}}
 	plan, err := Build(digest, bundle, currentIdentity(), attempt)
 	if err != nil {
@@ -395,8 +615,11 @@ func TestBuildDetachesPlanFromBundle(t *testing.T) {
 	plan.Options.Exclude[0] = "--changed"
 	plan.SpecificationEntry.Command[0] = "changed"
 	plan.SpecificationEntry.Options.Exclude[0] = "--changed"
+	plan.SpecificationEntry.Wrapper.Invoke.OptionDefaults[0].Value = "changed"
 	plan.SpecificationEntry.Wrapper.Invoke.AppendArgs[0] = "changed"
 	plan.SpecificationEntry.Wrapper.Output.Projection.Select[0] = "changed"
+	plan.Stages.Invoke.OptionDefaults[0].Value = "changed"
+	plan.Stages.Invoke.AppliedOptionDefaults[0].Value = "changed"
 	plan.Stages.Invoke.AppendedArgs[0] = "changed"
 	plan.Stages.Output.Projection.Select[0] = "changed"
 
