@@ -183,6 +183,8 @@ func summarize(bundle tailoringbundle.Bundle, digest string) bundletrust.Summary
 		}
 		if entry.Wrapper.Output != nil {
 			result.OutputTransformationCount++
+		} else {
+			result.SourceStreamResultCount++
 		}
 	}
 	return result

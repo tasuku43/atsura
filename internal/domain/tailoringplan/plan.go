@@ -20,7 +20,7 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
 )
 
-const SchemaVersion = 3
+const SchemaVersion = 4
 
 var (
 	ErrInvalidInvocation        = errors.New("invalid tailored invocation")
@@ -35,6 +35,15 @@ var (
 type Mode string
 
 const ModeTailored Mode = "tailored"
+
+// ResultMode states which plan-owned success boundary applies after the source
+// process conventionally completes.
+type ResultMode string
+
+const (
+	ResultModeTransformedJSON         ResultMode = "transformed_json"
+	ResultModeSourceStreamPassthrough ResultMode = "source_stream_passthrough"
+)
 
 // Attempt is the caller's exact source executable spelling and argv.
 type Attempt struct {
@@ -109,6 +118,7 @@ type Stages struct {
 type Plan struct {
 	SchemaVersion       int                           `json:"schema_version"`
 	Mode                Mode                          `json:"mode"`
+	ResultMode          ResultMode                    `json:"result_mode"`
 	BundleDigest        string                        `json:"bundle_digest"`
 	CatalogDigest       string                        `json:"catalog_digest"`
 	SpecificationDigest string                        `json:"specification_digest"`
@@ -193,6 +203,7 @@ func Build(bundleDigest string, bundle tailoringbundle.Bundle, current sourcepro
 	plan := Plan{
 		SchemaVersion:       SchemaVersion,
 		Mode:                ModeTailored,
+		ResultMode:          resultModeFor(entry.Wrapper.Output),
 		BundleDigest:        bundleDigest,
 		CatalogDigest:       bundle.CatalogDigest,
 		SpecificationDigest: bundle.SpecificationDigest,
@@ -242,6 +253,18 @@ func Build(bundleDigest string, bundle tailoringbundle.Bundle, current sourcepro
 func (p Plan) Validate() error {
 	if p.SchemaVersion != SchemaVersion || p.Mode != ModeTailored {
 		return invalidPlan("schema version and tailored mode are required")
+	}
+	switch p.ResultMode {
+	case ResultModeTransformedJSON:
+		if p.Stages.Output == nil {
+			return invalidPlan("transformed JSON result mode requires an output stage")
+		}
+	case ResultModeSourceStreamPassthrough:
+		if p.Stages.Output != nil {
+			return invalidPlan("source-stream result mode cannot contain an output stage")
+		}
+	default:
+		return invalidPlan("result mode is invalid")
 	}
 	for name, digest := range map[string]string{
 		"bundle": p.BundleDigest, "catalog": p.CatalogDigest, "specification": p.SpecificationDigest,
@@ -590,6 +613,13 @@ func validateOutput(value tailoringbundle.Output) error {
 		renames[index] = tailoring.Rename{From: rename.From, To: rename.To}
 	}
 	return (tailoring.OutputPlan{Input: tailoring.InputFormat(value.Input), Select: value.Select, Rename: renames, Render: tailoring.RenderFormat(value.Render)}).Validate()
+}
+
+func resultModeFor(output *tailoringbundle.Output) ResultMode {
+	if output != nil {
+		return ResultModeTransformedJSON
+	}
+	return ResultModeSourceStreamPassthrough
 }
 
 func cloneOptions(value tailoringbundle.OptionSurface) tailoringbundle.OptionSurface {

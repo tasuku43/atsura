@@ -2,6 +2,7 @@ package sourceprocess
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -34,6 +35,34 @@ func TestRequestValidationFailsClosed(t *testing.T) {
 				t.Fatalf("Validate() error = %v", err)
 			}
 		})
+	}
+}
+
+func TestRequestPreservesEmptyArgvElementsButNotAnEmptyExecutable(t *testing.T) {
+	request := validRequest()
+	request.Args = []string{"", "value", ""}
+	if err := request.Validate(); err != nil {
+		t.Fatalf("empty argv elements must remain representable: %v", err)
+	}
+
+	request.Executable = ""
+	if err := request.Validate(); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("empty executable error = %v", err)
+	}
+}
+
+func TestRequestStillBoundsEveryArgvElement(t *testing.T) {
+	tests := []string{
+		strings.Repeat("x", MaxArgumentBytes+1),
+		"bad\narg",
+		string([]byte{0xff}),
+	}
+	for index, argument := range tests {
+		request := validRequest()
+		request.Args = []string{argument}
+		if err := request.Validate(); !errors.Is(err, ErrInvalidRequest) {
+			t.Errorf("argument %d error = %v", index, err)
+		}
 	}
 }
 
@@ -99,5 +128,45 @@ func TestBoundRequestAndResultRequireExactExpectedIdentity(t *testing.T) {
 	zero := Result{ExitCode: -1}
 	if err := zero.ValidateBound(bound, false); err != nil {
 		t.Fatalf("zero-attempt bound result = %v", err)
+	}
+}
+
+func TestValidateBoundCompletionAcceptsConventionalZeroAndNonzeroStatus(t *testing.T) {
+	identity := validIdentity()
+	request := validRequest()
+	request.Executable = identity.ResolvedPath
+	bound := BoundRequest{Process: request, ExpectedIdentity: identity}
+	for _, exitCode := range []int{0, 7} {
+		result := Result{
+			Attempts: 1,
+			ExitCode: exitCode,
+			Stdout:   []byte{'o', 0xff},
+			Stderr:   []byte{'e', 0x00},
+			Identity: identity,
+		}
+		if err := result.ValidateBoundCompletion(bound); err != nil {
+			t.Fatalf("exit %d completion error = %v", exitCode, err)
+		}
+	}
+}
+
+func TestValidateBoundCompletionRejectsUncertainOrInconsistentEvidence(t *testing.T) {
+	identity := validIdentity()
+	request := validRequest()
+	request.Executable = identity.ResolvedPath
+	bound := BoundRequest{Process: request, ExpectedIdentity: identity}
+	wrongIdentity := identity
+	wrongIdentity.SHA256 = "1123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	tests := []Result{
+		{ExitCode: -1},
+		{Attempts: 1, ExitCode: -1, Identity: identity},
+		{Attempts: 1, ExitCode: 0, Identity: wrongIdentity},
+		{Attempts: 1, ExitCode: 0, Stdout: make([]byte, request.StdoutLimit+1), Identity: identity},
+		{Attempts: 1, ExitCode: 0, Stderr: make([]byte, request.StderrLimit+1), Identity: identity},
+	}
+	for index, result := range tests {
+		if err := result.ValidateBoundCompletion(bound); !errors.Is(err, ErrInvalidResult) {
+			t.Errorf("result %d error = %v", index, err)
+		}
 	}
 }

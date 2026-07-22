@@ -140,6 +140,9 @@ func TestVerifyRuntimeProvesSupportedGitHubJSONSelectors(t *testing.T) {
 	for _, path := range [][]string{{"issue", "list"}, {"pr", "list"}} {
 		t.Run(strings.Join(path, "_"), func(t *testing.T) {
 			plan := transformRuntimePlan(t, path...)
+			if plan.ResultMode != tailoringplan.ResultModeTransformedJSON {
+				t.Fatalf("result mode = %q", plan.ResultMode)
+			}
 			if err := verifier.VerifyRuntime(plan); err != nil {
 				t.Fatal(err)
 			}
@@ -150,6 +153,30 @@ func TestVerifyRuntimeProvesSupportedGitHubJSONSelectors(t *testing.T) {
 			plan = replaceAppendedArgs(t, plan, []string{"--limit", "1", "--state=all", "--json=number,title"})
 			if err := VerifyRuntime(plan); err != nil {
 				t.Fatalf("supported filtering argv: %v", err)
+			}
+		})
+	}
+}
+
+func TestVerifyRuntimeProvesSupportedGitHubSourceStreamWrappers(t *testing.T) {
+	verifier := NewRuntimeVerifier()
+	for _, path := range [][]string{{"issue", "list"}, {"pr", "list"}} {
+		t.Run(strings.Join(path, "_")+"_identity", func(t *testing.T) {
+			plan := runtimePlan(t, path, []string{}, nil)
+			if plan.ResultMode != tailoringplan.ResultModeSourceStreamPassthrough || plan.WrapperKind != tailoringbundle.WrapperIdentity {
+				t.Fatalf("plan result/wrapper = %q/%q", plan.ResultMode, plan.WrapperKind)
+			}
+			if err := verifier.VerifyRuntime(plan); err != nil {
+				t.Fatal(err)
+			}
+		})
+		t.Run(strings.Join(path, "_")+"_append_only", func(t *testing.T) {
+			plan := runtimePlan(t, path, []string{"--limit=1", "--label=one", "--label=two", "--repo=-dash"}, nil)
+			if plan.ResultMode != tailoringplan.ResultModeSourceStreamPassthrough || plan.WrapperKind != tailoringbundle.WrapperTransform {
+				t.Fatalf("plan result/wrapper = %q/%q", plan.ResultMode, plan.WrapperKind)
+			}
+			if err := verifier.VerifyRuntime(plan); err != nil {
+				t.Fatal(err)
 			}
 		})
 	}
@@ -169,15 +196,38 @@ func TestVerifyRuntimeRejectsUnsupportedContracts(t *testing.T) {
 		{name: "major version", mutate: func(plan tailoringplan.Plan) tailoringplan.Plan { plan.Source.Version = "3.0.0"; return plan }, category: ErrRuntimeSourceVersion},
 		{name: "malformed version", mutate: func(plan tailoringplan.Plan) tailoringplan.Plan { plan.Source.Version = "2"; return plan }, category: ErrRuntimeSourceVersion},
 		{name: "unsupported command", mutate: func(_ tailoringplan.Plan) tailoringplan.Plan { return transformRuntimePlan(t, "release", "list") }, category: ErrRuntimeCommand},
-		{name: "identity output", mutate: func(_ tailoringplan.Plan) tailoringplan.Plan {
-			return runtimePlan(t, []string{"issue", "list"}, []string{}, nil)
-		}, category: ErrRuntimeWrapperOutput},
 		{name: "invalid plan", mutate: func(plan tailoringplan.Plan) tailoringplan.Plan { plan.SchemaVersion = 0; return plan }, category: ErrRuntimeWrapperOutput},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			plan := test.mutate(transformRuntimePlan(t, "issue", "list"))
 			assertRuntimeAdmission(t, VerifyRuntime(plan), ErrRuntimeUnsupported, test.category)
+		})
+	}
+}
+
+func TestVerifyRuntimeRejectsUnprovenSourceStreamArgs(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []string
+		legacy   error
+		category error
+	}{
+		{name: "json output mode", args: []string{"--json=number,title"}, legacy: ErrRuntimeSelector, category: ErrRuntimeSelectorConflict},
+		{name: "jq output mode", args: []string{"--jq=.[]"}, legacy: ErrRuntimeSelector, category: ErrRuntimeSelectorConflict},
+		{name: "template output mode", args: []string{"--template={{.number}}"}, legacy: ErrRuntimeSelector, category: ErrRuntimeSelectorConflict},
+		{name: "web output mode", args: []string{"--web"}, legacy: ErrRuntimeSelector, category: ErrRuntimeSelectorConflict},
+		{name: "positional", args: []string{"unexpected"}, legacy: ErrRuntimeUnsupported, category: ErrRuntimeArgvGrammar},
+		{name: "append after marker", args: []string{"--", "--limit=1"}, legacy: ErrRuntimeUnsupported, category: ErrRuntimeArgvGrammar},
+		{name: "unknown option", args: []string{"--unknown=value"}, legacy: ErrRuntimeUnsupported, category: ErrRuntimeArgvGrammar},
+		{name: "missing separated value", args: []string{"--limit"}, legacy: ErrRuntimeUnsupported, category: ErrRuntimeArgvGrammar},
+		{name: "dash separated value", args: []string{"--repo", "-dash"}, legacy: ErrRuntimeUnsupported, category: ErrRuntimeArgvGrammar},
+		{name: "empty inline value", args: []string{"--limit="}, legacy: ErrRuntimeUnsupported, category: ErrRuntimeArgvGrammar},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			plan := runtimePlan(t, []string{"pr", "list"}, test.args, nil)
+			assertRuntimeAdmission(t, VerifyRuntime(plan), test.legacy, test.category)
 		})
 	}
 }
@@ -251,7 +301,39 @@ func TestVerifySurfaceAdmitsOneCompleteTransformSurface(t *testing.T) {
 	}
 }
 
-func TestVerifySurfaceRejectsMixedIdentityAndPartialSurfaces(t *testing.T) {
+func TestVerifySurfaceAdmitsOneCompleteSourceStreamSurface(t *testing.T) {
+	baseOptions := []sourcecatalog.Option{
+		{Name: "--json", TakesValue: true},
+		{Name: "--label", TakesValue: true},
+		{Name: "--limit", TakesValue: true},
+		{Name: "--repo", TakesValue: true},
+	}
+	baseSurface := tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultExclude, Include: []string{"--label", "--limit", "--repo"}, Exclude: []string{}}
+	tests := []struct {
+		name    string
+		path    []string
+		wrapper tailoringbundle.Wrapper
+	}{
+		{
+			name: "identity", path: []string{"pr", "list"},
+			wrapper: tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{}},
+		},
+		{
+			name: "append only", path: []string{"issue", "list"},
+			wrapper: tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--limit=1", "--label=one", "--label=two"}}, After: []tailoringbundle.StageAction{}},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			bundle := runtimeSurfaceBundle(t, test.path, baseOptions, baseSurface, test.wrapper)
+			if err := NewRuntimeVerifier().VerifySurface(bundle); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestVerifySurfaceRejectsMixedAndPartialSurfaces(t *testing.T) {
 	baseOptions := []sourcecatalog.Option{{Name: "--json", TakesValue: true}, {Name: "--limit", TakesValue: true}}
 	baseSurface := tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultExclude, Include: []string{"--limit"}, Exclude: []string{}}
 
@@ -282,11 +364,6 @@ func TestVerifySurfaceRejectsMixedIdentityAndPartialSurfaces(t *testing.T) {
 		category error
 	}{
 		{
-			name: "identity wrapper", path: []string{"pr", "list"}, options: baseOptions, surface: baseSurface,
-			wrapper: tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{}},
-			legacy:  ErrRuntimeUnsupported, category: ErrRuntimeWrapperOutput,
-		},
-		{
 			name: "unsupported command", path: []string{"release", "list"}, options: baseOptions, surface: baseSurface,
 			wrapper: admittedSurfaceWrapper(), legacy: ErrRuntimeUnsupported, category: ErrRuntimeCommand,
 		},
@@ -313,6 +390,17 @@ func TestVerifySurfaceRejectsMixedIdentityAndPartialSurfaces(t *testing.T) {
 				Output: &tailoringbundle.Output{Input: "json", Select: []string{"number", "title"}, Rename: []tailoringbundle.Rename{}, Render: "compact_json"}, After: []tailoringbundle.StageAction{},
 			},
 			legacy: ErrRuntimeSelector, category: ErrRuntimeSelectorConflict,
+		},
+		{
+			name: "source stream exposed selector", path: []string{"pr", "list"}, options: baseOptions,
+			surface: tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultExclude, Include: []string{"--json"}, Exclude: []string{}},
+			wrapper: tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{}},
+			legacy:  ErrRuntimeSelector, category: ErrRuntimeSelectorConflict,
+		},
+		{
+			name: "source stream unmodeled append", path: []string{"pr", "list"}, options: baseOptions, surface: baseSurface,
+			wrapper: tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--unknown=1"}}, After: []tailoringbundle.StageAction{}},
+			legacy:  ErrRuntimeUnsupported, category: ErrRuntimeArgvGrammar,
 		},
 	}
 	for _, test := range tests {

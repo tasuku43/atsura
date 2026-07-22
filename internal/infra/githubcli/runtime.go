@@ -84,9 +84,9 @@ func (*RuntimeVerifier) VerifySurface(bundle tailoringbundle.Bundle) error {
 	return VerifySurface(bundle)
 }
 
-// VerifyRuntime proves that a plan produced from inspection contract 2 asks a
-// supported GitHub CLI command for the exact selected JSON fields. It performs
-// no I/O and grants no source-operation permission.
+// VerifyRuntime proves that a plan produced from inspection contract 2 uses one
+// maintained GitHub CLI command grammar and one admitted result contract. It
+// performs no I/O and grants no source-operation permission.
 func VerifyRuntime(plan tailoringplan.Plan) error {
 	if err := plan.Validate(); err != nil {
 		return admissionError(ErrRuntimeUnsupported, ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
@@ -99,25 +99,40 @@ func VerifyRuntime(plan tailoringplan.Plan) error {
 		return admissionError(ErrRuntimeUnsupported, ErrRuntimeCommand, runtimeadmission.CategoryCommand)
 	}
 	output, present, err := plan.OutputPlan()
-	if err != nil || !present || output.Input != tailoring.InputJSON {
+	if err != nil {
 		return admissionError(ErrRuntimeUnsupported, ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
 	}
-
-	want := "--json=" + strings.Join(output.Select, ",")
+	want := ""
+	wantMatches := 0
+	switch plan.ResultMode {
+	case tailoringplan.ResultModeTransformedJSON:
+		if !present || plan.WrapperKind != tailoringbundle.WrapperTransform || output.Input != tailoring.InputJSON {
+			return admissionError(ErrRuntimeUnsupported, ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
+		}
+		want = "--json=" + strings.Join(output.Select, ",")
+		wantMatches = 1
+	case tailoringplan.ResultModeSourceStreamPassthrough:
+		if present || !admittedSourceStreamWrapper(plan.WrapperKind, plan.Stages.Before, plan.Stages.Invoke.AppendedArgs, plan.Stages.Output, plan.Stages.After) {
+			return admissionError(ErrRuntimeUnsupported, ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
+		}
+	default:
+		return admissionError(ErrRuntimeUnsupported, ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
+	}
 	matches, err := verifyRuntimeArgs(path, plan.Stages.Invoke.Args[len(plan.MatchedCommand):], want)
 	if err != nil {
 		return err
 	}
-	if matches != 1 {
+	if matches != wantMatches {
 		return admissionError(ErrRuntimeSelector, ErrRuntimeSelectorConflict, runtimeadmission.CategorySelectorConflict)
 	}
 	return nil
 }
 
 // VerifySurface proves that the complete included bundle surface can enter the
-// maintained transform runtime. The initial materialization contract exposes
-// exactly one transforming command; mixed, identity, or partially admitted
-// surfaces are rejected before wrapper bytes are produced.
+// maintained wrapper runtime. The initial materialization contract exposes
+// exactly one command using either the admitted JSON transform or an identity /
+// append-argv-only source-stream wrapper. Mixed or partially admitted surfaces
+// are rejected before wrapper bytes are produced.
 func VerifySurface(bundle tailoringbundle.Bundle) error {
 	if err := bundle.Validate(); err != nil {
 		return admissionError(ErrRuntimeUnsupported, ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
@@ -134,15 +149,22 @@ func VerifySurface(bundle tailoringbundle.Bundle) error {
 	if !ok {
 		return admissionError(ErrRuntimeUnsupported, ErrRuntimeCommand, runtimeadmission.CategoryCommand)
 	}
-	if entry.Wrapper.Kind != tailoringbundle.WrapperTransform || entry.Wrapper.Output == nil || entry.Wrapper.Output.Input != string(tailoring.InputJSON) {
+	wantedSelector := ""
+	wantedMatches := 0
+	if entry.Wrapper.Output != nil {
+		if entry.Wrapper.Kind != tailoringbundle.WrapperTransform || entry.Wrapper.Output.Input != string(tailoring.InputJSON) {
+			return admissionError(ErrRuntimeUnsupported, ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
+		}
+		wantedSelector = "--json=" + strings.Join(entry.Wrapper.Output.Select, ",")
+		wantedMatches = 1
+	} else if !admittedSourceStreamWrapper(entry.Wrapper.Kind, entry.Wrapper.Before, entry.Wrapper.Invoke.AppendArgs, entry.Wrapper.Output, entry.Wrapper.After) {
 		return admissionError(ErrRuntimeUnsupported, ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
 	}
-	wantedSelector := "--json=" + strings.Join(entry.Wrapper.Output.Select, ",")
 	matches, err := verifyRuntimeArgs(path, entry.Wrapper.Invoke.AppendArgs, wantedSelector)
 	if err != nil {
 		return err
 	}
-	if matches != 1 {
+	if matches != wantedMatches {
 		return admissionError(ErrRuntimeSelector, ErrRuntimeSelectorConflict, runtimeadmission.CategorySelectorConflict)
 	}
 
@@ -173,6 +195,20 @@ func VerifySurface(bundle tailoringbundle.Bundle) error {
 		return admissionError(ErrRuntimeUnsupported, ErrRuntimeArgvGrammar, runtimeadmission.CategoryArgvGrammar)
 	}
 	return nil
+}
+
+func admittedSourceStreamWrapper(kind tailoringbundle.WrapperKind, before []tailoringbundle.StageAction, appendArgs []string, output *tailoringbundle.Output, after []tailoringbundle.StageAction) bool {
+	if len(before) != 0 || len(after) != 0 || output != nil {
+		return false
+	}
+	switch kind {
+	case tailoringbundle.WrapperIdentity:
+		return len(appendArgs) == 0
+	case tailoringbundle.WrapperTransform:
+		return len(appendArgs) != 0
+	default:
+		return false
+	}
 }
 
 func verifySourceContract(adapterKind string, adapterContract int, sourceVersion string) error {

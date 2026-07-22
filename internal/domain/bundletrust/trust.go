@@ -66,6 +66,7 @@ type Summary struct {
 	BeforeActionCount         int
 	AfterActionCount          int
 	OutputTransformationCount int
+	SourceStreamResultCount   int
 }
 
 func EmptyStore() Store {

@@ -94,7 +94,7 @@ func TestTrustConfirmsThenMutatesExactlyOnceAndFailsClosed(t *testing.T) {
 	if err != nil || !result.Adopted || confirm.calls != 1 || trust.adds != 1 {
 		t.Fatalf("Trust() = %+v, %v; confirms=%d adds=%d", result, err, confirm.calls, trust.adds)
 	}
-	if confirm.seen.SpecificationDigest != bundle.SpecificationDigest || confirm.seen.SurfaceDefault != "exclude" || confirm.seen.IncludedCommandCount != 1 || confirm.seen.IdentityWrapperCount != 1 || confirm.seen.TransformWrapperCount != 0 {
+	if confirm.seen.SpecificationDigest != bundle.SpecificationDigest || confirm.seen.SurfaceDefault != "exclude" || confirm.seen.IncludedCommandCount != 1 || confirm.seen.IdentityWrapperCount != 1 || confirm.seen.TransformWrapperCount != 0 || confirm.seen.SourceStreamResultCount != 1 {
 		t.Fatalf("adoption summary = %+v", confirm.seen)
 	}
 	confirm.err = errors.New("no")

@@ -60,14 +60,14 @@ func (r BoundRequest) Validate() error {
 
 // Validate rejects an incomplete or unbounded process request.
 func (r Request) Validate() error {
-	if err := validateArgument(r.Executable); err != nil {
+	if err := validateExecutable(r.Executable); err != nil {
 		return fmt.Errorf("%w: executable: %v", ErrInvalidRequest, err)
 	}
 	if r.Args == nil || len(r.Args) > MaxArguments {
 		return fmt.Errorf("%w: args must be an explicit bounded list", ErrInvalidRequest)
 	}
 	for index, argument := range r.Args {
-		if err := validateArgument(argument); err != nil {
+		if err := validateArgvElement(argument); err != nil {
 			return fmt.Errorf("%w: argument %d: %v", ErrInvalidRequest, index, err)
 		}
 	}
@@ -166,10 +166,47 @@ func (r Result) ValidateBound(request BoundRequest, succeeded bool) error {
 	return nil
 }
 
-func validateArgument(value string) error {
+// ValidateBoundCompletion proves that a result is one conventional process
+// completion for the exact bound request. It deliberately does not interpret
+// a nonzero status as either an Atsura fault or source success; the application
+// owns that result-mode-specific classification.
+func (r Result) ValidateBoundCompletion(request BoundRequest) error {
+	if err := request.Validate(); err != nil {
+		return fmt.Errorf("%w: request: %v", ErrInvalidResult, err)
+	}
+	if r.Attempts != 1 {
+		return fmt.Errorf("%w: conventional completion requires exactly one attempt", ErrInvalidResult)
+	}
+	if r.ExitCode < 0 {
+		return fmt.Errorf("%w: conventional completion requires a nonnegative exit code", ErrInvalidResult)
+	}
+	if len(r.Stdout) > request.Process.StdoutLimit || len(r.Stderr) > request.Process.StderrLimit {
+		return fmt.Errorf("%w: captured output exceeds request bounds", ErrInvalidResult)
+	}
+	if err := r.Identity.Validate(); err != nil {
+		return fmt.Errorf("%w: identity: %v", ErrInvalidResult, err)
+	}
+	if r.Identity != request.ExpectedIdentity {
+		return fmt.Errorf("%w: result identity does not match the bound request", ErrInvalidResult)
+	}
+	return nil
+}
+
+func validateExecutable(value string) error {
 	if value == "" || len(value) > MaxArgumentBytes || !utf8.ValidString(value) {
 		return fmt.Errorf("must be non-empty bounded UTF-8")
 	}
+	return validateStructuralText(value)
+}
+
+func validateArgvElement(value string) error {
+	if len(value) > MaxArgumentBytes || !utf8.ValidString(value) {
+		return fmt.Errorf("must be bounded UTF-8")
+	}
+	return validateStructuralText(value)
+}
+
+func validateStructuralText(value string) error {
 	if strings.IndexFunc(value, func(r rune) bool {
 		return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || r == '\u2028' || r == '\u2029'
 	}) >= 0 {

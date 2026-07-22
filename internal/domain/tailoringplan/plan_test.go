@@ -92,7 +92,7 @@ func TestBuildProducesDeterministicCompleteTransformPlan(t *testing.T) {
 	if firstDigest != secondDigest || len(firstDigest) != 64 {
 		t.Fatalf("digests = %q %q", firstDigest, secondDigest)
 	}
-	if first.Mode != ModeTailored || first.SurfaceOrigin != SurfaceOriginExplicit || first.SpecificationEntry == nil || first.WrapperKind != tailoringbundle.WrapperTransform || first.Stages.Invoke.MaxAttempts != 1 {
+	if first.Mode != ModeTailored || first.ResultMode != ResultModeTransformedJSON || first.SurfaceOrigin != SurfaceOriginExplicit || first.SpecificationEntry == nil || first.WrapperKind != tailoringbundle.WrapperTransform || first.Stages.Invoke.MaxAttempts != 1 {
 		t.Fatalf("plan identity = %+v", first)
 	}
 	if !reflect.DeepEqual(first.MatchedCommand, []string{"item", "list"}) || !reflect.DeepEqual(first.OriginalArgv, []string{"fixture", "item", "list", "--format=json", "active"}) {
@@ -122,7 +122,7 @@ func TestBuildProducesDeterministicCompleteTransformPlan(t *testing.T) {
 			t.Fatalf("plan contains retired field %s: %s", forbidden, encoded)
 		}
 	}
-	for _, required := range []string{`"before":[]`, `"after":[]`, `"output":{`, `"surface_origin":"explicit"`} {
+	for _, required := range []string{`"schema_version":4`, `"result_mode":"transformed_json"`, `"before":[]`, `"after":[]`, `"output":{`, `"surface_origin":"explicit"`} {
 		if !strings.Contains(string(encoded), required) {
 			t.Fatalf("plan missing %s: %s", required, encoded)
 		}
@@ -144,15 +144,29 @@ func TestBuildDistinguishesInheritedSurfaceAndIdentityWrapper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.SurfaceOrigin != SurfaceOriginInherited || plan.SpecificationEntry != nil || plan.WrapperKind != tailoringbundle.WrapperIdentity || plan.Stages.Output != nil || len(plan.Stages.Invoke.AppendedArgs) != 0 {
+	if plan.SurfaceOrigin != SurfaceOriginInherited || plan.SpecificationEntry != nil || plan.WrapperKind != tailoringbundle.WrapperIdentity || plan.ResultMode != ResultModeSourceStreamPassthrough || plan.Stages.Output != nil || len(plan.Stages.Invoke.AppendedArgs) != 0 {
 		t.Fatalf("plan = %+v", plan)
 	}
 	if _, present, err := plan.OutputPlan(); err != nil || present {
 		t.Fatalf("identity OutputPlan() present=%t error=%v", present, err)
 	}
 	encoded, _ := json.Marshal(plan)
-	if !strings.Contains(string(encoded), `"output":null`) {
+	if !strings.Contains(string(encoded), `"result_mode":"source_stream_passthrough"`) || !strings.Contains(string(encoded), `"output":null`) {
 		t.Fatalf("identity output is not explicit null: %s", encoded)
+	}
+}
+
+func TestBuildDerivesSourceStreamResultForAppendOnlyWrapper(t *testing.T) {
+	entry := transformEntry()
+	entry.Wrapper.Output = nil
+	entry.Wrapper.Invoke.AppendArgs = []string{"--format=json"}
+	bundle, digest := planBundle(t, tailoringbundle.SurfaceDefaultExclude, entry)
+	plan, err := Build(digest, bundle, currentIdentity(), Attempt{Executable: "fixture", Args: []string{"item", "list"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.WrapperKind != tailoringbundle.WrapperTransform || plan.ResultMode != ResultModeSourceStreamPassthrough || plan.Stages.Output != nil || !reflect.DeepEqual(plan.Stages.Invoke.AppendedArgs, []string{"--format=json"}) {
+		t.Fatalf("append-only plan = %+v", plan)
 	}
 }
 
@@ -167,6 +181,7 @@ func TestBuildEnforcesOptionSurfaceAndDeterministicForms(t *testing.T) {
 	}{
 		{name: "inline value", args: []string{"item", "list", "--json=id"}},
 		{name: "separated value", args: []string{"item", "list", "--json", "id"}},
+		{name: "empty positional value", args: []string{"item", "list", ""}},
 		{name: "positional marker", args: []string{"item", "list", "--", "--unknown"}},
 		{name: "excluded observed option", args: []string{"item", "list", "--verbose"}, want: ErrOptionNotInSurface},
 		{name: "unknown long option", args: []string{"item", "list", "--unknown"}, want: ErrInvalidInvocation},
@@ -275,6 +290,37 @@ func TestPlanValidationAndDigestDetectMutation(t *testing.T) {
 	}
 	if mutated, err := plan.Digest(); err == nil || mutated == baseline {
 		t.Fatalf("mutated digest = %q, error = %v", mutated, err)
+	}
+}
+
+func TestPlanValidationRejectsMissingUnknownAndContradictoryResultModes(t *testing.T) {
+	transformBundle, transformDigest := planBundle(t, tailoringbundle.SurfaceDefaultExclude, transformEntry())
+	transformPlan, err := Build(transformDigest, transformBundle, currentIdentity(), Attempt{Executable: "fixture", Args: []string{"item", "list"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	identityBundle, identityDigest := planBundle(t, tailoringbundle.SurfaceDefaultExclude, identityEntry("item", "list"))
+	identityPlan, err := Build(identityDigest, identityBundle, currentIdentity(), Attempt{Executable: "fixture", Args: []string{"item", "list"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []Plan{
+		func() Plan { value := transformPlan; value.ResultMode = ""; return value }(),
+		func() Plan { value := transformPlan; value.ResultMode = ResultMode("unknown"); return value }(),
+		func() Plan {
+			value := transformPlan
+			value.ResultMode = ResultModeSourceStreamPassthrough
+			return value
+		}(),
+		func() Plan { value := identityPlan; value.ResultMode = ResultModeTransformedJSON; return value }(),
+	}
+	for index, plan := range tests {
+		if err := plan.Validate(); !errors.Is(err, ErrInvalidPlan) {
+			t.Errorf("plan %d validation error = %v", index, err)
+		}
+		if digest, err := plan.Digest(); err == nil || digest != "" {
+			t.Errorf("plan %d digest = %q, error = %v", index, digest, err)
+		}
 	}
 }
 
