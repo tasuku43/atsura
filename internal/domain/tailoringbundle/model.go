@@ -13,15 +13,17 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/tasuku43/atsura/internal/domain/processorprocess"
 	"github.com/tasuku43/atsura/internal/domain/sourcecatalog"
 	"github.com/tasuku43/atsura/internal/domain/tailoring"
 )
 
 const (
-	SpecificationSchemaVersion = 3
-	BundleSchemaVersion        = 2
+	SpecificationSchemaVersion = 4
+	BundleSchemaVersion        = 3
 	MaxCommandEntries          = 256
 	MaxWrapperArguments        = 64
+	MaxProcessorBindings       = 8
 )
 
 var (
@@ -69,7 +71,7 @@ type OptionSurface struct {
 	Exclude []string       `json:"exclude"`
 }
 
-// StageAction reserves a typed stage boundary. Schema 3 requires before and
+// StageAction reserves a typed stage boundary. Schema 4 requires before and
 // after to be explicit empty lists until a built-in action is accepted.
 type StageAction struct {
 	Kind string `json:"kind"`
@@ -86,12 +88,35 @@ type Rename struct {
 	To   string `json:"to"`
 }
 
-// Output is the normalized built-in structured transformation contract.
-type Output struct {
+// OutputKind discriminates the two incompatible output-stage meanings.
+type OutputKind string
+
+const (
+	OutputKindProjection OutputKind = "projection"
+	OutputKindOptimizer  OutputKind = "optimizer"
+)
+
+// Projection is the normalized built-in structured transformation contract.
+type Projection struct {
 	Input  string   `json:"input"`
 	Select []string `json:"select"`
 	Rename []Rename `json:"rename"`
 	Render string   `json:"render"`
+}
+
+// Optimizer names one finite compatibility contract whose admitted input may
+// be returned byte-identically only when that allowance is explicit.
+type Optimizer struct {
+	Input               string `json:"input"`
+	Contract            string `json:"contract"`
+	AllowOriginalOutput bool   `json:"allow_original_output"`
+}
+
+// Output is a strict discriminated union. Exactly one payload must be present.
+type Output struct {
+	Kind       OutputKind  `json:"kind"`
+	Projection *Projection `json:"projection,omitempty"`
+	Optimizer  *Optimizer  `json:"optimizer,omitempty"`
 }
 
 // Wrapper describes the ordered typed stages applied to an included command.
@@ -113,7 +138,7 @@ type CommandEntry struct {
 	Wrapper  *Wrapper       `json:"wrapper,omitempty"`
 }
 
-// Specification is normalized schema-3 content bound to one exact catalog.
+// Specification is normalized schema-4 content bound to one exact catalog.
 type Specification struct {
 	SchemaVersion int            `json:"schema_version"`
 	CatalogDigest string         `json:"catalog_digest"`
@@ -130,6 +155,30 @@ type SurfaceEntry struct {
 	Wrapper Wrapper       `json:"wrapper"`
 }
 
+// ProcessorExecution is the complete generic process framing bound during
+// compilation. A finite compatibility verifier owns exact adapter semantics.
+type ProcessorExecution struct {
+	Args                 []string `json:"args"`
+	StdinMode            string   `json:"stdin_mode"`
+	WorkingDirectoryMode string   `json:"working_directory_mode"`
+	EnvironmentContract  string   `json:"environment_contract"`
+	MaxAttempts          int      `json:"max_attempts"`
+	TimeoutMillis        int64    `json:"timeout_millis"`
+	StdoutLimitBytes     int      `json:"stdout_limit_bytes"`
+	StderrLimitBytes     int      `json:"stderr_limit_bytes"`
+}
+
+// ProcessorBinding binds one specification compatibility contract to an exact
+// inspected executable and complete output-stage process contract.
+type ProcessorBinding struct {
+	Contract            string                       `json:"contract"`
+	Observation         processorprocess.Observation `json:"observation"`
+	InputFormat         string                       `json:"input_format"`
+	OutputFormat        string                       `json:"output_format"`
+	AllowOriginalOutput bool                         `json:"allow_original_output"`
+	Execution           ProcessorExecution           `json:"execution"`
+}
+
 // Bundle is the canonical compiled surface and wrapper artifact.
 type Bundle struct {
 	SchemaVersion       int                   `json:"schema_version"`
@@ -137,11 +186,12 @@ type Bundle struct {
 	Catalog             sourcecatalog.Catalog `json:"catalog"`
 	SpecificationDigest string                `json:"specification_digest"`
 	Specification       Specification         `json:"specification"`
+	Processors          []ProcessorBinding    `json:"processors"`
 	Surface             []SurfaceEntry        `json:"surface"`
 }
 
 // Compile validates and binds catalog, specification, and tailored surface.
-func Compile(catalog sourcecatalog.Catalog, specification Specification) (Bundle, error) {
+func Compile(catalog sourcecatalog.Catalog, specification Specification, processors ...ProcessorBinding) (Bundle, error) {
 	catalogDigest, err := catalog.Digest()
 	if err != nil {
 		return Bundle{}, invalidBundle("catalog: %v", err)
@@ -151,6 +201,10 @@ func Compile(catalog sourcecatalog.Catalog, specification Specification) (Bundle
 	}
 	if specification.CatalogDigest != catalogDigest {
 		return Bundle{}, invalidSpecification("catalog digest does not match the supplied catalog")
+	}
+	processorBindings := cloneProcessorBindings(processors)
+	if err := validateProcessorBindings(specification, processorBindings); err != nil {
+		return Bundle{}, invalidBundle("processors: %v", err)
 	}
 	specificationDigest, err := specification.Digest(catalog)
 	if err != nil {
@@ -162,6 +216,7 @@ func Compile(catalog sourcecatalog.Catalog, specification Specification) (Bundle
 		Catalog:             catalog,
 		SpecificationDigest: specificationDigest,
 		Specification:       specification,
+		Processors:          processorBindings,
 		Surface:             deriveSurface(catalog, specification),
 	}, nil
 }
@@ -186,10 +241,26 @@ func (b Bundle) Validate() error {
 	if b.Specification.CatalogDigest != b.CatalogDigest {
 		return invalidBundle("specification is bound to a different catalog")
 	}
+	if err := validateProcessorBindings(b.Specification, b.Processors); err != nil {
+		return invalidBundle("processors: %v", err)
+	}
 	if !reflect.DeepEqual(b.Surface, deriveSurface(b.Catalog, b.Specification)) {
 		return invalidBundle("tailored surface is not the specification-derived projection")
 	}
 	return nil
+}
+
+// Processor resolves one detached exact binding by compatibility contract.
+func (b Bundle) Processor(contract string) (ProcessorBinding, bool, error) {
+	if err := b.Validate(); err != nil {
+		return ProcessorBinding{}, false, err
+	}
+	for _, binding := range b.Processors {
+		if binding.Contract == contract {
+			return cloneProcessorBinding(binding), true, nil
+		}
+	}
+	return ProcessorBinding{}, false, nil
 }
 
 // Resolve returns one detached included surface entry. Absence is a surface
@@ -314,7 +385,7 @@ func (w Wrapper) validate(command sourcecatalog.Command) error {
 		return fmt.Errorf("wrapper before, invoke append_args, and after must be explicit lists")
 	}
 	if len(w.Before) != 0 || len(w.After) != 0 {
-		return fmt.Errorf("schema 3 does not support before or after actions")
+		return fmt.Errorf("schema 4 does not support before or after actions")
 	}
 	if len(w.Invoke.AppendArgs) > MaxWrapperArguments {
 		return fmt.Errorf("invoke append_args exceeds its bound")
@@ -345,17 +416,34 @@ func (w Wrapper) validate(command sourcecatalog.Command) error {
 }
 
 func (o Output) validate(command sourcecatalog.Command) error {
-	renames := make([]tailoring.Rename, len(o.Rename))
-	for index, rename := range o.Rename {
+	switch o.Kind {
+	case OutputKindProjection:
+		if o.Projection == nil || o.Optimizer != nil {
+			return fmt.Errorf("output projection union is incomplete or contradictory")
+		}
+		return o.Projection.validate(command)
+	case OutputKindOptimizer:
+		if o.Projection != nil || o.Optimizer == nil {
+			return fmt.Errorf("output optimizer union is incomplete or contradictory")
+		}
+		return o.Optimizer.validate(command)
+	default:
+		return fmt.Errorf("output kind must be projection or optimizer")
+	}
+}
+
+func (p Projection) validate(command sourcecatalog.Command) error {
+	renames := make([]tailoring.Rename, len(p.Rename))
+	for index, rename := range p.Rename {
 		renames[index] = tailoring.Rename{From: rename.From, To: rename.To}
 	}
-	plan := tailoring.OutputPlan{Input: tailoring.InputFormat(o.Input), Select: o.Select, Rename: renames, Render: tailoring.RenderFormat(o.Render)}
+	plan := tailoring.OutputPlan{Input: tailoring.InputFormat(p.Input), Select: p.Select, Rename: renames, Render: tailoring.RenderFormat(p.Render)}
 	if err := plan.Validate(); err != nil {
 		return fmt.Errorf("output: %v", err)
 	}
 	formatObserved := false
 	for _, output := range command.StructuredOutput {
-		if output.Format != o.Input {
+		if output.Format != p.Input {
 			continue
 		}
 		formatObserved = true
@@ -364,7 +452,7 @@ func (o Output) validate(command sourcecatalog.Command) error {
 			observed[field] = struct{}{}
 		}
 		allObserved := true
-		for _, field := range o.Select {
+		for _, field := range p.Select {
 			if _, exists := observed[field]; !exists {
 				allObserved = false
 				break
@@ -375,10 +463,89 @@ func (o Output) validate(command sourcecatalog.Command) error {
 		}
 	}
 	if !formatObserved {
-		return fmt.Errorf("output requests %s not observed for command", o.Input)
+		return fmt.Errorf("output requests %s not observed for command", p.Input)
 	}
 	return fmt.Errorf("one or more selected output fields were not observed together for command")
 }
+
+func (o Optimizer) validate(command sourcecatalog.Command) error {
+	if !validStableName(o.Input) || !validNamespaced(o.Contract) || !o.AllowOriginalOutput {
+		return fmt.Errorf("optimizer requires a stable input, namespaced contract, and explicit original-output allowance")
+	}
+	for _, output := range command.StructuredOutput {
+		if output.Format == o.Input {
+			return nil
+		}
+	}
+	return fmt.Errorf("optimizer input %s was not observed for command", o.Input)
+}
+
+func validateProcessorBindings(specification Specification, bindings []ProcessorBinding) error {
+	if bindings == nil || len(bindings) > MaxProcessorBindings {
+		return fmt.Errorf("processor bindings must be an explicit bounded list")
+	}
+	required := make(map[string]string)
+	for _, entry := range specification.Commands {
+		if entry.Presence != PresenceInclude || entry.Wrapper == nil || entry.Wrapper.Output == nil || entry.Wrapper.Output.Kind != OutputKindOptimizer || entry.Wrapper.Output.Optimizer == nil {
+			continue
+		}
+		optimizer := entry.Wrapper.Output.Optimizer
+		if previous, exists := required[optimizer.Contract]; exists && previous != optimizer.Input {
+			return fmt.Errorf("optimizer contract %q has conflicting input formats", optimizer.Contract)
+		}
+		required[optimizer.Contract] = optimizer.Input
+	}
+	previous := ""
+	seen := make(map[string]struct{}, len(bindings))
+	for index, binding := range bindings {
+		if err := binding.validate(); err != nil {
+			return fmt.Errorf("binding %d: %v", index, err)
+		}
+		if previous != "" && binding.Contract <= previous {
+			return fmt.Errorf("processor bindings must be sorted and unique by contract")
+		}
+		previous = binding.Contract
+		input, wanted := required[binding.Contract]
+		if !wanted || input != binding.InputFormat {
+			return fmt.Errorf("processor binding %q is unused or has a mismatched input", binding.Contract)
+		}
+		seen[binding.Contract] = struct{}{}
+	}
+	for contract := range required {
+		if _, exists := seen[contract]; !exists {
+			return fmt.Errorf("optimizer contract %q has no processor binding", contract)
+		}
+	}
+	return nil
+}
+
+func (b ProcessorBinding) validate() error {
+	if !validNamespaced(b.Contract) || !validStableName(b.InputFormat) || !validStableName(b.OutputFormat) || !b.AllowOriginalOutput {
+		return fmt.Errorf("contract, formats, and original-output allowance are invalid")
+	}
+	if err := b.Observation.Validate(); err != nil {
+		return fmt.Errorf("observation: %v", err)
+	}
+	execution := b.Execution
+	if execution.Args == nil || len(execution.Args) == 0 || len(execution.Args) > processorprocess.MaxArguments {
+		return fmt.Errorf("execution args must be an explicit non-empty bounded list")
+	}
+	for _, argument := range execution.Args {
+		if err := validateArgument(argument); err != nil {
+			return fmt.Errorf("execution argument: %v", err)
+		}
+	}
+	if execution.StdinMode != "stage_input" || execution.WorkingDirectoryMode != "isolated" || !validNamespaced(execution.EnvironmentContract) || execution.EnvironmentContract != b.Observation.Probe.EnvironmentContract {
+		return fmt.Errorf("execution process framing is invalid")
+	}
+	if execution.MaxAttempts != 1 || execution.TimeoutMillis <= 0 || execution.TimeoutMillis > processorprocess.MaxTimeout.Milliseconds() || execution.StdoutLimitBytes <= 0 || execution.StdoutLimitBytes > processorprocess.MaxStdoutBytes || execution.StderrLimitBytes <= 0 || execution.StderrLimitBytes > processorprocess.MaxStderrBytes {
+		return fmt.Errorf("execution attempts, timeout, or byte limits are invalid")
+	}
+	return nil
+}
+
+// Validate proves one detached processor binding without source-tuple policy.
+func (b ProcessorBinding) Validate() error { return b.validate() }
 
 // CanonicalJSON encodes the normalized specification only after catalog-bound
 // validation.
@@ -492,8 +659,16 @@ func cloneWrapper(value Wrapper) Wrapper {
 	result.After = cloneStageActions(value.After)
 	if value.Output != nil {
 		copy := *value.Output
-		copy.Select = cloneStrings(value.Output.Select)
-		copy.Rename = cloneRenames(value.Output.Rename)
+		if value.Output.Projection != nil {
+			projection := *value.Output.Projection
+			projection.Select = cloneStrings(value.Output.Projection.Select)
+			projection.Rename = cloneRenames(value.Output.Projection.Rename)
+			copy.Projection = &projection
+		}
+		if value.Output.Optimizer != nil {
+			optimizer := *value.Output.Optimizer
+			copy.Optimizer = &optimizer
+		}
 		result.Output = &copy
 	}
 	return result
@@ -527,8 +702,52 @@ func cloneRenames(values []Rename) []Rename {
 	return append([]Rename{}, values...)
 }
 
+func cloneProcessorBindings(values []ProcessorBinding) []ProcessorBinding {
+	if values == nil {
+		return []ProcessorBinding{}
+	}
+	result := make([]ProcessorBinding, len(values))
+	for index, value := range values {
+		result[index] = cloneProcessorBinding(value)
+	}
+	return result
+}
+
+func cloneProcessorBinding(value ProcessorBinding) ProcessorBinding {
+	result := value
+	result.Observation.Probe.Argv = cloneStrings(value.Observation.Probe.Argv)
+	result.Execution.Args = cloneStrings(value.Execution.Args)
+	return result
+}
+
 func validSurfaceDefault(value SurfaceDefault) bool {
 	return value == SurfaceDefaultInherit || value == SurfaceDefaultExclude
+}
+
+func validNamespaced(value string) bool {
+	parts := strings.Split(value, ".")
+	if len(parts) < 3 || len(value) > 128 {
+		return false
+	}
+	for _, part := range parts {
+		if !validStableName(part) {
+			return false
+		}
+	}
+	return true
+}
+
+func validStableName(value string) bool {
+	if value == "" || len(value) > 128 {
+		return false
+	}
+	for index, r := range value {
+		if (r >= 'a' && r <= 'z') || (index > 0 && r >= '0' && r <= '9') || (index > 0 && (r == '-' || r == '_')) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func sortedUnique(values []string) bool {

@@ -17,12 +17,11 @@ import (
 )
 
 const (
-	// AdapterKind is the stable namespaced identifier for Go CLI inspection
-	// contract 1.
+	// AdapterKind is the stable namespaced identifier for Go CLI inspection.
 	AdapterKind = "atsura.source.go_cli"
-	// ContractVersion is the first bounded Go CLI inspection and runtime
-	// contract.
-	ContractVersion = 1
+	// ContractVersion adds exact go_test_jsonl selector evidence while retaining
+	// the same three bounded probes and inspection-time version boundary.
+	ContractVersion = 2
 
 	probeTimeout     = 5 * time.Second
 	versionByteLimit = 64 * 1024
@@ -101,6 +100,10 @@ func (i *Inspector) Inspect(ctx context.Context, executable string) (sourcecatal
 		return sourcecatalog.Catalog{}, fmt.Errorf("%w: executable identity changed between probes", sourcecatalog.ErrInspectionFailed)
 	}
 	if err := verifyTestHelp(testHelpResult.Stdout); err != nil {
+		return sourcecatalog.Catalog{}, err
+	}
+	commands, err = attachTestJSONOutput(commands)
+	if err != nil {
 		return sourcecatalog.Catalog{}, err
 	}
 
@@ -259,6 +262,9 @@ func verifyTestHelp(value []byte) error {
 		"test -v'). In this mode, go test compiles the package sources and",
 		"tests found in the current directory and then runs the resulting",
 		"test binary. In this mode, caching (discussed below) is disabled.",
+		"\t-json",
+		"\t    Convert test output to JSON suitable for automated processing.",
+		"\t    Also emits build output in JSON. See 'go help buildjson'.",
 	}
 	previous := -1
 	for _, anchor := range required {
@@ -272,6 +278,28 @@ func verifyTestHelp(value []byte) error {
 		return inspectionFailure("test help usage is missing or changed")
 	}
 	return nil
+}
+
+func attachTestJSONOutput(commands []sourcecatalog.Command) ([]sourcecatalog.Command, error) {
+	matched := -1
+	for index := range commands {
+		if len(commands[index].Path) != 1 || commands[index].Path[0] != "test" {
+			continue
+		}
+		if matched >= 0 {
+			return nil, inspectionFailure("root command table contains duplicate test entries")
+		}
+		matched = index
+	}
+	if matched < 0 {
+		return nil, inspectionFailure("root command table does not contain test")
+	}
+	commands[matched].StructuredOutput = []sourcecatalog.StructuredOutput{{
+		Format:       "go_test_jsonl",
+		SelectorFlag: "-json",
+		Fields:       []string{"Action", "Elapsed", "FailedBuild", "Output", "Package", "Test", "Time"},
+	}}
+	return commands, nil
 }
 
 func boundedHelpLines(value []byte, description string) ([]string, error) {

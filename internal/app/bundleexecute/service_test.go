@@ -107,7 +107,7 @@ func executeIntent() operation.Intent {
 func executeBundle(t *testing.T, transform bool) (tailoringbundle.Bundle, string, sourceprocess.Identity) {
 	t.Helper()
 	catalog := sourcecatalog.Catalog{
-		SchemaVersion: 1,
+		SchemaVersion: sourcecatalog.SchemaVersion,
 		Adapter:       sourcecatalog.Adapter{Kind: "atsura.source.alternate", ContractVersion: 1},
 		Source:        sourcecatalog.Source{RequestedExecutable: "fixture", ResolvedPath: "/opt/bin/fixture", SHA256: strings.Repeat("a", 64), Size: 42, Version: "1.0.0"},
 		Probe:         sourcecatalog.Probe{IDs: []string{"help"}, Attempts: 1},
@@ -125,7 +125,7 @@ func executeBundle(t *testing.T, transform bool) (tailoringbundle.Bundle, string
 	if transform {
 		wrapper = &tailoringbundle.Wrapper{
 			Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--json=id,name,state"}},
-			Output: &tailoringbundle.Output{Input: "json", Select: []string{"id", "name", "state"}, Rename: []tailoringbundle.Rename{{From: "id", To: "item_id"}}, Render: "compact_json"},
+			Output: &tailoringbundle.Output{Kind: tailoringbundle.OutputKindProjection, Projection: &tailoringbundle.Projection{Input: "json", Select: []string{"id", "name", "state"}, Rename: []tailoringbundle.Rename{{From: "id", To: "item_id"}}, Render: "compact_json"}},
 			After:  []tailoringbundle.StageAction{},
 		}
 	}

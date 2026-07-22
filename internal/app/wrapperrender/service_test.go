@@ -55,7 +55,7 @@ func renderBundle(t *testing.T, requestedExecutable string) (tailoringbundle.Bun
 			Wrapper: &tailoringbundle.Wrapper{
 				Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{},
 				Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--json=number,title"}},
-				Output: &tailoringbundle.Output{Input: "json", Select: []string{"number", "title"}, Rename: []tailoringbundle.Rename{}, Render: "compact_json"},
+				Output: &tailoringbundle.Output{Kind: tailoringbundle.OutputKindProjection, Projection: &tailoringbundle.Projection{Input: "json", Select: []string{"number", "title"}, Rename: []tailoringbundle.Rename{}, Render: "compact_json"}},
 				After:  []tailoringbundle.StageAction{},
 			},
 		}},

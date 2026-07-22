@@ -24,7 +24,7 @@ func (f *fakeInspector) Inspect(_ context.Context, _ string) (sourcecatalog.Cata
 
 func fixtureCatalog() sourcecatalog.Catalog {
 	return sourcecatalog.Catalog{
-		SchemaVersion: 1,
+		SchemaVersion: sourcecatalog.SchemaVersion,
 		Adapter:       sourcecatalog.Adapter{Kind: "atsura.source.alternate", ContractVersion: 1},
 		Source:        sourcecatalog.Source{RequestedExecutable: "fixture", ResolvedPath: "/bin/fixture", SHA256: strings.Repeat("a", 64), Size: 10, Version: "1.0.0"},
 		Probe:         sourcecatalog.Probe{IDs: []string{"help", "version"}, Attempts: 2},

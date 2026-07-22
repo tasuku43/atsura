@@ -14,7 +14,7 @@ import (
 
 func planCatalog() sourcecatalog.Catalog {
 	return sourcecatalog.Catalog{
-		SchemaVersion: 1,
+		SchemaVersion: sourcecatalog.SchemaVersion,
 		Adapter:       sourcecatalog.Adapter{Kind: "atsura.source.alternate", ContractVersion: 1},
 		Source:        sourcecatalog.Source{RequestedExecutable: "fixture", ResolvedPath: "/opt/bin/fixture", SHA256: strings.Repeat("a", 64), Size: 42, Version: "1.2.3"},
 		Probe:         sourcecatalog.Probe{IDs: []string{"help", "version"}, Attempts: 2},
@@ -70,7 +70,7 @@ func transformEntry() tailoringbundle.CommandEntry {
 		Wrapper: &tailoringbundle.Wrapper{
 			Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{},
 			Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--json=id,name"}},
-			Output: &tailoringbundle.Output{Input: "json", Select: []string{"id", "name"}, Rename: []tailoringbundle.Rename{{From: "id", To: "item_id"}}, Render: "compact_json"},
+			Output: &tailoringbundle.Output{Kind: tailoringbundle.OutputKindProjection, Projection: &tailoringbundle.Projection{Input: "json", Select: []string{"id", "name"}, Rename: []tailoringbundle.Rename{{From: "id", To: "item_id"}}, Render: "compact_json"}},
 			After:  []tailoringbundle.StageAction{},
 		},
 	}
@@ -122,7 +122,7 @@ func TestBuildProducesDeterministicCompleteTransformPlan(t *testing.T) {
 			t.Fatalf("plan contains retired field %s: %s", forbidden, encoded)
 		}
 	}
-	for _, required := range []string{`"schema_version":4`, `"result_mode":"transformed_json"`, `"before":[]`, `"after":[]`, `"output":{`, `"surface_origin":"explicit"`} {
+	for _, required := range []string{`"schema_version":5`, `"result_mode":"transformed_json"`, `"before":[]`, `"after":[]`, `"output":{`, `"surface_origin":"explicit"`} {
 		if !strings.Contains(string(encoded), required) {
 			t.Fatalf("plan missing %s: %s", required, encoded)
 		}
@@ -339,9 +339,9 @@ func TestBuildDetachesPlanFromBundle(t *testing.T) {
 	plan.SpecificationEntry.Command[0] = "changed"
 	plan.SpecificationEntry.Options.Exclude[0] = "--changed"
 	plan.SpecificationEntry.Wrapper.Invoke.AppendArgs[0] = "changed"
-	plan.SpecificationEntry.Wrapper.Output.Select[0] = "changed"
+	plan.SpecificationEntry.Wrapper.Output.Projection.Select[0] = "changed"
 	plan.Stages.Invoke.AppendedArgs[0] = "changed"
-	plan.Stages.Output.Select[0] = "changed"
+	plan.Stages.Output.Projection.Select[0] = "changed"
 
 	rebuilt, err := Build(digest, bundle, currentIdentity(), attempt)
 	if err != nil {

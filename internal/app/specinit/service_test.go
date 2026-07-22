@@ -23,7 +23,7 @@ func (f *catalogFake) Load(context.Context, string) (sourcecatalog.Catalog, erro
 
 func initCatalog(provenance sourcecatalog.Provenance) sourcecatalog.Catalog {
 	return sourcecatalog.Catalog{
-		SchemaVersion: 1, Adapter: sourcecatalog.Adapter{Kind: "atsura.source.alternate", ContractVersion: 1},
+		SchemaVersion: sourcecatalog.SchemaVersion, Adapter: sourcecatalog.Adapter{Kind: "atsura.source.alternate", ContractVersion: 1},
 		Source:   sourcecatalog.Source{RequestedExecutable: "fixture", ResolvedPath: "/opt/bin/fixture", SHA256: strings.Repeat("a", 64), Size: 42, Version: "1.0.0"},
 		Probe:    sourcecatalog.Probe{IDs: []string{"help", "version"}, Attempts: 2},
 		Commands: []sourcecatalog.Command{{Path: []string{"item", "list"}, Summary: "List", Provenance: provenance, Options: []sourcecatalog.Option{{Name: "--json", TakesValue: true}}, StructuredOutput: []sourcecatalog.StructuredOutput{{Format: "json", SelectorFlag: "--json", Fields: []string{"id"}}}}},
@@ -36,7 +36,7 @@ func TestInitCreatesIncludedIdentityWrapperDraft(t *testing.T) {
 	if err != nil || fake.calls != 1 {
 		t.Fatalf("specification = %+v, calls = %d, error = %v", specification, fake.calls, err)
 	}
-	if specification.SchemaVersion != 3 || specification.Surface.Default != tailoringbundle.SurfaceDefaultExclude || len(specification.Commands) != 1 {
+	if specification.SchemaVersion != tailoringbundle.SpecificationSchemaVersion || specification.Surface.Default != tailoringbundle.SurfaceDefaultExclude || len(specification.Commands) != 1 {
 		t.Fatalf("specification = %+v", specification)
 	}
 	entry := specification.Commands[0]

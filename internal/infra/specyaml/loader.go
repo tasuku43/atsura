@@ -1,4 +1,4 @@
-// Package specyaml decodes one bounded strict schema-3 tailoring
+// Package specyaml decodes one bounded strict schema-4 tailoring
 // specification file.
 package specyaml
 
@@ -69,10 +69,22 @@ type invocation struct {
 }
 
 type output struct {
+	Kind       string      `yaml:"kind"`
+	Projection *projection `yaml:"projection,omitempty"`
+	Optimizer  *optimizer  `yaml:"optimizer,omitempty"`
+}
+
+type projection struct {
 	Input  string   `yaml:"input"`
 	Select []string `yaml:"select"`
 	Rename []rename `yaml:"rename"`
 	Render string   `yaml:"render"`
+}
+
+type optimizer struct {
+	Input               string `yaml:"input"`
+	Contract            string `yaml:"contract"`
+	AllowOriginalOutput bool   `yaml:"allow_original_output"`
 }
 
 type rename struct {
@@ -91,18 +103,18 @@ func (l *Loader) Load(ctx context.Context, path string) (tailoringbundle.Specifi
 			return tailoringbundle.Specification{}, fault.Wrap(
 				fault.KindInvalidInput,
 				"legacy_tailoring_schema",
-				"Authorization-centered tailoring schemas 1 and 2 are retired and cannot be converted automatically.",
+				"Earlier tailoring schemas 1 through 3 are retired and cannot be converted automatically.",
 				false,
 				err,
-				fault.NextAction{Command: "help spec init", Reason: "Create a schema-3 surface and wrapper specification from the catalog."},
+				fault.NextAction{Command: "help spec init", Reason: "Create a schema-4 surface and wrapper specification from the catalog."},
 			)
 		}
-		return tailoringbundle.Specification{}, fault.Wrap(fault.KindInvalidInput, "invalid_specification_yaml", "The schema-3 tailoring specification YAML is invalid.", false, err, helpAction())
+		return tailoringbundle.Specification{}, fault.Wrap(fault.KindInvalidInput, "invalid_specification_yaml", "The schema-4 tailoring specification YAML is invalid.", false, err, helpAction())
 	}
 	return parsed, nil
 }
 
-// Encode renders one normalized specification as deterministic schema-3 YAML.
+// Encode renders one normalized specification as deterministic schema-4 YAML.
 func Encode(specification tailoringbundle.Specification) ([]byte, error) {
 	value := document{
 		SchemaVersion: specification.SchemaVersion,
@@ -128,7 +140,7 @@ func Encode(specification tailoringbundle.Specification) ([]byte, error) {
 	}
 	encoded, err := yaml.Marshal(value)
 	if err != nil {
-		return nil, fmt.Errorf("encode schema-3 tailoring specification YAML: %w", err)
+		return nil, fmt.Errorf("encode schema-4 tailoring specification YAML: %w", err)
 	}
 	return encoded, nil
 }
@@ -146,13 +158,22 @@ func encodeWrapper(source tailoringbundle.Wrapper) *wrapper {
 		converted.After[index] = stageAction{Kind: action.Kind}
 	}
 	if source.Output != nil {
-		renames := make([]rename, len(source.Output.Rename))
-		for index, item := range source.Output.Rename {
-			renames[index] = rename{From: item.From, To: item.To}
+		converted.Output = &output{Kind: string(source.Output.Kind)}
+		if source.Output.Projection != nil {
+			renames := make([]rename, len(source.Output.Projection.Rename))
+			for index, item := range source.Output.Projection.Rename {
+				renames[index] = rename{From: item.From, To: item.To}
+			}
+			converted.Output.Projection = &projection{
+				Input: source.Output.Projection.Input, Select: append(make([]string, 0, len(source.Output.Projection.Select)), source.Output.Projection.Select...),
+				Rename: renames, Render: source.Output.Projection.Render,
+			}
 		}
-		converted.Output = &output{
-			Input: source.Output.Input, Select: append(make([]string, 0, len(source.Output.Select)), source.Output.Select...),
-			Rename: renames, Render: source.Output.Render,
+		if source.Output.Optimizer != nil {
+			converted.Output.Optimizer = &optimizer{
+				Input: source.Output.Optimizer.Input, Contract: source.Output.Optimizer.Contract,
+				AllowOriginalOutput: source.Output.Optimizer.AllowOriginalOutput,
+			}
 		}
 	}
 	return converted
@@ -178,7 +199,7 @@ func decode(raw []byte) (tailoringbundle.Specification, error) {
 	if err := root.Decode(&header); err != nil {
 		return tailoringbundle.Specification{}, fmt.Errorf("decode schema header: %w", err)
 	}
-	if header.SchemaVersion == 1 || header.SchemaVersion == 2 {
+	if header.SchemaVersion >= 1 && header.SchemaVersion < tailoringbundle.SpecificationSchemaVersion {
 		return tailoringbundle.Specification{}, fmt.Errorf("%w: schema_version %d", ErrLegacyTailoringSchema, header.SchemaVersion)
 	}
 	decoder := yaml.NewDecoder(bytes.NewReader(raw))
@@ -228,16 +249,26 @@ func convertCommand(source command) tailoringbundle.CommandEntry {
 			After:  after,
 		}
 		if source.Wrapper.Output != nil {
-			renames := make([]tailoringbundle.Rename, len(source.Wrapper.Output.Rename))
-			for index, item := range source.Wrapper.Output.Rename {
-				renames[index] = tailoringbundle.Rename{From: item.From, To: item.To}
+			output := &tailoringbundle.Output{Kind: tailoringbundle.OutputKind(source.Wrapper.Output.Kind)}
+			if source.Wrapper.Output.Projection != nil {
+				renames := make([]tailoringbundle.Rename, len(source.Wrapper.Output.Projection.Rename))
+				for index, item := range source.Wrapper.Output.Projection.Rename {
+					renames[index] = tailoringbundle.Rename{From: item.From, To: item.To}
+				}
+				output.Projection = &tailoringbundle.Projection{
+					Input:  source.Wrapper.Output.Projection.Input,
+					Select: append(make([]string, 0, len(source.Wrapper.Output.Projection.Select)), source.Wrapper.Output.Projection.Select...),
+					Rename: renames,
+					Render: source.Wrapper.Output.Projection.Render,
+				}
 			}
-			converted.Output = &tailoringbundle.Output{
-				Input:  source.Wrapper.Output.Input,
-				Select: append(make([]string, 0, len(source.Wrapper.Output.Select)), source.Wrapper.Output.Select...),
-				Rename: renames,
-				Render: source.Wrapper.Output.Render,
+			if source.Wrapper.Output.Optimizer != nil {
+				output.Optimizer = &tailoringbundle.Optimizer{
+					Input: source.Wrapper.Output.Optimizer.Input, Contract: source.Wrapper.Output.Optimizer.Contract,
+					AllowOriginalOutput: source.Wrapper.Output.Optimizer.AllowOriginalOutput,
+				}
 			}
+			converted.Output = output
 		}
 		result.Wrapper = &converted
 	}
@@ -266,18 +297,18 @@ func validateNode(node *yaml.Node, depth int, count *int) error {
 func fileFault(err error) error {
 	switch {
 	case errors.Is(err, localfile.ErrNotFound):
-		return fault.Wrap(fault.KindNotFound, "specification_file_not_found", "The schema-3 tailoring specification file was not found.", false, err, helpAction())
+		return fault.Wrap(fault.KindNotFound, "specification_file_not_found", "The schema-4 tailoring specification file was not found.", false, err, helpAction())
 	case errors.Is(err, localfile.ErrPermission):
-		return fault.Wrap(fault.KindPermission, "specification_file_permission_denied", "The schema-3 tailoring specification file cannot be read.", false, err, helpAction())
+		return fault.Wrap(fault.KindPermission, "specification_file_permission_denied", "The schema-4 tailoring specification file cannot be read.", false, err, helpAction())
 	case errors.Is(err, localfile.ErrUnsafe):
-		return fault.Wrap(fault.KindInvalidInput, "unsafe_specification_file", "The schema-3 tailoring specification must be a stable regular file, not a symbolic link.", false, err, helpAction())
+		return fault.Wrap(fault.KindInvalidInput, "unsafe_specification_file", "The schema-4 tailoring specification must be a stable regular file, not a symbolic link.", false, err, helpAction())
 	case errors.Is(err, localfile.ErrTooLarge):
-		return fault.Wrap(fault.KindInvalidInput, "specification_file_too_large", "The schema-3 tailoring specification exceeds 256 KiB.", false, err, helpAction())
+		return fault.Wrap(fault.KindInvalidInput, "specification_file_too_large", "The schema-4 tailoring specification exceeds 256 KiB.", false, err, helpAction())
 	default:
-		return fault.Wrap(fault.KindUnavailable, "specification_file_read_failed", "The schema-3 tailoring specification could not be read.", true, err, helpAction())
+		return fault.Wrap(fault.KindUnavailable, "specification_file_read_failed", "The schema-4 tailoring specification could not be read.", true, err, helpAction())
 	}
 }
 
 func helpAction() fault.NextAction {
-	return fault.NextAction{Command: "help spec validate", Reason: "Review the schema-3 tailoring specification contract and file path."}
+	return fault.NextAction{Command: "help spec validate", Reason: "Review the schema-4 tailoring specification contract and file path."}
 }

@@ -12,6 +12,9 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/authn"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
+	"github.com/tasuku43/atsura/internal/domain/sourcecatalog"
+	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
+	"github.com/tasuku43/atsura/internal/domain/tailoringplan"
 )
 
 func noOpHandler(context.Context, *CLI, CommandSpec, operation.Intent, ParsedInputs) int {
@@ -265,7 +268,7 @@ func TestCatalogAcceptsFreshWrapperPlanAuthoritativeOutput(t *testing.T) {
 		!reflect.DeepEqual(output.PlanResultModes, freshPlanResultModes()) {
 		t.Fatalf("fresh wrapper output = %+v", output)
 	}
-	wantReference := &OutputSchemaReference{Command: "bundle preview", Field: "plan", ID: "wrapper-plan", Version: 4}
+	wantReference := &OutputSchemaReference{Command: "bundle preview", Field: "plan", ID: "wrapper-plan", Version: tailoringplan.SchemaVersion}
 	if !reflect.DeepEqual(output.PlanSchema, wantReference) {
 		t.Fatalf("plan schema = %+v, want %+v", output.PlanSchema, wantReference)
 	}
@@ -290,7 +293,7 @@ func TestCatalogAcceptsFreshWrapperPlanAuthoritativeOutput(t *testing.T) {
 
 	output.PlanSchema.Version = 99
 	fresh, found := catalog.Lookup("wrapper run")
-	if !found || fresh.Agent.Output.PlanSchema.Version != 4 {
+	if !found || fresh.Agent.Output.PlanSchema.Version != tailoringplan.SchemaVersion {
 		t.Fatal("catalog lookup returned an aliased output plan schema")
 	}
 	output.PlanResultModes[0].Stdout = PlanResultStreamEmpty
@@ -721,7 +724,7 @@ func TestBundlePreviewCatalogDeclaresPurePlanOutcome(t *testing.T) {
 		}
 	}
 	planSchema := spec.Agent.Output.Fields[1].Schema
-	if planSchema == nil || planSchema.ID != "wrapper-plan" || planSchema.Version != 4 || len(planSchema.Fields) < 64 {
+	if planSchema == nil || planSchema.ID != "wrapper-plan" || planSchema.Version != tailoringplan.SchemaVersion || len(planSchema.Fields) < 64 {
 		t.Fatalf("plan schema=%+v", planSchema)
 	}
 	paths := make(map[string]OutputSchemaField, len(planSchema.Fields))
@@ -729,24 +732,34 @@ func TestBundlePreviewCatalogDeclaresPurePlanOutcome(t *testing.T) {
 		paths[field.Path] = field
 	}
 	for path, fieldType := range map[string]OutputFieldType{
-		"/schema_version":                       OutputFieldTypeInteger,
-		"/source/sha256":                        OutputFieldTypeString,
-		"/specification_entry":                  OutputFieldTypeObject,
-		"/stages/invoke/max_attempts":           OutputFieldTypeInteger,
-		"/stages/invoke/args":                   OutputFieldTypeArray,
-		"/stages/invoke/stdin_mode":             OutputFieldTypeString,
-		"/stages/invoke/environment_mode":       OutputFieldTypeString,
-		"/stages/invoke/working_directory_mode": OutputFieldTypeString,
-		"/stages/output/rename/*/from":          OutputFieldTypeString,
-		"/specification_entry/options/include":  OutputFieldTypeArray,
+		"/schema_version":                         OutputFieldTypeInteger,
+		"/processor":                              OutputFieldTypeObject,
+		"/processor/contract":                     OutputFieldTypeString,
+		"/processor/observation/identity/sha256":  OutputFieldTypeString,
+		"/processor/execution/max_attempts":       OutputFieldTypeInteger,
+		"/source/sha256":                          OutputFieldTypeString,
+		"/specification_entry":                    OutputFieldTypeObject,
+		"/stages/invoke/max_attempts":             OutputFieldTypeInteger,
+		"/stages/invoke/args":                     OutputFieldTypeArray,
+		"/stages/invoke/stdin_mode":               OutputFieldTypeString,
+		"/stages/invoke/environment_mode":         OutputFieldTypeString,
+		"/stages/invoke/working_directory_mode":   OutputFieldTypeString,
+		"/stages/output/kind":                     OutputFieldTypeString,
+		"/stages/output/projection":               OutputFieldTypeObject,
+		"/stages/output/projection/rename/*/from": OutputFieldTypeString,
+		"/stages/output/optimizer":                OutputFieldTypeObject,
+		"/stages/output/optimizer/contract":       OutputFieldTypeString,
+		"/specification_entry/options/include":    OutputFieldTypeArray,
 	} {
 		declared, exists := paths[path]
 		if !exists || declared.Type != fieldType {
 			t.Errorf("schema field %q=%+v", path, declared)
 		}
 	}
-	if !paths["/specification_entry"].Nullable || !paths["/stages/output"].Nullable || paths["/specification_entry/wrapper/output"].Required {
-		t.Fatalf("nullable/conditional schema fields=%+v %+v %+v", paths["/specification_entry"], paths["/stages/output"], paths["/specification_entry/wrapper/output"])
+	if !paths["/specification_entry"].Nullable || !paths["/processor"].Required || !paths["/processor"].Nullable || !paths["/stages/output"].Nullable ||
+		paths["/specification_entry/wrapper/output"].Required || paths["/specification_entry/wrapper/output/projection"].Required ||
+		paths["/specification_entry/wrapper/output/optimizer"].Required || paths["/stages/output/projection"].Required || paths["/stages/output/optimizer"].Required {
+		t.Fatalf("nullable/conditional schema fields=%+v %+v %+v %+v", paths["/specification_entry"], paths["/processor"], paths["/stages/output"], paths["/specification_entry/wrapper/output"])
 	}
 	spec.Agent.Output.Fields[1].Schema.Fields[0].Path = "/changed"
 	fresh, found := DefaultCatalog().Lookup("bundle preview")
@@ -858,7 +871,7 @@ func TestSourceInspectCatalogPublishesExactAdapterAndNestedCatalogSchema(t *test
 		t.Fatalf("adapter input=%+v", adapter)
 	}
 	if len(spec.Agent.Output.Fields) != 3 || spec.Agent.Output.Fields[2].Name != "source_process_attempts" ||
-		spec.Agent.Output.Fields[2].Description != "Exact bounded offline probe attempts: four for github-cli contract 2 and three for go-cli contract 1." {
+		spec.Agent.Output.Fields[2].Description != "Exact bounded offline probe attempts: four for github-cli contract 2 and three for go-cli contract 2." {
 		t.Fatalf("source inspection attempt contract=%+v", spec.Agent.Output.Fields)
 	}
 	var catalogField OutputField
@@ -869,7 +882,7 @@ func TestSourceInspectCatalogPublishesExactAdapterAndNestedCatalogSchema(t *test
 		}
 	}
 	schema := catalogField.Schema
-	if schema == nil || schema.ID != "source-command-catalog" || schema.Version != 1 {
+	if schema == nil || schema.ID != "source-command-catalog" || schema.Version != sourcecatalog.SchemaVersion {
 		t.Fatalf("source catalog schema=%+v", schema)
 	}
 	paths := make(map[string]OutputSchemaField, len(schema.Fields))
@@ -915,7 +928,7 @@ func TestSpecificationCatalogPublishesFiniteAuthoringGrammar(t *testing.T) {
 				}
 			}
 			schema := specification.Schema
-			if specification.Type != OutputFieldTypeObject || schema == nil || schema.ID != "tailoring-specification" || schema.Version != 3 {
+			if specification.Type != OutputFieldTypeObject || schema == nil || schema.ID != "tailoring-specification" || schema.Version != tailoringbundle.SpecificationSchemaVersion {
 				t.Fatalf("%s specification field=%+v", path, specification)
 			}
 			paths := make(map[string]OutputSchemaField, len(schema.Fields))
@@ -923,24 +936,31 @@ func TestSpecificationCatalogPublishesFiniteAuthoringGrammar(t *testing.T) {
 				paths[field.Path] = field
 			}
 			for schemaPath, fieldType := range map[string]OutputFieldType{
-				"/surface/default":                         OutputFieldTypeString,
-				"/commands/*/command":                      OutputFieldTypeArray,
-				"/commands/*/presence":                     OutputFieldTypeString,
-				"/commands/*/options/default":              OutputFieldTypeString,
-				"/commands/*/wrapper/kind":                 OutputFieldTypeString,
-				"/commands/*/wrapper/invoke/append_args":   OutputFieldTypeArray,
-				"/commands/*/wrapper/output/input":         OutputFieldTypeString,
-				"/commands/*/wrapper/output/select":        OutputFieldTypeArray,
-				"/commands/*/wrapper/output/rename/*/from": OutputFieldTypeString,
-				"/commands/*/wrapper/output/rename/*/to":   OutputFieldTypeString,
-				"/commands/*/wrapper/output/render":        OutputFieldTypeString,
+				"/surface/default":                                           OutputFieldTypeString,
+				"/commands/*/command":                                        OutputFieldTypeArray,
+				"/commands/*/presence":                                       OutputFieldTypeString,
+				"/commands/*/options/default":                                OutputFieldTypeString,
+				"/commands/*/wrapper/kind":                                   OutputFieldTypeString,
+				"/commands/*/wrapper/invoke/append_args":                     OutputFieldTypeArray,
+				"/commands/*/wrapper/output/kind":                            OutputFieldTypeString,
+				"/commands/*/wrapper/output/projection":                      OutputFieldTypeObject,
+				"/commands/*/wrapper/output/projection/input":                OutputFieldTypeString,
+				"/commands/*/wrapper/output/projection/select":               OutputFieldTypeArray,
+				"/commands/*/wrapper/output/projection/rename/*/from":        OutputFieldTypeString,
+				"/commands/*/wrapper/output/projection/rename/*/to":          OutputFieldTypeString,
+				"/commands/*/wrapper/output/projection/render":               OutputFieldTypeString,
+				"/commands/*/wrapper/output/optimizer":                       OutputFieldTypeObject,
+				"/commands/*/wrapper/output/optimizer/input":                 OutputFieldTypeString,
+				"/commands/*/wrapper/output/optimizer/contract":              OutputFieldTypeString,
+				"/commands/*/wrapper/output/optimizer/allow_original_output": OutputFieldTypeBoolean,
 			} {
 				got, exists := paths[schemaPath]
 				if !exists || got.Type != fieldType {
 					t.Errorf("%s schema field %q=%+v", path, schemaPath, got)
 				}
 			}
-			if paths["/commands/*/options"].Required || paths["/commands/*/wrapper"].Required || paths["/commands/*/wrapper/output"].Required {
+			if paths["/commands/*/options"].Required || paths["/commands/*/wrapper"].Required || paths["/commands/*/wrapper/output"].Required ||
+				paths["/commands/*/wrapper/output/projection"].Required || paths["/commands/*/wrapper/output/optimizer"].Required {
 				t.Fatalf("%s conditional authoring fields=%+v %+v %+v", path, paths["/commands/*/options"], paths["/commands/*/wrapper"], paths["/commands/*/wrapper/output"])
 			}
 		})
@@ -950,13 +970,15 @@ func TestSpecificationCatalogPublishesFiniteAuthoringGrammar(t *testing.T) {
 	authoring := init.Summary + "\n" + init.Agent.Outcome + "\n" + strings.Join(init.Agent.Prerequisites, "\n")
 	for _, want := range []string{
 		"identity-wrapper authoring baseline",
-		"not an executable wrapper in the current transform-only runtime",
+		"not an executable transform",
 		"kind=transform",
-		"output.input=json",
-		"output.select",
-		"output.rename",
-		"output.render=compact_json",
-		"Shell, script, jq, plugin, RTK, external-transformer, and runtime-LLM actions are invalid",
+		"output.kind=projection",
+		"output.projection.input=json",
+		"output.projection.select",
+		"output.projection.rename",
+		"output.projection.render=compact_json",
+		"Optimizers require a separately admitted finite contract and exact processor evidence",
+		"Arbitrary shell, script, jq, plugin, external-transformer, and runtime-LLM actions are invalid",
 	} {
 		if !strings.Contains(authoring, want) {
 			t.Errorf("spec init authoring contract lacks %q: %s", want, authoring)

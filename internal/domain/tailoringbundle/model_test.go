@@ -11,7 +11,7 @@ import (
 
 func bundleCatalog() sourcecatalog.Catalog {
 	return sourcecatalog.Catalog{
-		SchemaVersion: 1,
+		SchemaVersion: sourcecatalog.SchemaVersion,
 		Adapter:       sourcecatalog.Adapter{Kind: "atsura.source.alternate", ContractVersion: 1},
 		Source:        sourcecatalog.Source{RequestedExecutable: "fixture", ResolvedPath: "/opt/bin/fixture", SHA256: strings.Repeat("a", 64), Size: 42, Version: "1.0.0"},
 		Probe:         sourcecatalog.Probe{IDs: []string{"help", "version"}, Attempts: 2},
@@ -30,7 +30,7 @@ func identityWrapper() *Wrapper {
 func transformingWrapper() *Wrapper {
 	return &Wrapper{
 		Kind: WrapperTransform, Before: []StageAction{}, Invoke: Invocation{AppendArgs: []string{"--json=id,name"}},
-		Output: &Output{Input: "json", Select: []string{"id", "name"}, Rename: []Rename{}, Render: "compact_json"}, After: []StageAction{},
+		Output: &Output{Kind: OutputKindProjection, Projection: &Projection{Input: "json", Select: []string{"id", "name"}, Rename: []Rename{}, Render: "compact_json"}}, After: []StageAction{},
 	}
 }
 
@@ -67,7 +67,7 @@ func TestCompileProducesOneDeterministicVendorNeutralBundle(t *testing.T) {
 	if string(firstBytes) != string(secondBytes) || firstDigest != secondDigest || len(firstDigest) != 64 {
 		t.Fatalf("bundle identity mismatch: %q %q", firstDigest, secondDigest)
 	}
-	if first.SchemaVersion != 2 || first.Specification.SchemaVersion != 3 || len(first.Surface) != 1 || strings.Join(first.Surface[0].Command, " ") != "item list" {
+	if first.SchemaVersion != BundleSchemaVersion || first.Specification.SchemaVersion != SpecificationSchemaVersion || len(first.Surface) != 1 || strings.Join(first.Surface[0].Command, " ") != "item list" {
 		t.Fatalf("bundle = %+v", first)
 	}
 	encoded := string(firstBytes)
@@ -172,7 +172,7 @@ func TestSpecificationRejectsInvalidMembershipOptionsAndWrappers(t *testing.T) {
 		{name: "missing explicit append args", mutate: func(s *Specification) { s.Commands[0].Wrapper.Invoke.AppendArgs = nil }},
 		{name: "unobserved output field", mutate: func(s *Specification) {
 			s.Commands[0].Wrapper = transformingWrapper()
-			s.Commands[0].Wrapper.Output.Select = []string{"unknown"}
+			s.Commands[0].Wrapper.Output.Projection.Select = []string{"unknown"}
 		}},
 	}
 	for _, test := range tests {

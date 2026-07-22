@@ -112,7 +112,7 @@ func deriveExecutableBundle(t *testing.T) (tailoringbundle.Bundle, string, sourc
 				Kind:   tailoringbundle.WrapperTransform,
 				Before: []tailoringbundle.StageAction{},
 				Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--json=id,name"}},
-				Output: &tailoringbundle.Output{Input: "json", Select: []string{"id", "name"}, Rename: []tailoringbundle.Rename{}, Render: string(tailoring.RenderCompactJSON)},
+				Output: &tailoringbundle.Output{Kind: tailoringbundle.OutputKindProjection, Projection: &tailoringbundle.Projection{Input: "json", Select: []string{"id", "name"}, Rename: []tailoringbundle.Rename{}, Render: string(tailoring.RenderCompactJSON)}},
 				After:  []tailoringbundle.StageAction{},
 			},
 		}},

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -177,7 +178,7 @@ func TestWrapperCatalogPublishesExactHostNeutralContracts(t *testing.T) {
 	if run.Agent.Output.Authority != OutputAuthorityFreshWrapperPlan ||
 		!reflect.DeepEqual(run.Agent.Output.Formats, []OutputFormat{OutputFormatPlanResult}) ||
 		!reflect.DeepEqual(run.Agent.Output.PlanResultModes, freshPlanResultModes()) ||
-		run.Agent.Output.PlanSchema == nil || *run.Agent.Output.PlanSchema != (OutputSchemaReference{Command: "bundle preview", Field: "plan", ID: "wrapper-plan", Version: 4}) {
+		run.Agent.Output.PlanSchema == nil || *run.Agent.Output.PlanSchema != (OutputSchemaReference{Command: "bundle preview", Field: "plan", ID: "wrapper-plan", Version: tailoringplan.SchemaVersion}) {
 		t.Fatalf("run output = %+v", run.Agent.Output)
 	}
 	if len(run.Agent.Inputs) != 7 || run.Agent.Inputs[6].Name != "argv" || run.Agent.Inputs[6].Required || run.Agent.Inputs[6].Cardinality != InputCardinalityRepeatable {
@@ -262,7 +263,7 @@ func TestWrapperScopedAgentHelpPinsDynamicFramingAndHasNoHostKeys(t *testing.T) 
 		t.Fatal(err)
 	}
 	encoded := stdout.String()
-	for _, required := range []string{`"authority":"fresh_wrapper_plan"`, `"plan_result_modes"`, `"mode":"transformed_json"`, `"mode":"source_stream_passthrough"`, `"command":"bundle preview"`, `"id":"wrapper-plan"`, `"version":4`} {
+	for _, required := range []string{`"authority":"fresh_wrapper_plan"`, `"plan_result_modes"`, `"mode":"transformed_json"`, `"mode":"source_stream_passthrough"`, `"command":"bundle preview"`, `"id":"wrapper-plan"`, `"version":` + strconv.Itoa(tailoringplan.SchemaVersion)} {
 		if !strings.Contains(encoded, required) {
 			t.Errorf("scoped help lacks %s: %s", required, encoded)
 		}

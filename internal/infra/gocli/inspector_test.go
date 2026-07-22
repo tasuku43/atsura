@@ -73,6 +73,10 @@ invoked with no package arguments (for example, 'go test' or 'go
 test -v'). In this mode, go test compiles the package sources and
 tests found in the current directory and then runs the resulting
 test binary. In this mode, caching (discussed below) is disabled.
+
+	-json
+	    Convert test output to JSON suitable for automated processing.
+	    Also emits build output in JSON. See 'go help buildjson'.
 `
 
 func TestInspectProducesVendorNeutralCatalogWithExactProbes(t *testing.T) {
@@ -124,8 +128,15 @@ func TestInspectProducesVendorNeutralCatalogWithExactProbes(t *testing.T) {
 		if strings.Join(command.Path, " ") != want.name || command.Summary != want.summary || command.Provenance != sourcecatalog.ProvenanceVerifiedBuiltin {
 			t.Fatalf("command %d = %+v", index, command)
 		}
-		if command.Options == nil || len(command.Options) != 0 || command.StructuredOutput == nil || len(command.StructuredOutput) != 0 {
+		if command.Options == nil || len(command.Options) != 0 || command.StructuredOutput == nil {
 			t.Fatalf("command %q inventories are not explicit empty lists: %+v", want.name, command)
+		}
+		if want.name == "test" {
+			if len(command.StructuredOutput) != 1 || command.StructuredOutput[0].Format != "go_test_jsonl" || command.StructuredOutput[0].SelectorFlag != "-json" || strings.Join(command.StructuredOutput[0].Fields, ",") != "Action,Elapsed,FailedBuild,Output,Package,Test,Time" {
+				t.Fatalf("test structured output = %+v", command.StructuredOutput)
+			}
+		} else if len(command.StructuredOutput) != 0 {
+			t.Fatalf("command %q unexpectedly gained structured output: %+v", want.name, command)
 		}
 	}
 	if err := catalog.Validate(); err != nil {

@@ -152,10 +152,10 @@ func VerifySurface(bundle tailoringbundle.Bundle) error {
 	wantedSelector := ""
 	wantedMatches := 0
 	if entry.Wrapper.Output != nil {
-		if entry.Wrapper.Kind != tailoringbundle.WrapperTransform || entry.Wrapper.Output.Input != string(tailoring.InputJSON) {
+		if entry.Wrapper.Kind != tailoringbundle.WrapperTransform || entry.Wrapper.Output.Kind != tailoringbundle.OutputKindProjection || entry.Wrapper.Output.Projection == nil || entry.Wrapper.Output.Optimizer != nil || entry.Wrapper.Output.Projection.Input != string(tailoring.InputJSON) {
 			return admissionError(ErrRuntimeUnsupported, ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
 		}
-		wantedSelector = "--json=" + strings.Join(entry.Wrapper.Output.Select, ",")
+		wantedSelector = "--json=" + strings.Join(entry.Wrapper.Output.Projection.Select, ",")
 		wantedMatches = 1
 	} else if !admittedSourceStreamWrapper(entry.Wrapper.Kind, entry.Wrapper.Before, entry.Wrapper.Invoke.AppendArgs, entry.Wrapper.Output, entry.Wrapper.After) {
 		return admissionError(ErrRuntimeUnsupported, ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)

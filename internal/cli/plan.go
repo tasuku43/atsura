@@ -25,6 +25,6 @@ func legacyTailoringSchemaFault(command, recovery string) error {
 		"legacy_tailoring_schema",
 		"The "+command+" command belongs to the retired authorization-policy schema and performs no source execution.",
 		false,
-		fault.NextAction{Command: recovery, Reason: "Create or validate a schema-3 tailoring specification; no automatic authorization-to-surface conversion is available."},
+		fault.NextAction{Command: recovery, Reason: "Create or validate a schema-4 tailoring specification; no automatic authorization-to-surface conversion is available."},
 	)
 }

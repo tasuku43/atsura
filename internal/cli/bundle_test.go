@@ -18,6 +18,7 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/bundletrust"
 	"github.com/tasuku43/atsura/internal/domain/sourcecatalog"
 	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
+	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
 	"github.com/tasuku43/atsura/internal/domain/tailoringplan"
 	"github.com/tasuku43/atsura/internal/infra/bundlejson"
 	"github.com/tasuku43/atsura/internal/infra/githubcli"
@@ -120,7 +121,7 @@ func bundleArtifactPaths(t *testing.T) (string, string) {
 		t.Fatal(err)
 	}
 	catalog := sourcecatalog.Catalog{
-		SchemaVersion: 1,
+		SchemaVersion: sourcecatalog.SchemaVersion,
 		Adapter:       sourcecatalog.Adapter{Kind: "atsura.source.synthetic", ContractVersion: 1},
 		Source:        sourcecatalog.Source{RequestedExecutable: os.Args[0], ResolvedPath: identity.ResolvedPath, SHA256: identity.SHA256, Size: identity.Size, Version: "1.0.0"},
 		Probe:         sourcecatalog.Probe{IDs: []string{"help", "version"}, Attempts: 2},
@@ -145,7 +146,7 @@ func bundleArtifactPaths(t *testing.T) (string, string) {
 		t.Fatal(err)
 	}
 	specificationPath := filepath.Join(directory, "spec.yaml")
-	specification := fmt.Sprintf(`schema_version: 3
+	specification := fmt.Sprintf(`schema_version: %d
 catalog_digest: %s
 surface:
   default: exclude
@@ -163,12 +164,14 @@ commands:
       invoke:
         append_args: ["--json=id,name"]
       output:
-        input: json
-        select: [id, name]
-        rename: []
-        render: compact_json
+        kind: projection
+        projection:
+          input: json
+          select: [id, name]
+          rename: []
+          render: compact_json
       after: []
-`, digest)
+`, tailoringbundle.SpecificationSchemaVersion, digest)
 	if err := os.WriteFile(specificationPath, []byte(specification), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +217,7 @@ func githubRuntimeBundleArtifactPaths(t *testing.T) (string, string) {
 		t.Fatal(err)
 	}
 	specificationPath := filepath.Join(directory, "spec.yaml")
-	specification := fmt.Sprintf(`schema_version: 3
+	specification := fmt.Sprintf(`schema_version: %d
 catalog_digest: %s
 surface:
   default: exclude
@@ -232,14 +235,16 @@ commands:
       invoke:
         append_args: ["--json=number,title,state"]
       output:
-        input: json
-        select: [number, title, state]
-        rename:
-          - from: number
-            to: id
-        render: compact_json
+        kind: projection
+        projection:
+          input: json
+          select: [number, title, state]
+          rename:
+            - from: number
+              to: id
+          render: compact_json
       after: []
-`, digest)
+`, tailoringbundle.SpecificationSchemaVersion, digest)
 	if err := os.WriteFile(specificationPath, []byte(specification), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +266,11 @@ func goRuntimeBundleArtifactPaths(t *testing.T) (string, string) {
 		Probe: sourcecatalog.Probe{IDs: []string{"version", "help", "test_help"}, Attempts: 3},
 		Commands: []sourcecatalog.Command{{
 			Path: []string{"test"}, Summary: "test packages", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin,
-			Options: []sourcecatalog.Option{}, StructuredOutput: []sourcecatalog.StructuredOutput{},
+			Options: []sourcecatalog.Option{}, StructuredOutput: []sourcecatalog.StructuredOutput{{
+				Format:       "go_test_jsonl",
+				SelectorFlag: "-json",
+				Fields:       []string{"Action", "Elapsed", "FailedBuild", "Output", "Package", "Test", "Time"},
+			}},
 		}},
 	})
 	digest, err := catalog.Digest()
@@ -279,7 +288,7 @@ func goRuntimeBundleArtifactPaths(t *testing.T) (string, string) {
 		t.Fatal(err)
 	}
 	specificationPath := filepath.Join(directory, "spec.yaml")
-	specification := fmt.Sprintf(`schema_version: 3
+	specification := fmt.Sprintf(`schema_version: %d
 catalog_digest: %s
 surface:
   default: exclude
@@ -297,7 +306,7 @@ commands:
       invoke:
         append_args: []
       after: []
-`, digest)
+`, tailoringbundle.SpecificationSchemaVersion, digest)
 	if err := os.WriteFile(specificationPath, []byte(specification), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -347,7 +356,8 @@ func TestSpecValidateAndBundleBuildCloseCanonicalFileWorkflow(t *testing.T) {
 		t.Fatal(err)
 	}
 	digest, err := build.Build.Bundle.Digest()
-	if err != nil || digest != build.Build.BundleDigest || build.Build.Bundle.SpecificationDigest != validation.Validation.SpecificationDigest {
+	if err != nil || digest != build.Build.BundleDigest || build.Build.Bundle.SchemaVersion != tailoringbundle.BundleSchemaVersion ||
+		build.Build.Bundle.Processors == nil || build.Build.Bundle.SpecificationDigest != validation.Validation.SpecificationDigest {
 		t.Fatalf("build = %+v, digest = %q, error = %v", build, digest, err)
 	}
 }
@@ -413,10 +423,26 @@ func TestBundlePreviewReturnsCompleteSchemaTwoPlanWithoutSourceAttempt(t *testin
 		t.Fatal(err)
 	}
 	assertJSONKeys(t, planObject, []string{
-		"bundle_digest", "catalog_digest", "matched_command", "mode", "options", "original_argv", "reason", "result_mode",
+		"bundle_digest", "catalog_digest", "matched_command", "mode", "options", "original_argv", "processor", "reason", "result_mode",
 		"schema_version", "source", "specification_digest", "specification_entry", "stages", "surface_origin",
 		"transformed_argv", "wrapper_kind",
 	})
+	if string(planObject["processor"]) != "null" {
+		t.Fatalf("projection plan processor = %s, want null", planObject["processor"])
+	}
+	var specificationEntry map[string]json.RawMessage
+	if err := json.Unmarshal(planObject["specification_entry"], &specificationEntry); err != nil {
+		t.Fatal(err)
+	}
+	var specificationWrapper map[string]json.RawMessage
+	if err := json.Unmarshal(specificationEntry["wrapper"], &specificationWrapper); err != nil {
+		t.Fatal(err)
+	}
+	var specificationOutput map[string]json.RawMessage
+	if err := json.Unmarshal(specificationWrapper["output"], &specificationOutput); err != nil {
+		t.Fatal(err)
+	}
+	assertJSONKeys(t, specificationOutput, []string{"kind", "projection"})
 	var sourceObject map[string]json.RawMessage
 	if err := json.Unmarshal(planObject["source"], &sourceObject); err != nil {
 		t.Fatal(err)
@@ -427,6 +453,16 @@ func TestBundlePreviewReturnsCompleteSchemaTwoPlanWithoutSourceAttempt(t *testin
 		t.Fatal(err)
 	}
 	assertJSONKeys(t, stagesObject, []string{"after", "before", "invoke", "order", "output"})
+	var outputObject map[string]json.RawMessage
+	if err := json.Unmarshal(stagesObject["output"], &outputObject); err != nil {
+		t.Fatal(err)
+	}
+	assertJSONKeys(t, outputObject, []string{"kind", "projection"})
+	var projectionObject map[string]json.RawMessage
+	if err := json.Unmarshal(outputObject["projection"], &projectionObject); err != nil {
+		t.Fatal(err)
+	}
+	assertJSONKeys(t, projectionObject, []string{"input", "rename", "render", "select"})
 	var invokeObject map[string]json.RawMessage
 	if err := json.Unmarshal(stagesObject["invoke"], &invokeObject); err != nil {
 		t.Fatal(err)

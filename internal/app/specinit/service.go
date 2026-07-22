@@ -1,4 +1,4 @@
-// Package specinit creates one schema-3 tailoring specification draft from
+// Package specinit creates one schema-4 tailoring specification draft from
 // exact verified catalog evidence.
 package specinit
 
@@ -80,7 +80,7 @@ func (s *Service) Init(ctx context.Context, intent operation.Intent, catalogPath
 		}},
 	}
 	if err := specification.Validate(catalog); err != nil {
-		return tailoringbundle.Specification{}, fault.Wrap(fault.KindContract, "invalid_specification_draft", "The schema-3 tailoring specification draft is invalid.", false, err, helpAction())
+		return tailoringbundle.Specification{}, fault.Wrap(fault.KindContract, "invalid_specification_draft", "The schema-4 tailoring specification draft is invalid.", false, err, helpAction())
 	}
 	return specification, nil
 }

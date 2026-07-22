@@ -66,9 +66,7 @@ func runtimePlan(t *testing.T, path []string, appendArgs []string, output *tailo
 
 func transformRuntimePlan(t *testing.T, path ...string) tailoringplan.Plan {
 	t.Helper()
-	return runtimePlan(t, path, []string{"--json=number,title"}, &tailoringbundle.Output{
-		Input: "json", Select: []string{"number", "title"}, Rename: []tailoringbundle.Rename{}, Render: "compact_json",
-	})
+	return runtimePlan(t, path, []string{"--json=number,title"}, runtimeProjectionOutput())
 }
 
 func runtimeSurfaceBundle(t *testing.T, path []string, options []sourcecatalog.Option, surface tailoringbundle.OptionSurface, wrapper tailoringbundle.Wrapper) tailoringbundle.Bundle {
@@ -118,8 +116,17 @@ func admittedSurfaceWrapper() tailoringbundle.Wrapper {
 		Kind:   tailoringbundle.WrapperTransform,
 		Before: []tailoringbundle.StageAction{},
 		Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--json=number,title"}},
-		Output: &tailoringbundle.Output{Input: "json", Select: []string{"number", "title"}, Rename: []tailoringbundle.Rename{}, Render: "compact_json"},
+		Output: runtimeProjectionOutput(),
 		After:  []tailoringbundle.StageAction{},
+	}
+}
+
+func runtimeProjectionOutput() *tailoringbundle.Output {
+	return &tailoringbundle.Output{
+		Kind: tailoringbundle.OutputKindProjection,
+		Projection: &tailoringbundle.Projection{
+			Input: "json", Select: []string{"number", "title"}, Rename: []tailoringbundle.Rename{}, Render: "compact_json",
+		},
 	}
 }
 
@@ -387,7 +394,7 @@ func TestVerifySurfaceRejectsMixedAndPartialSurfaces(t *testing.T) {
 			name: "missing fixed selector", path: []string{"pr", "list"}, options: baseOptions, surface: baseSurface,
 			wrapper: tailoringbundle.Wrapper{
 				Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--limit=1"}},
-				Output: &tailoringbundle.Output{Input: "json", Select: []string{"number", "title"}, Rename: []tailoringbundle.Rename{}, Render: "compact_json"}, After: []tailoringbundle.StageAction{},
+				Output: runtimeProjectionOutput(), After: []tailoringbundle.StageAction{},
 			},
 			legacy: ErrRuntimeSelector, category: ErrRuntimeSelectorConflict,
 		},

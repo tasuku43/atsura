@@ -73,11 +73,12 @@ func (*RuntimeVerifier) VerifySurface(bundle tailoringbundle.Bundle) error {
 	return VerifySurface(bundle)
 }
 
-// VerifyRuntime accepts only a contract-1 catalog carrying a stable Go 1.26.x
-// inspection-time version observation and an exact no-argument test invocation
-// with an identity source-stream wrapper. It performs no I/O, does not claim
-// that runtime cwd/environment will select the same effective toolchain, and
-// grants no permission to the downstream test process.
+// VerifyRuntime accepts only a contract-2 catalog carrying a stable Go 1.26.x
+// inspection-time version observation and an exact no-argument test invocation.
+// It admits either identity source-stream delivery or the exact -json append
+// with a typed optimizer input. It contains no processor identity or filter
+// policy, performs no I/O, does not claim runtime toolchain closure, and grants
+// no permission to the downstream test process.
 func VerifyRuntime(plan tailoringplan.Plan) error {
 	if err := plan.Validate(); err != nil {
 		return admissionError(ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
@@ -88,20 +89,32 @@ func VerifyRuntime(plan tailoringplan.Plan) error {
 	if !exactTestCommand(plan.MatchedCommand) {
 		return admissionError(ErrRuntimeCommand, runtimeadmission.CategoryCommand)
 	}
-	if plan.ResultMode != tailoringplan.ResultModeSourceStreamPassthrough ||
-		!identityWrapper(plan.WrapperKind, plan.Stages.Before, plan.Stages.Invoke.AppendedArgs, plan.Stages.Output, plan.Stages.After) {
-		return admissionError(ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
-	}
-	if len(plan.Stages.Invoke.Args) != 1 || plan.Stages.Invoke.Args[0] != "test" ||
-		len(plan.OriginalArgv) != 2 || plan.OriginalArgv[1] != "test" {
+	if len(plan.OriginalArgv) != 2 || plan.OriginalArgv[1] != "test" {
 		return admissionError(ErrRuntimeArgvGrammar, runtimeadmission.CategoryArgvGrammar)
+	}
+	switch plan.ResultMode {
+	case tailoringplan.ResultModeSourceStreamPassthrough:
+		if !identityWrapper(plan.WrapperKind, plan.Stages.Before, plan.Stages.Invoke.AppendedArgs, plan.Stages.Output, plan.Stages.After) || len(plan.Stages.Invoke.Args) != 1 || plan.Stages.Invoke.Args[0] != "test" {
+			return admissionError(ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
+		}
+	case tailoringplan.ResultModeOriginalPreservingOptimizer:
+		optimizer, present, err := plan.OptimizerPlan()
+		if err != nil || !present || !optimizerWrapper(plan.WrapperKind, plan.Stages.Before, plan.Stages.Invoke.AppendedArgs, plan.Stages.Output, plan.Stages.After) || optimizer.Input != "go_test_jsonl" || !optimizer.AllowOriginalOutput {
+			return admissionError(ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
+		}
+		if len(plan.Stages.Invoke.Args) != 2 || plan.Stages.Invoke.Args[0] != "test" || plan.Stages.Invoke.Args[1] != "-json" {
+			return admissionError(ErrRuntimeArgvGrammar, runtimeadmission.CategoryArgvGrammar)
+		}
+	default:
+		return admissionError(ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
 	}
 	return nil
 }
 
 // VerifySurface accepts only a complete included surface containing exact
-// command test, no observed long-option or structured-output grammar, and one
-// identity wrapper. Other cataloged root commands may remain excluded.
+// command test, no observed caller option grammar, one exact go_test_jsonl
+// selector observation, and either the identity or optimizer wrapper shape.
+// Other cataloged root commands may remain excluded.
 func VerifySurface(bundle tailoringbundle.Bundle) error {
 	if err := bundle.Validate(); err != nil {
 		return admissionError(ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
@@ -123,10 +136,11 @@ func VerifySurface(bundle tailoringbundle.Bundle) error {
 	if len(command.Options) != 0 || len(entry.Options.Include) != 0 || len(entry.Options.Exclude) != 0 {
 		return admissionError(ErrRuntimeArgvGrammar, runtimeadmission.CategoryArgvGrammar)
 	}
-	if len(command.StructuredOutput) != 0 {
+	if !exactTestJSONOutput(command.StructuredOutput) {
 		return admissionError(ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
 	}
-	if !identityWrapper(entry.Wrapper.Kind, entry.Wrapper.Before, entry.Wrapper.Invoke.AppendArgs, entry.Wrapper.Output, entry.Wrapper.After) {
+	if !identityWrapper(entry.Wrapper.Kind, entry.Wrapper.Before, entry.Wrapper.Invoke.AppendArgs, entry.Wrapper.Output, entry.Wrapper.After) &&
+		!optimizerWrapper(entry.Wrapper.Kind, entry.Wrapper.Before, entry.Wrapper.Invoke.AppendArgs, entry.Wrapper.Output, entry.Wrapper.After) {
 		return admissionError(ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
 	}
 	return nil
@@ -148,6 +162,27 @@ func exactTestCommand(path []string) bool {
 
 func identityWrapper(kind tailoringbundle.WrapperKind, before []tailoringbundle.StageAction, appendArgs []string, output *tailoringbundle.Output, after []tailoringbundle.StageAction) bool {
 	return kind == tailoringbundle.WrapperIdentity && len(before) == 0 && len(appendArgs) == 0 && output == nil && len(after) == 0
+}
+
+func optimizerWrapper(kind tailoringbundle.WrapperKind, before []tailoringbundle.StageAction, appendArgs []string, output *tailoringbundle.Output, after []tailoringbundle.StageAction) bool {
+	return kind == tailoringbundle.WrapperTransform && len(before) == 0 && len(after) == 0 && len(appendArgs) == 1 && appendArgs[0] == "-json" && output != nil && output.Kind == tailoringbundle.OutputKindOptimizer && output.Projection == nil && output.Optimizer != nil && output.Optimizer.Input == "go_test_jsonl" && output.Optimizer.AllowOriginalOutput
+}
+
+func exactTestJSONOutput(values []sourcecatalog.StructuredOutput) bool {
+	wantFields := []string{"Action", "Elapsed", "FailedBuild", "Output", "Package", "Test", "Time"}
+	return len(values) == 1 && values[0].Format == "go_test_jsonl" && values[0].SelectorFlag == "-json" && slicesEqual(values[0].Fields, wantFields)
+}
+
+func slicesEqual(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func catalogCommand(catalog sourcecatalog.Catalog, path []string) (sourcecatalog.Command, bool) {

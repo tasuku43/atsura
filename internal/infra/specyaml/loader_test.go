@@ -12,7 +12,7 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
 )
 
-const specificationFixture = `schema_version: 3
+const specificationFixture = `schema_version: 4
 catalog_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 surface:
   default: exclude
@@ -33,10 +33,12 @@ commands:
       invoke:
         append_args: [--json=id,name]
       output:
-        input: json
-        select: [id, name]
-        rename: []
-        render: compact_json
+        kind: projection
+        projection:
+          input: json
+          select: [id, name]
+          rename: []
+          render: compact_json
       after: []
 `
 
@@ -49,12 +51,12 @@ func writeFixture(t *testing.T, value string) string {
 	return path
 }
 
-func TestLoadStrictSchema3Specification(t *testing.T) {
+func TestLoadStrictSchema4Specification(t *testing.T) {
 	specification, err := New().Load(context.Background(), writeFixture(t, specificationFixture))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if specification.SchemaVersion != 3 || specification.Surface.Default != tailoringbundle.SurfaceDefaultExclude || len(specification.Commands) != 2 {
+	if specification.SchemaVersion != tailoringbundle.SpecificationSchemaVersion || specification.Surface.Default != tailoringbundle.SurfaceDefaultExclude || len(specification.Commands) != 2 {
 		t.Fatalf("specification = %+v", specification)
 	}
 	entry := specification.Commands[1]
@@ -68,7 +70,7 @@ func TestLoadStrictSchema3Specification(t *testing.T) {
 
 func TestEncodeIdentitySpecificationRoundTrips(t *testing.T) {
 	specification := tailoringbundle.Specification{
-		SchemaVersion: 3, CatalogDigest: strings.Repeat("a", 64), Surface: tailoringbundle.Surface{Default: tailoringbundle.SurfaceDefaultExclude},
+		SchemaVersion: tailoringbundle.SpecificationSchemaVersion, CatalogDigest: strings.Repeat("a", 64), Surface: tailoringbundle.Surface{Default: tailoringbundle.SurfaceDefaultExclude},
 		Commands: []tailoringbundle.CommandEntry{{
 			Command: []string{"item", "list"}, Presence: tailoringbundle.PresenceInclude, Reason: "Include without transformation.",
 			Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultInherit, Include: []string{}, Exclude: []string{}},
@@ -97,8 +99,8 @@ func TestEncodeIdentitySpecificationRoundTrips(t *testing.T) {
 }
 
 func TestLoadRejectsLegacySchemasWithMigrationDiagnostic(t *testing.T) {
-	for _, version := range []int{1, 2} {
-		legacy := strings.Replace(specificationFixture, "schema_version: 3", "schema_version: "+string(rune('0'+version)), 1)
+	for _, version := range []int{1, 2, 3} {
+		legacy := strings.Replace(specificationFixture, "schema_version: 4", "schema_version: "+string(rune('0'+version)), 1)
 		_, err := New().Load(context.Background(), writeFixture(t, legacy))
 		public, ok := fault.PublicCopy(err)
 		if !ok || public.Code != "legacy_tailoring_schema" || public.Retryable {

@@ -10,6 +10,9 @@ import (
 	"testing"
 
 	"github.com/tasuku43/atsura/internal/domain/fault"
+	"github.com/tasuku43/atsura/internal/domain/sourcecatalog"
+	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
+	"github.com/tasuku43/atsura/internal/domain/tailoringplan"
 )
 
 func TestRootHelpIsDerivedFromCatalog(t *testing.T) {
@@ -266,7 +269,7 @@ func TestScopedAgentHelpPublishesFreshWrapperPlanOutputAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 	if authority != OutputAuthorityFreshWrapperPlan ||
-		reference != (OutputSchemaReference{Command: "bundle preview", Field: "plan", ID: "wrapper-plan", Version: 4}) ||
+		reference != (OutputSchemaReference{Command: "bundle preview", Field: "plan", ID: "wrapper-plan", Version: tailoringplan.SchemaVersion}) ||
 		!reflect.DeepEqual(modes, freshPlanResultModes()) {
 		t.Fatalf("dynamic output authority = %q %+v %+v", authority, reference, modes)
 	}
@@ -413,22 +416,22 @@ func TestTailoringExactAgentHelpPublishesSelfContainedAuthoringContracts(t *test
 		t.Fatalf("source inspect help=%+v", inspect)
 	}
 	if len(inspect.Contract.Output.Fields) != 3 ||
-		inspect.Contract.Output.Fields[2].Description != "Exact bounded offline probe attempts: four for github-cli contract 2 and three for go-cli contract 1." {
+		inspect.Contract.Output.Fields[2].Description != "Exact bounded offline probe attempts: four for github-cli contract 2 and three for go-cli contract 2." {
 		t.Fatalf("source inspect attempt help=%+v", inspect.Contract.Output.Fields)
 	}
-	if schema := inspect.Contract.Output.Fields[1].Schema; schema == nil || schema.ID != "source-command-catalog" || schema.Version != 1 || len(schema.Fields) < 24 {
+	if schema := inspect.Contract.Output.Fields[1].Schema; schema == nil || schema.ID != "source-command-catalog" || schema.Version != sourcecatalog.SchemaVersion || len(schema.Fields) < 24 {
 		t.Fatalf("source inspect schema=%+v", schema)
 	}
 
 	init := command("spec", "init")
-	if !strings.Contains(init.Summary, "authoring baseline") || !strings.Contains(init.Contract.Outcome, "current transform-only runtime") || len(init.Contract.Output.Fields) != 1 {
+	if !strings.Contains(init.Summary, "authoring baseline") || !strings.Contains(init.Contract.Outcome, "compatible transform") || len(init.Contract.Output.Fields) != 1 {
 		t.Fatalf("spec init help=%+v", init)
 	}
-	if schema := init.Contract.Output.Fields[0].Schema; schema == nil || schema.ID != "tailoring-specification" || schema.Version != 3 {
+	if schema := init.Contract.Output.Fields[0].Schema; schema == nil || schema.ID != "tailoring-specification" || schema.Version != tailoringbundle.SpecificationSchemaVersion {
 		t.Fatalf("spec init schema=%+v", schema)
 	}
 	initPrerequisites := strings.Join(init.Contract.Prerequisites, "\n")
-	for _, want := range []string{"kind=transform", "output.select", "output.rename", "output.render=compact_json"} {
+	for _, want := range []string{"kind=transform", "output.kind=projection", "output.projection.select", "output.projection.rename", "output.projection.render=compact_json"} {
 		if !strings.Contains(initPrerequisites, want) {
 			t.Errorf("spec init prerequisites lack %q: %s", want, initPrerequisites)
 		}
@@ -441,7 +444,7 @@ func TestTailoringExactAgentHelpPublishesSelfContainedAuthoringContracts(t *test
 			normalized = field.Schema
 		}
 	}
-	if normalized == nil || normalized.ID != "tailoring-specification" || normalized.Version != 3 {
+	if normalized == nil || normalized.ID != "tailoring-specification" || normalized.Version != tailoringbundle.SpecificationSchemaVersion {
 		t.Fatalf("spec validate schema=%+v", normalized)
 	}
 

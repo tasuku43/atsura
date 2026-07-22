@@ -59,7 +59,7 @@ func previewIntent() operation.Intent {
 func previewBundle(t *testing.T) (tailoringbundle.Bundle, string, sourceprocess.Identity) {
 	t.Helper()
 	catalog := sourcecatalog.Catalog{
-		SchemaVersion: 1,
+		SchemaVersion: sourcecatalog.SchemaVersion,
 		Adapter:       sourcecatalog.Adapter{Kind: "atsura.source.alternate", ContractVersion: 1},
 		Source:        sourcecatalog.Source{RequestedExecutable: "fixture", ResolvedPath: "/opt/bin/fixture", SHA256: strings.Repeat("a", 64), Size: 42, Version: "1.0.0"},
 		Probe:         sourcecatalog.Probe{IDs: []string{"help"}, Attempts: 1},

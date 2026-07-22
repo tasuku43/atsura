@@ -72,7 +72,7 @@ type cliSourceInspector struct {
 func (f *cliSourceInspector) Inspect(_ context.Context, executable string) (sourcecatalog.Catalog, error) {
 	f.calls++
 	return sourcecatalog.Catalog{
-		SchemaVersion: 1,
+		SchemaVersion: sourcecatalog.SchemaVersion,
 		Adapter:       sourcecatalog.Adapter{Kind: "atsura.source.alternate", ContractVersion: 1},
 		Source: sourcecatalog.Source{
 			RequestedExecutable: executable, ResolvedPath: "/opt/bin/fixture",

@@ -33,7 +33,7 @@ func (f *specificationFake) Load(context.Context, string) (tailoringbundle.Speci
 func fixtures(t *testing.T) (sourcecatalog.Catalog, tailoringbundle.Specification) {
 	t.Helper()
 	catalog := sourcecatalog.Catalog{
-		SchemaVersion: 1, Adapter: sourcecatalog.Adapter{Kind: "atsura.source.alternate", ContractVersion: 1},
+		SchemaVersion: sourcecatalog.SchemaVersion, Adapter: sourcecatalog.Adapter{Kind: "atsura.source.alternate", ContractVersion: 1},
 		Source:   sourcecatalog.Source{RequestedExecutable: "fixture", ResolvedPath: "/opt/bin/fixture", SHA256: strings.Repeat("a", 64), Size: 42, Version: "1.0.0"},
 		Probe:    sourcecatalog.Probe{IDs: []string{"help", "version"}, Attempts: 2},
 		Commands: []sourcecatalog.Command{{Path: []string{"item", "list"}, Summary: "List", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin, Options: []sourcecatalog.Option{{Name: "--json", TakesValue: true}}, StructuredOutput: []sourcecatalog.StructuredOutput{{Format: "json", SelectorFlag: "--json", Fields: []string{"id"}}}}},

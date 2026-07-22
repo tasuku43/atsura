@@ -131,10 +131,10 @@ func runSpecInit(ctx context.Context, c *CLI, _ CommandSpec, intent operation.In
 	}
 	encoded, err := specyaml.Encode(specification)
 	if err != nil {
-		return c.fail(ctx, fault.Wrap(fault.KindContract, "output_encoding_failed", "The schema-3 YAML draft could not be encoded.", false, err))
+		return c.fail(ctx, fault.Wrap(fault.KindContract, "output_encoding_failed", "The schema-4 YAML draft could not be encoded.", false, err))
 	}
 	if len(encoded) > 256*1024 {
-		return c.fail(ctx, outputContractExceeded("The schema-3 YAML draft exceeds 256 KiB.", "spec init"))
+		return c.fail(ctx, outputContractExceeded("The schema-4 YAML draft exceeds 256 KiB.", "spec init"))
 	}
 	return c.emitResult(ctx, encoded)
 }

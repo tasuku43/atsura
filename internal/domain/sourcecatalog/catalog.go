@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	SchemaVersion      = 1
+	SchemaVersion      = 2
 	MaxCommands        = 512
 	MaxCommandSegments = 12
 	MaxOptions         = 128
@@ -177,7 +177,7 @@ func (c Command) validate() error {
 	}
 	previous = ""
 	for _, output := range c.StructuredOutput {
-		if !validStableName(output.Format) || !strings.HasPrefix(output.SelectorFlag, "--") || !validStableName(strings.TrimPrefix(output.SelectorFlag, "--")) {
+		if !validStableName(output.Format) || !validSelectorFlag(output.SelectorFlag) {
 			return fmt.Errorf("structured output selector is invalid")
 		}
 		key := output.Format + "\x00" + output.SelectorFlag
@@ -256,6 +256,21 @@ func validNamespaced(value string) bool {
 		}
 	}
 	return len(value) <= 128
+}
+
+func validSelectorFlag(value string) bool {
+	name := ""
+	switch {
+	case strings.HasPrefix(value, "---"):
+		return false
+	case strings.HasPrefix(value, "--"):
+		name = strings.TrimPrefix(value, "--")
+	case strings.HasPrefix(value, "-"):
+		name = strings.TrimPrefix(value, "-")
+	default:
+		return false
+	}
+	return !strings.ContainsRune(name, '=') && validStableName(name)
 }
 
 func validStableName(value string) bool {

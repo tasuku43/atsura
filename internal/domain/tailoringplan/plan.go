@@ -14,13 +14,14 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/tasuku43/atsura/internal/domain/processorprocess"
 	"github.com/tasuku43/atsura/internal/domain/sourcecatalog"
 	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
 	"github.com/tasuku43/atsura/internal/domain/tailoring"
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
 )
 
-const SchemaVersion = 4
+const SchemaVersion = 5
 
 var (
 	ErrInvalidInvocation        = errors.New("invalid tailored invocation")
@@ -41,8 +42,9 @@ const ModeTailored Mode = "tailored"
 type ResultMode string
 
 const (
-	ResultModeTransformedJSON         ResultMode = "transformed_json"
-	ResultModeSourceStreamPassthrough ResultMode = "source_stream_passthrough"
+	ResultModeTransformedJSON             ResultMode = "transformed_json"
+	ResultModeSourceStreamPassthrough     ResultMode = "source_stream_passthrough"
+	ResultModeOriginalPreservingOptimizer ResultMode = "original_preserving_optimizer"
 )
 
 // Attempt is the caller's exact source executable spelling and argv.
@@ -116,22 +118,23 @@ type Stages struct {
 
 // Plan is the canonical complete result shared by preview and supported runtime.
 type Plan struct {
-	SchemaVersion       int                           `json:"schema_version"`
-	Mode                Mode                          `json:"mode"`
-	ResultMode          ResultMode                    `json:"result_mode"`
-	BundleDigest        string                        `json:"bundle_digest"`
-	CatalogDigest       string                        `json:"catalog_digest"`
-	SpecificationDigest string                        `json:"specification_digest"`
-	Source              SourceIdentity                `json:"source"`
-	MatchedCommand      []string                      `json:"matched_command"`
-	SurfaceOrigin       SurfaceOrigin                 `json:"surface_origin"`
-	SpecificationEntry  *tailoringbundle.CommandEntry `json:"specification_entry"`
-	Reason              string                        `json:"reason"`
-	Options             tailoringbundle.OptionSurface `json:"options"`
-	WrapperKind         tailoringbundle.WrapperKind   `json:"wrapper_kind"`
-	OriginalArgv        []string                      `json:"original_argv"`
-	TransformedArgv     []string                      `json:"transformed_argv"`
-	Stages              Stages                        `json:"stages"`
+	SchemaVersion       int                               `json:"schema_version"`
+	Mode                Mode                              `json:"mode"`
+	ResultMode          ResultMode                        `json:"result_mode"`
+	BundleDigest        string                            `json:"bundle_digest"`
+	CatalogDigest       string                            `json:"catalog_digest"`
+	SpecificationDigest string                            `json:"specification_digest"`
+	Source              SourceIdentity                    `json:"source"`
+	MatchedCommand      []string                          `json:"matched_command"`
+	SurfaceOrigin       SurfaceOrigin                     `json:"surface_origin"`
+	SpecificationEntry  *tailoringbundle.CommandEntry     `json:"specification_entry"`
+	Reason              string                            `json:"reason"`
+	Options             tailoringbundle.OptionSurface     `json:"options"`
+	WrapperKind         tailoringbundle.WrapperKind       `json:"wrapper_kind"`
+	OriginalArgv        []string                          `json:"original_argv"`
+	TransformedArgv     []string                          `json:"transformed_argv"`
+	Processor           *tailoringbundle.ProcessorBinding `json:"processor"`
+	Stages              Stages                            `json:"stages"`
 }
 
 // Build resolves one attempted invocation into a complete tailored plan.
@@ -189,6 +192,17 @@ func Build(bundleDigest string, bundle tailoringbundle.Bundle, current sourcepro
 	if err := request.Validate(); err != nil {
 		return Plan{}, invalidInvocation("transformed invocation exceeds the source-process contract: %v", err)
 	}
+	var processor *tailoringbundle.ProcessorBinding
+	if entry.Wrapper.Output != nil && entry.Wrapper.Output.Kind == tailoringbundle.OutputKindOptimizer && entry.Wrapper.Output.Optimizer != nil {
+		binding, found, err := bundle.Processor(entry.Wrapper.Output.Optimizer.Contract)
+		if err != nil {
+			return Plan{}, invalidPlan("processor binding: %v", err)
+		}
+		if !found {
+			return Plan{}, invalidPlan("optimizer contract has no processor binding")
+		}
+		processor = &binding
+	}
 
 	origin := SurfaceOriginInherited
 	var appliedEntry *tailoringbundle.CommandEntry
@@ -224,6 +238,7 @@ func Build(bundleDigest string, bundle tailoringbundle.Bundle, current sourcepro
 		WrapperKind:        entry.Wrapper.Kind,
 		OriginalArgv:       append([]string{attempt.Executable}, attempt.Args...),
 		TransformedArgv:    append([]string{bundle.Catalog.Source.ResolvedPath}, transformedArgs...),
+		Processor:          cloneProcessor(processor),
 		Stages: Stages{
 			Order:  []StageKind{StageBefore, StageInvoke, StageOutput, StageAfter},
 			Before: append([]tailoringbundle.StageAction{}, entry.Wrapper.Before...),
@@ -256,12 +271,19 @@ func (p Plan) Validate() error {
 	}
 	switch p.ResultMode {
 	case ResultModeTransformedJSON:
-		if p.Stages.Output == nil {
-			return invalidPlan("transformed JSON result mode requires an output stage")
+		if p.Stages.Output == nil || p.Stages.Output.Kind != tailoringbundle.OutputKindProjection || p.Processor != nil {
+			return invalidPlan("transformed JSON result mode requires a projection output stage")
 		}
 	case ResultModeSourceStreamPassthrough:
-		if p.Stages.Output != nil {
+		if p.Stages.Output != nil || p.Processor != nil {
 			return invalidPlan("source-stream result mode cannot contain an output stage")
+		}
+	case ResultModeOriginalPreservingOptimizer:
+		if p.Stages.Output == nil || p.Stages.Output.Kind != tailoringbundle.OutputKindOptimizer || p.Stages.Output.Optimizer == nil || p.Processor == nil {
+			return invalidPlan("original-preserving optimizer result mode requires an optimizer output stage")
+		}
+		if err := p.Processor.Validate(); err != nil || p.Processor.Contract != p.Stages.Output.Optimizer.Contract || p.Processor.InputFormat != p.Stages.Output.Optimizer.Input || p.Processor.AllowOriginalOutput != p.Stages.Output.Optimizer.AllowOriginalOutput {
+			return invalidPlan("optimizer output stage and processor binding disagree")
 		}
 	default:
 		return invalidPlan("result mode is invalid")
@@ -395,24 +417,69 @@ func (p Plan) SourceRequest() (sourceprocess.BoundRequest, error) {
 	return request, nil
 }
 
+// ProcessorRequest returns the sole exact isolated processor process contract
+// represented by an optimizer plan for one already-admitted bounded input.
+func (p Plan) ProcessorRequest(input []byte) (processorprocess.Request, error) {
+	if err := p.Validate(); err != nil {
+		return processorprocess.Request{}, err
+	}
+	if p.ResultMode != ResultModeOriginalPreservingOptimizer || p.Processor == nil {
+		return processorprocess.Request{}, invalidPlan("plan has no processor request")
+	}
+	binding := p.Processor
+	request := processorprocess.Request{
+		Executable:          binding.Observation.Identity.ResolvedPath,
+		Args:                append([]string{}, binding.Execution.Args...),
+		Input:               append([]byte(nil), input...),
+		Timeout:             time.Duration(binding.Execution.TimeoutMillis) * time.Millisecond,
+		StdoutLimit:         binding.Execution.StdoutLimitBytes,
+		StderrLimit:         binding.Execution.StderrLimitBytes,
+		ExpectedIdentity:    binding.Observation.Identity,
+		EnvironmentContract: binding.Execution.EnvironmentContract,
+	}
+	if err := request.Validate(); err != nil {
+		return processorprocess.Request{}, invalidPlan("processor request: %v", err)
+	}
+	return request, nil
+}
+
 // OutputPlan returns a detached typed output transform. A valid plan without
 // an output stage returns present=false.
 func (p Plan) OutputPlan() (tailoring.OutputPlan, bool, error) {
 	if err := p.Validate(); err != nil {
 		return tailoring.OutputPlan{}, false, err
 	}
-	if p.Stages.Output == nil {
+	if p.Stages.Output == nil || p.Stages.Output.Kind != tailoringbundle.OutputKindProjection {
 		return tailoring.OutputPlan{}, false, nil
 	}
-	renames := make([]tailoring.Rename, len(p.Stages.Output.Rename))
-	for index, rename := range p.Stages.Output.Rename {
+	if p.Stages.Output.Projection == nil || p.Stages.Output.Optimizer != nil {
+		return tailoring.OutputPlan{}, false, invalidPlan("projection output union is incomplete or contradictory")
+	}
+	projection := p.Stages.Output.Projection
+	renames := make([]tailoring.Rename, len(projection.Rename))
+	for index, rename := range projection.Rename {
 		renames[index] = tailoring.Rename{From: rename.From, To: rename.To}
 	}
-	result := tailoring.OutputPlan{Input: tailoring.InputFormat(p.Stages.Output.Input), Select: append([]string{}, p.Stages.Output.Select...), Rename: renames, Render: tailoring.RenderFormat(p.Stages.Output.Render)}
+	result := tailoring.OutputPlan{Input: tailoring.InputFormat(projection.Input), Select: append([]string{}, projection.Select...), Rename: renames, Render: tailoring.RenderFormat(projection.Render)}
 	if err := result.Validate(); err != nil {
 		return tailoring.OutputPlan{}, false, invalidPlan("output plan: %v", err)
 	}
 	return result, true, nil
+}
+
+// OptimizerPlan returns the detached finite optimizer declaration. A valid
+// non-optimizer plan returns present=false.
+func (p Plan) OptimizerPlan() (tailoringbundle.Optimizer, bool, error) {
+	if err := p.Validate(); err != nil {
+		return tailoringbundle.Optimizer{}, false, err
+	}
+	if p.Stages.Output == nil || p.Stages.Output.Kind != tailoringbundle.OutputKindOptimizer {
+		return tailoringbundle.Optimizer{}, false, nil
+	}
+	if p.Stages.Output.Optimizer == nil || p.Stages.Output.Projection != nil {
+		return tailoringbundle.Optimizer{}, false, invalidPlan("optimizer output union is incomplete or contradictory")
+	}
+	return *p.Stages.Output.Optimizer, true, nil
 }
 
 // CanonicalJSON returns the sole digest representation for a complete plan.
@@ -534,6 +601,10 @@ func validateTailoredOptions(command sourcecatalog.Command, surface tailoringbun
 }
 
 func validateOutputSelector(command sourcecatalog.Command, output tailoringbundle.Output, args []string) error {
+	input, ok := outputInput(output)
+	if !ok {
+		return invalidInvocation("planned output stage does not declare one input format")
+	}
 	selectorFormats := make(map[string]map[string]struct{})
 	for _, structured := range command.StructuredOutput {
 		formats := selectorFormats[structured.SelectorFlag]
@@ -550,7 +621,7 @@ func validateOutputSelector(command sourcecatalog.Command, output tailoringbundl
 		if argument == "--" {
 			break
 		}
-		if !strings.HasPrefix(argument, "--") {
+		if !strings.HasPrefix(argument, "-") {
 			continue
 		}
 		name, _, inline := strings.Cut(argument, "=")
@@ -559,8 +630,8 @@ func validateOutputSelector(command sourcecatalog.Command, output tailoringbundl
 			if len(formats) != 1 {
 				return invalidInvocation("structured-output selector %q does not identify one source format", name)
 			}
-			if _, wanted := formats[output.Input]; !wanted {
-				return invalidInvocation("structured-output selector %q conflicts with planned input format %q", name, output.Input)
+			if _, wanted := formats[input]; !wanted {
+				return invalidInvocation("structured-output selector %q conflicts with planned input format %q", name, input)
 			}
 			matched++
 		}
@@ -574,7 +645,7 @@ func validateOutputSelector(command sourcecatalog.Command, output tailoringbundl
 		}
 	}
 	if matched != 1 {
-		return invalidInvocation("planned output format %q requires exactly one active cataloged selector before --; found %d", output.Input, matched)
+		return invalidInvocation("planned output format %q requires exactly one active cataloged selector before --; found %d", input, matched)
 	}
 	return nil
 }
@@ -608,18 +679,38 @@ func validateOptions(value tailoringbundle.OptionSurface) error {
 }
 
 func validateOutput(value tailoringbundle.Output) error {
-	renames := make([]tailoring.Rename, len(value.Rename))
-	for index, rename := range value.Rename {
-		renames[index] = tailoring.Rename{From: rename.From, To: rename.To}
+	switch value.Kind {
+	case tailoringbundle.OutputKindProjection:
+		if value.Projection == nil || value.Optimizer != nil {
+			return fmt.Errorf("projection output union is incomplete or contradictory")
+		}
+		renames := make([]tailoring.Rename, len(value.Projection.Rename))
+		for index, rename := range value.Projection.Rename {
+			renames[index] = tailoring.Rename{From: rename.From, To: rename.To}
+		}
+		return (tailoring.OutputPlan{Input: tailoring.InputFormat(value.Projection.Input), Select: value.Projection.Select, Rename: renames, Render: tailoring.RenderFormat(value.Projection.Render)}).Validate()
+	case tailoringbundle.OutputKindOptimizer:
+		if value.Projection != nil || value.Optimizer == nil || !validStableName(value.Optimizer.Input) || !validNamespaced(value.Optimizer.Contract) || !value.Optimizer.AllowOriginalOutput {
+			return fmt.Errorf("optimizer output contract is incomplete or contradictory")
+		}
+		return nil
+	default:
+		return fmt.Errorf("output kind is invalid")
 	}
-	return (tailoring.OutputPlan{Input: tailoring.InputFormat(value.Input), Select: value.Select, Rename: renames, Render: tailoring.RenderFormat(value.Render)}).Validate()
 }
 
 func resultModeFor(output *tailoringbundle.Output) ResultMode {
-	if output != nil {
-		return ResultModeTransformedJSON
+	if output == nil {
+		return ResultModeSourceStreamPassthrough
 	}
-	return ResultModeSourceStreamPassthrough
+	switch output.Kind {
+	case tailoringbundle.OutputKindProjection:
+		return ResultModeTransformedJSON
+	case tailoringbundle.OutputKindOptimizer:
+		return ResultModeOriginalPreservingOptimizer
+	default:
+		return ""
+	}
 }
 
 func cloneOptions(value tailoringbundle.OptionSurface) tailoringbundle.OptionSurface {
@@ -631,9 +722,41 @@ func cloneOutput(value *tailoringbundle.Output) *tailoringbundle.Output {
 		return nil
 	}
 	copy := *value
-	copy.Select = append([]string{}, value.Select...)
-	copy.Rename = append([]tailoringbundle.Rename{}, value.Rename...)
+	if value.Projection != nil {
+		projection := *value.Projection
+		projection.Select = append([]string{}, value.Projection.Select...)
+		projection.Rename = append([]tailoringbundle.Rename{}, value.Projection.Rename...)
+		copy.Projection = &projection
+	}
+	if value.Optimizer != nil {
+		optimizer := *value.Optimizer
+		copy.Optimizer = &optimizer
+	}
 	return &copy
+}
+
+func cloneProcessor(value *tailoringbundle.ProcessorBinding) *tailoringbundle.ProcessorBinding {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	copy.Observation.Probe.Argv = append([]string{}, value.Observation.Probe.Argv...)
+	copy.Execution.Args = append([]string{}, value.Execution.Args...)
+	return &copy
+}
+
+func outputInput(value tailoringbundle.Output) (string, bool) {
+	switch value.Kind {
+	case tailoringbundle.OutputKindProjection:
+		if value.Projection != nil && value.Optimizer == nil {
+			return value.Projection.Input, true
+		}
+	case tailoringbundle.OutputKindOptimizer:
+		if value.Projection == nil && value.Optimizer != nil {
+			return value.Optimizer.Input, true
+		}
+	}
+	return "", false
 }
 
 func cloneCommandEntry(value tailoringbundle.CommandEntry) tailoringbundle.CommandEntry {
