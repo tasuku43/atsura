@@ -927,8 +927,10 @@ to a later revision.
 CI run 29914651542 then passed the historical five-target schema-7 matrix and
 aggregate schema 2 on 2026-07-22 for revision
 `8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`. Those historical requirements have
-one exact release-quality implementation observation. Current schema 8 has no
-recorded native five-target result. The historical result does not
+one exact release-quality implementation observation. Current schema 8 was
+subsequently observed in CI run 29920148480 for exact revision
+`99fbd0e97489b1f3b7a68e2617fa4056b2c12a1d`, as recorded in the current
+bounded observation below. The historical result does not
 authorize publication, independently attest the executables, or carry forward
 to a later revision.
 
@@ -1156,8 +1158,14 @@ and Windows amd64 plus aggregate schema 2 for revision
 `8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`. It covers the historical schema-7
 multi-command, optimizer, static-help, and platform acceptance mechanism for
 this revision only; it does not authorize publication, independently attest
-the executables, or carry forward to another revision. No current schema-8
-native observation has yet been recorded.
+the executables, or carry forward to another revision. CI run
+[29920148480](https://github.com/tasuku43/atsura/actions/runs/29920148480)
+then passed the exact five native schema-8 journeys, canonical
+full/security/public gates, and aggregate schema 2 on 2026-07-22 for revision
+`99fbd0e97489b1f3b7a68e2617fa4056b2c12a1d`. That observation establishes
+the option-default-aware acceptance mechanism for this revision only; it does
+not authorize publication, independently attest the executables, or carry
+forward to another revision.
 
 Exact scoped help is the public authoring contract: the source catalog exposes
 command paths, provenance, option grammar, structured output selector, and

@@ -591,8 +591,11 @@ argv, the declared option defaults, and the exact applied subset. POSIX rows
 require ordered `default_applied`, `default_overridden`, `append_only`, and
 `identity` cases, four wrapper source attempts, and 14 GitHub fixture attempts.
 Windows retains zero wrapper attempts and 10 GitHub fixture attempts. The Go
-and RTK contracts do not change. These are current evidence requirements; no
-native five-target schema-8 replay has yet been recorded.
+and RTK contracts do not change. CI run
+[29920148480](https://github.com/tasuku43/atsura/actions/runs/29920148480)
+passed these five native schema-8 rows, the canonical full/security/public
+gates, and aggregate schema 2 on 2026-07-22 for revision
+`99fbd0e97489b1f3b7a68e2617fa4056b2c12a1d`.
 
 Installed evidence does not claim processor-launch counts without an accepted
 external observer; controlled application and infrastructure tests own that
@@ -732,10 +735,10 @@ plan-declared JSON value, exact bounded source streams and conventional status,
 or the declared optimizer result; failure never selects raw, another bundle,
 or original bytes after processor authority. This becomes a release-quality
 optimizer claim only after the required full/security/public/release gates and
-the current installed-artifact native evidence pass. Historical schema 7
-passed on 2026-07-22 for exact revision
-`8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`; the schema-8 option-default
-successor remains pending and every later candidate must repeat the matrix.
+the current installed-artifact native evidence pass. Schema 8 passed in CI run
+29920148480 on 2026-07-22 for exact revision
+`99fbd0e97489b1f3b7a68e2617fa4056b2c12a1d`; every later candidate must
+repeat the matrix.
 The claim does not include executable attestation, caller activation
 integrity, Windows POSIX or optimizer support, source authorization,
 sandboxing, or a persistent wrapper lifecycle.

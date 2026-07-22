@@ -654,9 +654,13 @@ rows require four ordered wrapper cases: `default_applied`,
 `default_overridden`, `append_only`, and `identity`, totaling four wrapper
 source attempts and 14 GitHub fixture attempts. Windows retains the structured
 unsupported result, zero wrapper attempts, and 10 GitHub fixture attempts. The
-Go and RTK contracts are unchanged. No native five-target schema-8 replay has
-yet been recorded; implementation and controlled tests are not a substitute
-for that pending release evidence.
+Go and RTK contracts are unchanged. CI run
+[29920148480](https://github.com/tasuku43/atsura/actions/runs/29920148480)
+passed the exact five-target schema-8 matrix, canonical full/security/public
+gates, and aggregate schema 2 on 2026-07-22 for revision
+`99fbd0e97489b1f3b7a68e2617fa4056b2c12a1d`. That is release-quality
+implementation evidence for this exact revision, not publication,
+independent executable attestation, or evidence for a later candidate.
 
 The inherited schema-5 optimizer evidence shape keeps the identity case in the
 outer `go_source` wrapper fields and the optimizer's distinct bundle, plan,
@@ -734,10 +738,10 @@ Go CLI contract 2 catalog (three probes, recorded Go 1.26.x observation)
   -> strict `test -json` admission and the isolated processor boundary
 ```
 
-The exact five-target schema-7 evidence above establishes its historical
-milestone for revision `8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`.
-The current schema-8 milestone remains pending until a later release candidate
-repeats the full gates and installed-artifact journeys. Windows exercises
+The exact five-target schema-8 evidence above establishes the current
+option-default milestone for revision
+`99fbd0e97489b1f3b7a68e2617fa4056b2c12a1d`. Every later release candidate
+must repeat the full gates and installed-artifact journeys. Windows exercises
 existing commands and structured unsupported behavior only.
 
 Raw execution, source refresh, richer argv transformations, additional

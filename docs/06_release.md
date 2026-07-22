@@ -42,8 +42,14 @@ then passed all five historical schema-7 rows and aggregate schema 2 on 2026-07-
 for revision
 `8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`. That is release-quality
 implementation evidence for this exact revision's schema-7 contract; no release
-was created. The current schema-8 candidate has no recorded native five-target
-replay and must repeat the matrix before receiving a release-quality claim.
+was created. CI run
+[29920148480](https://github.com/tasuku43/atsura/actions/runs/29920148480)
+then passed all five native schema-8 rows, the canonical full/security/public
+gates, and aggregate schema 2 on 2026-07-22 for revision
+`99fbd0e97489b1f3b7a68e2617fa4056b2c12a1d`. That is release-quality
+implementation evidence for the current option-default contract on this exact
+revision; no release was created, and every later candidate must repeat the
+matrix.
 
 The current first-release packaging decisions are:
 
@@ -559,7 +565,9 @@ first caller omits `--limit`, the second supplies `--limit=2`, and both exact
 source argv prove the precedence result. POSIX totals become four wrapper
 source attempts and 14 GitHub fixture attempts. Windows remains zero wrapper
 attempts and 10 fixture attempts. The Go/RTK record and aggregate schema 2 are
-unchanged. No native five-target schema-8 result has yet been recorded.
+unchanged. CI run 29920148480 passed the exact five-target schema-8 result on
+2026-07-22 for revision
+`99fbd0e97489b1f3b7a68e2617fa4056b2c12a1d`.
 
 The credential-free in-process production-composition fixture supplies the
 complete phase evidence that a portable exact-archive journey cannot safely
@@ -627,9 +635,15 @@ revision only. It is not publication, independent executable attestation, or
 evidence for another commit or tag; the exact revision selected for any release
 must replay all required rows again.
 
-There is no current schema-8 bounded observation. The implementation must not
-be described as release-quality for the option-default contract until all five
-native rows and aggregate schema 2 pass for one exact candidate revision.
+Current bounded schema-8 observation: CI run
+[29920148480](https://github.com/tasuku43/atsura/actions/runs/29920148480)
+passed the exact Linux amd64/arm64, Darwin amd64/arm64, and Windows amd64
+schema-8 journeys, canonical full/security/public gates, and aggregate schema
+2 on 2026-07-22 for revision
+`99fbd0e97489b1f3b7a68e2617fa4056b2c12a1d`. This establishes the
+option-default implementation claim for that revision only. It is not
+publication, independent executable attestation, or evidence for another
+commit or tag.
 
 No public release has yet made the wrapper claim. A future candidate that
 passes the complete gates may claim only the fixed Linux/macOS POSIX

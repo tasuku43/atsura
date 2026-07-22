@@ -698,8 +698,10 @@ bytes in persisted or structured evidence.
   ordered `default_applied` and `default_overridden` cases alongside
   `append_only` and `identity`, totaling four wrapper source attempts and 14
   GitHub fixture attempts. Windows retains zero wrapper attempts and 10
-  fixture attempts. Go and RTK evidence contracts remain unchanged. No native
-  five-target schema-8 replay is recorded yet.
+  fixture attempts. Go and RTK evidence contracts remain unchanged. CI run
+  29920148480 passed the exact five-target schema-8 rows, canonical
+  full/security/public gates, and aggregate schema 2 on 2026-07-22 for revision
+  `99fbd0e97489b1f3b7a68e2617fa4056b2c12a1d`.
 - The four Linux/macOS optimizer targets must prove `optimized` and reachable
   `preserved_before_processor`; Windows records no optimizer case and no
   processor evidence. Installed evidence does not claim processor-launch

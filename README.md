@@ -448,13 +448,14 @@ argv plus declared/applied option defaults for omitted and caller-overridden
 cases share one bundle and rendered wrapper while retaining distinct caller
 argv and plan digests; identity remains independent. Windows retains empty
 wrapper/help inventories, zero wrapper attempts, and the structured unsupported
-result. Aggregate schema 2 is unchanged. The required five-target schema-8
-native replay is pending for this worktree. On 2026-07-22, CI run
-[29914651542](https://github.com/tasuku43/atsura/actions/runs/29914651542)
-passed all five historical schema-7 rows and aggregate schema 2 for revision
-`8dd5b251b9bdd93120ceb5e8b2d3cb0caf24c927`. That is release-quality
-implementation evidence for this exact revision, not publication,
-independent executable attestation, or evidence for a later revision.
+result. Aggregate schema 2 is unchanged. On 2026-07-22, CI run
+[29920148480](https://github.com/tasuku43/atsura/actions/runs/29920148480)
+passed all five native schema-8 rows, the canonical full/security/public
+gates, and aggregate schema 2 for revision
+`99fbd0e97489b1f3b7a68e2617fa4056b2c12a1d`. That is release-quality
+implementation evidence for the option-default contract on this exact
+revision, not publication, independent executable attestation, or evidence for
+a later revision.
 
 Current plan parsing is deliberately bounded. Source short options,
 root/global options, and command-specific positional grammar are not completely
