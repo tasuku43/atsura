@@ -57,13 +57,20 @@ func (s *compatibilityStub) VerifyRuntime(tailoringplan.Plan) error {
 }
 
 type processStub struct {
-	result sourceprocess.Result
-	calls  int
+	result  sourceprocess.Result
+	err     error
+	calls   int
+	after   func()
+	request sourceprocess.BoundRequest
 }
 
-func (s *processStub) RunBound(context.Context, sourceprocess.BoundRequest) (sourceprocess.Result, error) {
+func (s *processStub) RunBound(_ context.Context, request sourceprocess.BoundRequest) (sourceprocess.Result, error) {
 	s.calls++
-	return s.result, nil
+	s.request = request
+	if s.after != nil {
+		s.after()
+	}
+	return s.result, s.err
 }
 
 type parserStub struct {
@@ -210,8 +217,11 @@ func TestApplyAcceptsExactExpectedBundleDigestThroughOneSuccessfulAttempt(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.BundleDigest != digest || result.SourceProcessAttempts != 1 || result.Output.Shape != tailoring.ResultShapeArray || strings.Join(result.Output.Fields, ",") != "item_id,name" {
+	if result.BundleDigest != digest || result.SourceProcessAttempts != 1 || result.ResultMode != tailoringplan.ResultModeTransformedJSON || result.TransformedJSON == nil || result.SourceStream != nil || result.TransformedJSON.Output.Shape != tailoring.ResultShapeArray || strings.Join(result.TransformedJSON.Output.Fields, ",") != "item_id,name" {
 		t.Fatalf("result=%+v", result)
+	}
+	if err := result.Validate(); err != nil {
+		t.Fatalf("result validation: %v", err)
 	}
 	if loader.calls != 1 || adoption.calls != 1 || identities.calls != 1 || compatibility.calls != 1 || process.calls != 1 || parser.calls != 1 {
 		t.Fatalf("calls load/adoption/identity/compatibility/process/parser=%d/%d/%d/%d/%d/%d", loader.calls, adoption.calls, identities.calls, compatibility.calls, process.calls, parser.calls)

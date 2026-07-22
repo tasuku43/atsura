@@ -120,7 +120,7 @@ func TestExecuteVerifiesRuntimeAndForwardsExactArgvToBundleDerivedPlan(t *testin
 		t.Fatalf("current/identity/apply calls = %d/%d/%d, identity locator=%q", current.calls, identity.calls, applier.calls, identity.locator)
 	}
 	request := applier.request
-	if request.BundlePath != binding.BundleLocator || request.ExpectedBundleDigest != binding.BundleDigest || !request.DeriveExecutableFromLoadedBundle {
+	if request.BundlePath != binding.BundleLocator || request.ExpectedBundleDigest != binding.BundleDigest || !request.DeriveExecutableFromLoadedBundle || !request.AllowSourceStreamPassthrough {
 		t.Fatalf("plan application binding = %+v", request)
 	}
 	if request.Attempt.Executable != "" || !reflect.DeepEqual(request.Attempt.Args, wantArgs) {

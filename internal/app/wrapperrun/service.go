@@ -107,6 +107,7 @@ func (s *Service) Execute(ctx context.Context, intent operation.Intent, binding 
 		BundlePath:                       binding.BundleLocator,
 		ExpectedBundleDigest:             binding.BundleDigest,
 		DeriveExecutableFromLoadedBundle: true,
+		AllowSourceStreamPassthrough:     true,
 		Attempt:                          tailoringplan.Attempt{Args: forwarded},
 		Command:                          commandContext(),
 	})

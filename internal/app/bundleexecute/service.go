@@ -53,9 +53,10 @@ func (s *Service) Execute(ctx context.Context, intent operation.Intent, bundlePa
 		return Result{}, fmt.Errorf("bundle execution adapters are not configured")
 	}
 	return s.applier.Apply(ctx, planapply.Request{
-		BundlePath: bundlePath,
-		Attempt:    attempt,
-		Command:    commandContext(),
+		BundlePath:                   bundlePath,
+		AllowSourceStreamPassthrough: false,
+		Attempt:                      attempt,
+		Command:                      commandContext(),
 	})
 }
 

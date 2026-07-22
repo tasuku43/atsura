@@ -99,19 +99,69 @@ type Request struct {
 	BundlePath                       string
 	ExpectedBundleDigest             string
 	DeriveExecutableFromLoadedBundle bool
+	AllowSourceStreamPassthrough     bool
 	Attempt                          tailoringplan.Attempt
 	Command                          CommandContext
 }
 
+// TransformedJSONResult is the sole payload for a transformed_json result.
+type TransformedJSONResult struct {
+	Render   tailoring.RenderFormat
+	Output   tailoring.OutputResult
+	ExitCode int
+}
+
+// SourceStreamResult is the sole payload for a source_stream_passthrough
+// result. Bytes are detached from process-adapter storage before they cross the
+// application boundary.
+type SourceStreamResult struct {
+	Stdout   []byte
+	Stderr   []byte
+	ExitCode int
+}
+
+// Result is a plan-declared union. Exactly one payload is present and agrees
+// with ResultMode; shared metadata never duplicates result bytes or rendering
+// facts.
 type Result struct {
 	BundleDigest          string
 	PlanDigest            string
 	MatchedCommand        []string
 	WrapperKind           tailoringbundle.WrapperKind
-	Render                tailoring.RenderFormat
-	Output                tailoring.OutputResult
-	SourceExitCode        int
+	ResultMode            tailoringplan.ResultMode
+	TransformedJSON       *TransformedJSONResult
+	SourceStream          *SourceStreamResult
 	SourceProcessAttempts int
+}
+
+// Validate proves the result union before a presentation boundary interprets
+// either payload.
+func (r Result) Validate() error {
+	if r.SourceProcessAttempts != 1 {
+		return fmt.Errorf("plan application result requires exactly one source process attempt")
+	}
+	switch r.ResultMode {
+	case tailoringplan.ResultModeTransformedJSON:
+		if r.TransformedJSON == nil || r.SourceStream != nil || r.WrapperKind != tailoringbundle.WrapperTransform {
+			return fmt.Errorf("transformed JSON result payload is incomplete or contradictory")
+		}
+		if r.TransformedJSON.ExitCode != 0 || r.TransformedJSON.Render != tailoring.RenderCompactJSON {
+			return fmt.Errorf("transformed JSON result framing is invalid")
+		}
+		if err := r.TransformedJSON.Output.Validate(); err != nil {
+			return fmt.Errorf("transformed JSON result: %w", err)
+		}
+	case tailoringplan.ResultModeSourceStreamPassthrough:
+		if r.TransformedJSON != nil || r.SourceStream == nil || (r.WrapperKind != tailoringbundle.WrapperIdentity && r.WrapperKind != tailoringbundle.WrapperTransform) {
+			return fmt.Errorf("source-stream result payload is incomplete or contradictory")
+		}
+		if r.SourceStream.ExitCode < 0 || len(r.SourceStream.Stdout) > sourceprocess.MaxStdoutBytes || len(r.SourceStream.Stderr) > sourceprocess.MaxStderrBytes {
+			return fmt.Errorf("source-stream result exceeds its conventional status or capture bounds")
+		}
+	default:
+		return fmt.Errorf("plan application result mode is missing or invalid")
+	}
+	return nil
 }
 
 // Service owns the one application-level plan application path shared by
@@ -143,8 +193,9 @@ func (s *Service) Configured() bool {
 }
 
 // Apply strictly loads and optionally closes over one exact bundle digest,
-// rebuilds its plan, and applies the admitted transform once. It never consumes
-// preview output, retries a started source, or returns raw source bytes.
+// rebuilds its plan, and applies one admitted plan result mode once. It never
+// consumes preview output or retries a started source. Source bytes cross this
+// boundary only for an explicitly allowed source_stream_passthrough plan.
 func (s *Service) Apply(ctx context.Context, request Request) (Result, error) {
 	if ctx == nil {
 		return Result{}, fmt.Errorf("plan application context is nil")
@@ -217,8 +268,17 @@ func (s *Service) Apply(ctx context.Context, request Request) (Result, error) {
 	if err != nil {
 		return Result{}, fault.Wrap(fault.KindContract, "invalid_wrapper_plan", "The wrapper output stage is invalid.", false, err, request.Command.PlanPreviewAction)
 	}
-	if !present || plan.WrapperKind != tailoringbundle.WrapperTransform {
-		return Result{}, fault.New(fault.KindUnsupported, "wrapper_runtime_not_supported", "This runtime slice requires a transforming wrapper with a typed output stage.", false, request.Command.RuntimeHelpAction)
+	switch plan.ResultMode {
+	case tailoringplan.ResultModeTransformedJSON:
+		if !present || plan.WrapperKind != tailoringbundle.WrapperTransform {
+			return Result{}, fault.New(fault.KindUnsupported, "wrapper_runtime_not_supported", "This runtime slice requires a transforming wrapper with a typed output stage.", false, request.Command.RuntimeHelpAction)
+		}
+	case tailoringplan.ResultModeSourceStreamPassthrough:
+		if !request.AllowSourceStreamPassthrough || present {
+			return Result{}, fault.New(fault.KindUnsupported, "wrapper_runtime_not_supported", "This command does not admit the plan-declared source-stream result mode.", false, request.Command.RuntimeHelpAction)
+		}
+	default:
+		return Result{}, fault.New(fault.KindContract, "invalid_wrapper_plan", "The wrapper plan result mode is invalid.", false, request.Command.PlanPreviewAction)
 	}
 	if err := s.compatibility.VerifyRuntime(plan); err != nil {
 		return Result{}, fault.New(fault.KindUnsupported, "wrapper_runtime_not_supported", runtimeAdmissionMessage(err), false, request.Command.RuntimeHelpAction)
@@ -232,6 +292,9 @@ func (s *Service) Apply(ctx context.Context, request Request) (Result, error) {
 	}
 
 	processResult, processErr := s.processes.RunBound(ctx, processRequest)
+	if plan.ResultMode == tailoringplan.ResultModeSourceStreamPassthrough {
+		return sourceStreamResult(ctx, request.Command, plan, bundleDigest, planDigest, processRequest, processResult, processErr)
+	}
 	if processErr != nil {
 		return Result{}, classifyProcess(processRequest, processResult, processErr, request.Command)
 	}
@@ -258,11 +321,52 @@ func (s *Service) Apply(ctx context.Context, request Request) (Result, error) {
 	if err := ctx.Err(); err != nil {
 		return Result{}, fault.Wrap(fault.KindCanceled, "source_output_processing_canceled", "Output processing was canceled after the source process started; replay is not known to be safe.", false, err, request.Command.RuntimeHelpAction)
 	}
-	return Result{
+	result := Result{
 		BundleDigest: bundleDigest, PlanDigest: planDigest, MatchedCommand: append([]string{}, plan.MatchedCommand...),
-		WrapperKind: plan.WrapperKind, Render: outputPlan.Render, Output: output,
-		SourceExitCode: processResult.ExitCode, SourceProcessAttempts: processResult.Attempts,
-	}, nil
+		WrapperKind: plan.WrapperKind, ResultMode: plan.ResultMode,
+		TransformedJSON:       &TransformedJSONResult{Render: outputPlan.Render, Output: output, ExitCode: processResult.ExitCode},
+		SourceProcessAttempts: processResult.Attempts,
+	}
+	if err := result.Validate(); err != nil {
+		return Result{}, fault.Wrap(fault.KindContract, "unclassified_source_execution_outcome", "The source execution result could not be classified as safe to retry.", false, err, request.Command.StatusAction)
+	}
+	return result, nil
+}
+
+func sourceStreamResult(ctx context.Context, command CommandContext, plan tailoringplan.Plan, bundleDigest, planDigest string, processRequest sourceprocess.BoundRequest, processResult sourceprocess.Result, processErr error) (Result, error) {
+	if err := processResult.ValidateBoundCompletion(processRequest); err != nil {
+		if processErr != nil {
+			return Result{}, classifyProcess(processRequest, processResult, processErr, command)
+		}
+		return Result{}, unclassifiedProcess(err, command)
+	}
+	if processErr == nil {
+		if processResult.ExitCode != 0 {
+			return Result{}, unclassifiedProcess(fmt.Errorf("nil process error accompanied nonzero exit code %d", processResult.ExitCode), command)
+		}
+	} else {
+		public, ok := fault.PublicCopy(processErr)
+		if !ok || public.Code != "source_command_failed" || public.Retryable || processResult.ExitCode <= 0 {
+			return Result{}, classifyProcess(processRequest, processResult, processErr, command)
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return Result{}, fault.Wrap(fault.KindCanceled, "source_output_processing_canceled", "Output processing was canceled after the source process started; replay is not known to be safe.", false, err, command.RuntimeHelpAction)
+	}
+	result := Result{
+		BundleDigest: bundleDigest, PlanDigest: planDigest, MatchedCommand: append([]string{}, plan.MatchedCommand...),
+		WrapperKind: plan.WrapperKind, ResultMode: plan.ResultMode,
+		SourceStream: &SourceStreamResult{
+			Stdout:   append([]byte(nil), processResult.Stdout...),
+			Stderr:   append([]byte(nil), processResult.Stderr...),
+			ExitCode: processResult.ExitCode,
+		},
+		SourceProcessAttempts: processResult.Attempts,
+	}
+	if err := result.Validate(); err != nil {
+		return Result{}, unclassifiedProcess(err, command)
+	}
+	return result, nil
 }
 
 func runtimeAdmissionMessage(err error) string {

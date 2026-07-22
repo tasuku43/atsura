@@ -170,14 +170,18 @@ func TestExecuteRebuildsPlanRunsBoundSourceOnceAndTransformsTypedJSON(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if compatibility.calls != 1 || process.calls != 1 || parser.calls != 1 || result.SourceProcessAttempts != 1 || result.SourceExitCode != 0 || len(result.PlanDigest) != 64 {
+	if compatibility.calls != 1 || process.calls != 1 || parser.calls != 1 || result.SourceProcessAttempts != 1 || result.ResultMode != tailoringplan.ResultModeTransformedJSON || result.TransformedJSON == nil || result.SourceStream != nil || result.TransformedJSON.ExitCode != 0 || len(result.PlanDigest) != 64 {
 		t.Fatalf("result=%+v calls compatibility/process/parser=%d/%d/%d", result, compatibility.calls, process.calls, parser.calls)
 	}
 	if process.request.ExpectedIdentity != process.result.Identity || strings.Join(process.request.Process.Args, "\x00") != "item\x00list\x00--json=id,name,state" {
 		t.Fatalf("bound request=%+v", process.request)
 	}
-	if result.Output.Shape != tailoring.ResultShapeArray || strings.Join(result.Output.Fields, ",") != "item_id,name,state" || result.Output.Records[0].ObjectValue[0].Value.NumberValue != "0" || result.Output.Records[0].ObjectValue[1].Value.StringValue != "" {
-		t.Fatalf("output=%+v", result.Output)
+	output := result.TransformedJSON.Output
+	if output.Shape != tailoring.ResultShapeArray || strings.Join(output.Fields, ",") != "item_id,name,state" || output.Records[0].ObjectValue[0].Value.NumberValue != "0" || output.Records[0].ObjectValue[1].Value.StringValue != "" {
+		t.Fatalf("output=%+v", output)
+	}
+	if err := result.Validate(); err != nil {
+		t.Fatalf("result validation: %v", err)
 	}
 	if string(parser.input) != "private raw bytes" || compatibility.plan.SchemaVersion != tailoringplan.SchemaVersion {
 		t.Fatalf("parser input=%q compatibility plan=%+v", parser.input, compatibility.plan)
@@ -186,11 +190,13 @@ func TestExecuteRebuildsPlanRunsBoundSourceOnceAndTransformsTypedJSON(t *testing
 
 func TestExecuteRejectsUnsupportedWrapperAndCompatibilityBeforeProcess(t *testing.T) {
 	identityBundle, digest, identity := executeBundle(t, false)
+	compatibilityIdentity := &compatibilityStub{}
 	process := &processStub{}
-	_, err := New(&bundleStub{bundle: identityBundle, digest: digest}, &adoptionStub{state: bundletrust.StateAdopted}, &identityStub{value: identity}, &compatibilityStub{}, process, &parserStub{}).Execute(context.Background(), executeIntent(), "bundle.json", tailoringplan.Attempt{Executable: "fixture", Args: []string{"item", "list"}})
+	parserIdentity := &parserStub{}
+	result, err := New(&bundleStub{bundle: identityBundle, digest: digest}, &adoptionStub{state: bundletrust.StateAdopted}, &identityStub{value: identity}, compatibilityIdentity, process, parserIdentity).Execute(context.Background(), executeIntent(), "bundle.json", tailoringplan.Attempt{Executable: "fixture", Args: []string{"item", "list"}})
 	assertFault(t, err, "wrapper_runtime_not_supported", false)
-	if process.calls != 0 {
-		t.Fatalf("identity wrapper process calls=%d", process.calls)
+	if compatibilityIdentity.calls != 0 || process.calls != 0 || parserIdentity.calls != 0 || result.SourceProcessAttempts != 0 || result.SourceStream != nil || result.TransformedJSON != nil {
+		t.Fatalf("identity result=%+v compatibility/process/parser calls=%d/%d/%d", result, compatibilityIdentity.calls, process.calls, parserIdentity.calls)
 	}
 
 	compatibility := &compatibilityStub{err: errors.New("unproven selector")}
