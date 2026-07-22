@@ -70,7 +70,7 @@ func authorityFixture() (tailoringbundle.Bundle, string, sourceprocess.Identity)
 	identity := sourceprocess.Identity{ResolvedPath: "/tool", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Size: 1}
 	catalog := sourcecatalog.Catalog{SchemaVersion: sourcecatalog.SchemaVersion, Adapter: sourcecatalog.Adapter{Kind: "example.test.source", ContractVersion: 1}, Source: sourcecatalog.Source{RequestedExecutable: "tool", ResolvedPath: identity.ResolvedPath, SHA256: identity.SHA256, Size: identity.Size, Version: "1.0"}, Probe: sourcecatalog.Probe{IDs: []string{"help"}, Attempts: 1}, Commands: []sourcecatalog.Command{{Path: []string{"item", "list"}, Summary: "List", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin, Options: []sourcecatalog.Option{}, StructuredOutput: []sourcecatalog.StructuredOutput{{Format: "json", SelectorFlag: "--json", Fields: []string{"id"}}}}}}
 	cd, _ := catalog.Digest()
-	specification := tailoringbundle.Specification{SchemaVersion: tailoringbundle.SpecificationSchemaVersion, CatalogDigest: cd, Surface: tailoringbundle.Surface{Default: tailoringbundle.SurfaceDefaultExclude}, Commands: []tailoringbundle.CommandEntry{{Command: []string{"item", "list"}, Presence: tailoringbundle.PresenceInclude, Reason: "needed", Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultInherit, Include: []string{}, Exclude: []string{}}, Wrapper: &tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{}}}}}
+	specification := tailoringbundle.Specification{SchemaVersion: tailoringbundle.SpecificationSchemaVersion, CatalogDigest: cd, Surface: tailoringbundle.Surface{Default: tailoringbundle.SurfaceDefaultExclude}, Commands: []tailoringbundle.CommandEntry{{Command: []string{"item", "list"}, Presence: tailoringbundle.PresenceInclude, Reason: "needed", Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultInherit, Include: []string{}, Exclude: []string{}}, Wrapper: &tailoringbundle.Wrapper{Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{}}, After: []tailoringbundle.StageAction{}}}}}
 	bundle, _ := tailoringbundle.Compile(catalog, specification)
 	digest, _ := bundle.Digest()
 	return bundle, digest, identity
@@ -104,7 +104,7 @@ func optimizerAuthorityFixture(t *testing.T) (tailoringbundle.Bundle, string, so
 			Command: []string{"test"}, Presence: tailoringbundle.PresenceInclude, Reason: "Optimize exact passing test output.",
 			Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultInherit, Include: []string{}, Exclude: []string{}},
 			Wrapper: &tailoringbundle.Wrapper{
-				Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{AppendArgs: []string{"-json"}},
+				Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{}, Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{}, AppendArgs: []string{"-json"}},
 				Output: &tailoringbundle.Output{Kind: tailoringbundle.OutputKindOptimizer, Optimizer: &tailoringbundle.Optimizer{Input: "go_test_jsonl", Contract: contract, AllowOriginalOutput: true}},
 				After:  []tailoringbundle.StageAction{},
 			},
@@ -172,6 +172,42 @@ func TestTrustConfirmsThenMutatesExactlyOnceAndFailsClosed(t *testing.T) {
 	trust.adds = 0
 	if _, err := New(bundleStub{bundle: bundle, digest: digest}, identityPort, trust, confirm).Trust(context.Background(), trustIntent(), "bundle.json"); err == nil || trust.adds != 0 {
 		t.Fatalf("denied error=%v adds=%d", err, trust.adds)
+	}
+}
+
+func TestSummarizeCountsOptionDefaultsSeparately(t *testing.T) {
+	bundle, _, _ := authorityFixture()
+	catalog := bundle.Catalog
+	catalog.Commands[0].Options = []sourcecatalog.Option{{Name: "--limit", TakesValue: true}}
+	catalogDigest, err := catalog.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	specification := tailoringbundle.Specification{
+		SchemaVersion: tailoringbundle.SpecificationSchemaVersion,
+		CatalogDigest: catalogDigest,
+		Surface:       tailoringbundle.Surface{Default: tailoringbundle.SurfaceDefaultExclude},
+		Commands: []tailoringbundle.CommandEntry{{
+			Command: []string{"item", "list"}, Presence: tailoringbundle.PresenceInclude, Reason: "Use the reviewed routine limit.",
+			Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultInherit, Include: []string{}, Exclude: []string{}},
+			Wrapper: &tailoringbundle.Wrapper{
+				Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{},
+				Invoke: tailoringbundle.Invocation{OptionDefaults: []tailoringbundle.OptionDefault{{Option: "--limit", Value: "30"}}, AppendArgs: []string{}},
+				After:  []tailoringbundle.StageAction{},
+			},
+		}},
+	}
+	bundle, err = tailoringbundle.Compile(catalog, specification)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, err := bundle.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary := summarize(bundle, digest)
+	if summary.OptionDefaultCount != 1 || summary.ArgvTransformationCount != 1 || summary.TransformWrapperCount != 1 || summary.OptionOverrideCount != 0 {
+		t.Fatalf("summary = %+v", summary)
 	}
 }
 

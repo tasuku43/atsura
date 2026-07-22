@@ -236,6 +236,7 @@ func summarize(bundle tailoringbundle.Bundle, digest string) bundletrust.Summary
 	}
 	for _, entry := range bundle.Surface {
 		result.OptionOverrideCount += len(entry.Options.Include) + len(entry.Options.Exclude)
+		result.OptionDefaultCount += len(entry.Wrapper.Invoke.OptionDefaults)
 		result.BeforeActionCount += len(entry.Wrapper.Before)
 		result.AfterActionCount += len(entry.Wrapper.After)
 		switch entry.Wrapper.Kind {
@@ -244,7 +245,7 @@ func summarize(bundle tailoringbundle.Bundle, digest string) bundletrust.Summary
 		case tailoringbundle.WrapperTransform:
 			result.TransformWrapperCount++
 		}
-		if len(entry.Wrapper.Invoke.AppendArgs) > 0 {
+		if len(entry.Wrapper.Invoke.OptionDefaults) > 0 || len(entry.Wrapper.Invoke.AppendArgs) > 0 {
 			result.ArgvTransformationCount++
 		}
 		if entry.Wrapper.Output != nil {

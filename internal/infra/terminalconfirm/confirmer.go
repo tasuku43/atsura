@@ -51,12 +51,12 @@ func (c *Confirmer) Confirm(ctx context.Context, summary bundletrust.Summary) er
 	}
 	defer terminal.Close()
 	prompt := fmt.Sprintf(
-		"Adopt this exact Atsura tailoring bundle?\n  bundle: %s\n  catalog: %s\n  specification: %s\n  source: %s\n  source sha256: %s\n  source version: %s\n%s  surface default: %s\n  commands: included=%d explicitly-excluded=%d\n  wrappers: identity=%d transform=%d\n  transforms: option-overrides=%d argv=%d before=%d after=%d output=%d\n  result visibility: source-stream-passthrough=%d optimizer=%d\n%s%sType the full bundle digest to adopt it:\n> ",
+		"Adopt this exact Atsura tailoring bundle?\n  bundle: %s\n  catalog: %s\n  specification: %s\n  source: %s\n  source sha256: %s\n  source version: %s\n%s  surface default: %s\n  commands: included=%d explicitly-excluded=%d\n  wrappers: identity=%d transform=%d\n  transforms: option-overrides=%d option-defaults=%d argv=%d before=%d after=%d output=%d\n  result visibility: source-stream-passthrough=%d optimizer=%d\n%s%sType the full bundle digest to adopt it:\n> ",
 		summary.BundleDigest, summary.CatalogDigest, summary.SpecificationDigest, summary.SourcePath,
 		summary.SourceSHA256, summary.SourceVersion, processors.String(), summary.SurfaceDefault,
 		summary.IncludedCommandCount, summary.ExcludedCommandCount,
 		summary.IdentityWrapperCount, summary.TransformWrapperCount,
-		summary.OptionOverrideCount, summary.ArgvTransformationCount,
+		summary.OptionOverrideCount, summary.OptionDefaultCount, summary.ArgvTransformationCount,
 		summary.BeforeActionCount, summary.AfterActionCount, summary.OutputTransformationCount,
 		summary.SourceStreamResultCount, summary.OptimizerResultCount, streamWarning, optimizerWarning,
 	)

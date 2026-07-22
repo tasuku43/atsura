@@ -85,6 +85,7 @@ type Summary struct {
 	IdentityWrapperCount      int
 	TransformWrapperCount     int
 	OptionOverrideCount       int
+	OptionDefaultCount        int
 	ArgvTransformationCount   int
 	BeforeActionCount         int
 	AfterActionCount          int
