@@ -64,29 +64,30 @@ type evidenceDocument struct {
 }
 
 type artifactJourneyEvidence struct {
-	Target                      string                `json:"target"`
-	ObservedHost                string                `json:"observed_host"`
-	ArchiveName                 string                `json:"archive_name"`
-	ArchiveSHA256               string                `json:"archive_sha256"`
-	Version                     string                `json:"version"`
-	Revision                    string                `json:"revision"`
-	HelpContractsVerified       int                   `json:"help_contracts_verified"`
-	BundleDigest                string                `json:"bundle_digest"`
-	PlanDigest                  string                `json:"plan_digest"`
-	IssueBundleDigest           string                `json:"issue_bundle_digest"`
-	IssuePlanDigest             string                `json:"issue_plan_digest"`
-	WrapperOutcome              string                `json:"wrapper_outcome"`
-	WrapperCases                []wrapperCaseEvidence `json:"wrapper_cases"`
-	WrapperSourceAttempts       int                   `json:"wrapper_source_process_attempts"`
-	CommandsVerified            []string              `json:"commands_verified"`
-	SourceInspectionAttempts    int                   `json:"source_inspection_attempts"`
-	ZeroAttemptRejections       int                   `json:"zero_attempt_rejections"`
-	PostStartFaults             []string              `json:"post_start_faults"`
-	FixtureAttempts             int                   `json:"fixture_attempts"`
-	CredentialEnvironmentAbsent bool                  `json:"credential_environment_absent"`
-	SecretCanariesAbsent        bool                  `json:"secret_canaries_absent"`
-	TailoredHelp                tailoredHelpEvidence  `json:"tailored_help"`
-	GoSource                    goSourceEvidence      `json:"go_source"`
+	Target                      string                   `json:"target"`
+	ObservedHost                string                   `json:"observed_host"`
+	ArchiveName                 string                   `json:"archive_name"`
+	ArchiveSHA256               string                   `json:"archive_sha256"`
+	Version                     string                   `json:"version"`
+	Revision                    string                   `json:"revision"`
+	HelpContractsVerified       int                      `json:"help_contracts_verified"`
+	BundleDigest                string                   `json:"bundle_digest"`
+	PlanDigest                  string                   `json:"plan_digest"`
+	IssueBundleDigest           string                   `json:"issue_bundle_digest"`
+	IssuePlanDigest             string                   `json:"issue_plan_digest"`
+	WrapperOutcome              string                   `json:"wrapper_outcome"`
+	WrapperCases                []wrapperCaseEvidence    `json:"wrapper_cases"`
+	WrapperSourceAttempts       int                      `json:"wrapper_source_process_attempts"`
+	CommandsVerified            []string                 `json:"commands_verified"`
+	SourceInspectionAttempts    int                      `json:"source_inspection_attempts"`
+	ZeroAttemptRejections       int                      `json:"zero_attempt_rejections"`
+	PostStartFaults             []string                 `json:"post_start_faults"`
+	FixtureAttempts             int                      `json:"fixture_attempts"`
+	CredentialEnvironmentAbsent bool                     `json:"credential_environment_absent"`
+	SecretCanariesAbsent        bool                     `json:"secret_canaries_absent"`
+	TailoredHelp                tailoredHelpEvidence     `json:"tailored_help"`
+	GoSource                    goSourceEvidence         `json:"go_source"`
+	WrapperLifecycle            wrapperLifecycleEvidence `json:"wrapper_lifecycle"`
 }
 
 type tailoredHelpEvidence struct {
@@ -521,6 +522,14 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 	if err != nil {
 		return evidenceDocument{}, err
 	}
+	wrapperLifecycle, wrapperLifecycleBoundaries, addedFixtureAttempts, err := verifyPersistentWrapperLifecycle(
+		ctx, runner, helpEvidence, configuration.goos, executablePath, workRoot, attemptLog, wantedAttempts,
+		prJourney, wrapperEvidence.cases, goEvidence,
+	)
+	if err != nil {
+		return evidenceDocument{}, err
+	}
+	wantedAttempts += addedFixtureAttempts
 
 	trustBytes, err := readBoundedFile(trustPath, maxAttemptLogBytes)
 	if err != nil {
@@ -533,6 +542,7 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 	canaryBoundaries := [][]byte{inspection.stdout, prExecution.stdout, issueExecution.stdout, trustBytes, attemptBytes}
 	canaryBoundaries = append(canaryBoundaries, wrapperEvidence.boundaries...)
 	canaryBoundaries = append(canaryBoundaries, goBoundaries...)
+	canaryBoundaries = append(canaryBoundaries, wrapperLifecycleBoundaries...)
 	canaryBoundaries = append(canaryBoundaries, prJourney.boundaries...)
 	canaryBoundaries = append(canaryBoundaries, issueJourney.boundaries...)
 	canaryBoundaries = append(canaryBoundaries, multiCommandBoundaries...)
@@ -544,7 +554,7 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 		return evidenceDocument{}, fmt.Errorf("fixture attempt sequence is invalid")
 	}
 
-	return evidenceDocument{SchemaVersion: 8, ArtifactJourney: artifactJourneyEvidence{
+	return evidenceDocument{SchemaVersion: 9, ArtifactJourney: artifactJourneyEvidence{
 		Target: configuration.goos + "/" + configuration.goarch, ObservedHost: runtime.GOOS + "/" + runtime.GOARCH,
 		ArchiveName: filepath.Base(archivePath), ArchiveSHA256: digest,
 		Version: strings.TrimPrefix(configuration.tag, "v"), Revision: configuration.revision, HelpContractsVerified: len(helpEvidence.outputs),
@@ -556,12 +566,14 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 		SourceInspectionAttempts: 4, ZeroAttemptRejections: zeroAttemptRejections,
 		PostStartFaults: faultCodes, FixtureAttempts: wantedAttempts,
 		CredentialEnvironmentAbsent: true, SecretCanariesAbsent: true,
-		TailoredHelp: wrapperEvidence.tailoredHelp,
-		GoSource:     goEvidence,
+		TailoredHelp:     wrapperEvidence.tailoredHelp,
+		GoSource:         goEvidence,
+		WrapperLifecycle: wrapperLifecycle,
 	}}, nil
 }
 
 type preparedCommandJourney struct {
+	bundleLocator         string
 	bundleDigest          string
 	planDigest            string
 	wrapperKind           string
@@ -1144,7 +1156,8 @@ func verifyGoSourceJourney(
 		return goSourceEvidence{}, nil, fmt.Errorf("Go source preparation started the test command")
 	}
 	journey := preparedCommandJourney{
-		bundleDigest: bundleDigest, planDigest: previewPayload.PlanDigest,
+		bundleLocator: bundlePath,
+		bundleDigest:  bundleDigest, planDigest: previewPayload.PlanDigest,
 		wrapperKind: string(previewPayload.Plan.WrapperKind), resultMode: string(previewPayload.Plan.ResultMode),
 		baseInvocation: baseInvocation, sourceArgv: append([]string{}, previewPayload.Plan.Stages.Invoke.Args...),
 		optionDefaults:        cloneOptionDefaultEvidence(previewPayload.Plan.Stages.Invoke.OptionDefaults),
@@ -1303,7 +1316,8 @@ func verifyGoSourceJourney(
 		return goSourceEvidence{}, nil, fmt.Errorf("Go optimizer plan contract is invalid: %w", err)
 	}
 	optimizerJourney := preparedCommandJourney{
-		bundleDigest: optimizerBundleDigest, planDigest: optimizerPreviewPayload.PlanDigest,
+		bundleLocator: optimizerBundlePath,
+		bundleDigest:  optimizerBundleDigest, planDigest: optimizerPreviewPayload.PlanDigest,
 		wrapperKind: string(optimizerPreviewPayload.Plan.WrapperKind), resultMode: string(optimizerPreviewPayload.Plan.ResultMode),
 		baseInvocation: optimizerBaseInvocation, sourceArgv: append([]string{}, optimizerPreviewPayload.Plan.Stages.Invoke.Args...),
 		optionDefaults:        cloneOptionDefaultEvidence(optimizerPreviewPayload.Plan.Stages.Invoke.OptionDefaults),
@@ -1625,10 +1639,10 @@ func validateWrapperRenderEvidence(document wrapperRenderDocument, journey prepa
 }
 
 func (j preparedCommandJourney) bundlePath() string {
-	if len(j.baseInvocation) < 2 || j.baseInvocation[0] != "--bundle" {
+	if !absoluteCleanPath(j.bundleLocator) {
 		return ""
 	}
-	return j.baseInvocation[1]
+	return j.bundleLocator
 }
 
 func cloneOptionDefaultEvidence(values []tailoringbundle.OptionDefault) []tailoringbundle.OptionDefault {
@@ -1893,7 +1907,8 @@ func prepareMultiCommandWrapperJourneys(
 	}
 	boundaries = append(boundaries, preAdoptionBoundaries...)
 	prJourney := preparedCommandJourney{
-		bundleDigest: bundleDigest, planDigest: prEvidence.PlanDigest,
+		bundleLocator: bundlePath,
+		bundleDigest:  bundleDigest, planDigest: prEvidence.PlanDigest,
 		wrapperKind: string(prEvidence.Plan.WrapperKind), resultMode: string(prEvidence.Plan.ResultMode),
 		baseInvocation: prBaseInvocation, sourceArgv: append([]string{}, prEvidence.Plan.Stages.Invoke.Args...),
 		optionDefaults:        cloneOptionDefaultEvidence(prEvidence.Plan.Stages.Invoke.OptionDefaults),
@@ -1901,7 +1916,8 @@ func prepareMultiCommandWrapperJourneys(
 		zeroAttemptRejections: zeroAttemptRejections,
 	}
 	issueJourney := preparedCommandJourney{
-		bundleDigest: bundleDigest, planDigest: issueEvidence.PlanDigest,
+		bundleLocator: bundlePath,
+		bundleDigest:  bundleDigest, planDigest: issueEvidence.PlanDigest,
 		wrapperKind: string(issueEvidence.Plan.WrapperKind), resultMode: string(issueEvidence.Plan.ResultMode),
 		baseInvocation: issueBaseInvocation, sourceArgv: append([]string{}, issueEvidence.Plan.Stages.Invoke.Args...),
 		optionDefaults:        cloneOptionDefaultEvidence(issueEvidence.Plan.Stages.Invoke.OptionDefaults),
@@ -1940,7 +1956,8 @@ func prepareDefaultOverrideJourney(
 		return preparedCommandJourney{}, fmt.Errorf("default override preview started the source fixture")
 	}
 	return preparedCommandJourney{
-		bundleDigest: base.bundleDigest, planDigest: evidence.PlanDigest,
+		bundleLocator: base.bundleLocator,
+		bundleDigest:  base.bundleDigest, planDigest: evidence.PlanDigest,
 		wrapperKind: string(evidence.Plan.WrapperKind), resultMode: string(evidence.Plan.ResultMode),
 		baseInvocation: baseInvocation, sourceArgv: append([]string{}, evidence.Plan.Stages.Invoke.Args...),
 		optionDefaults:        cloneOptionDefaultEvidence(evidence.Plan.Stages.Invoke.OptionDefaults),
@@ -2051,7 +2068,8 @@ func prepareCommandJourney(
 	}
 
 	return preparedCommandJourney{
-		bundleDigest: bundleDigest, planDigest: previewEvidence.PlanDigest,
+		bundleLocator: bundlePath,
+		bundleDigest:  bundleDigest, planDigest: previewEvidence.PlanDigest,
 		wrapperKind: string(previewEvidence.Plan.WrapperKind), resultMode: string(previewEvidence.Plan.ResultMode),
 		baseInvocation: baseInvocation, sourceArgv: append([]string{}, previewEvidence.Plan.Stages.Invoke.Args...),
 		optionDefaults:        cloneOptionDefaultEvidence(previewEvidence.Plan.Stages.Invoke.OptionDefaults),
@@ -2142,7 +2160,8 @@ func prepareSourceStreamJourney(
 		return preparedCommandJourney{}, fmt.Errorf("source-stream preparation started the source fixture")
 	}
 	return preparedCommandJourney{
-		bundleDigest: bundleDigest, planDigest: previewEvidence.PlanDigest,
+		bundleLocator: bundlePath,
+		bundleDigest:  bundleDigest, planDigest: previewEvidence.PlanDigest,
 		wrapperKind: string(previewEvidence.Plan.WrapperKind), resultMode: string(previewEvidence.Plan.ResultMode),
 		baseInvocation: baseInvocation, sourceArgv: append([]string{}, previewEvidence.Plan.Stages.Invoke.Args...),
 		optionDefaults:        cloneOptionDefaultEvidence(previewEvidence.Plan.Stages.Invoke.OptionDefaults),
@@ -2383,10 +2402,11 @@ func validateHelpFaultMatrix(got, wanted []helpFaultDeclaration) error {
 }
 
 type helpOutputFieldProjection struct {
-	Name        string                `json:"name"`
-	Type        string                `json:"type"`
-	Description string                `json:"description"`
-	Schema      *helpSchemaProjection `json:"schema"`
+	Name          string                `json:"name"`
+	Type          string                `json:"type"`
+	Description   string                `json:"description"`
+	ReferenceKind string                `json:"reference_kind"`
+	Schema        *helpSchemaProjection `json:"schema"`
 }
 
 type helpOutputSchemaReference struct {
@@ -2429,6 +2449,8 @@ type helpCommandProjection struct {
 	Path     string `json:"path"`
 	Summary  string `json:"summary"`
 	Usage    string `json:"usage"`
+	Effect   string `json:"effect"`
+	Role     string `json:"role"`
 	Contract struct {
 		Outcome string                `json:"outcome"`
 		Inputs  []helpInputProjection `json:"inputs"`
@@ -2447,9 +2469,33 @@ type helpCommandProjection struct {
 			JSONFraming        string                         `json:"json_framing"`
 			PlanResultModes    []helpPlanResultModeProjection `json:"plan_result_modes"`
 		} `json:"output"`
+		FixedTarget *struct {
+			Kind  string `json:"kind"`
+			ID    string `json:"id"`
+			Scope string `json:"scope"`
+		} `json:"fixed_target"`
+		Mutation *struct {
+			TargetKind    string   `json:"target_kind"`
+			TargetInputs  []string `json:"target_inputs"`
+			TargetIDInput string   `json:"target_id_input"`
+			Impact        struct {
+				Cardinality  string `json:"cardinality"`
+				Notification string `json:"notification"`
+				AccessChange string `json:"access_change"`
+				Destructive  string `json:"destructive"`
+			} `json:"impact"`
+		} `json:"mutation"`
 		Prerequisites []string               `json:"prerequisites"`
 		Errors        []helpFaultDeclaration `json:"errors"`
 	} `json:"contract"`
+	ProducesRefs []struct {
+		Kind  string `json:"kind"`
+		Field string `json:"field"`
+	} `json:"produces_refs"`
+	ConsumesRefs []struct {
+		Kind     string `json:"kind"`
+		Argument string `json:"argument"`
+	} `json:"consumes_refs"`
 }
 
 func input(name, source, cardinality string, allowed ...string) helpInputProjection {
@@ -2627,9 +2673,13 @@ var bundleProcessorStatusSchemaFields = []helpSchemaFieldProjection{
 }
 
 func validateCatalogJSONOutput(command helpCommandProjection, envelope string, version int, fields []struct{ name, fieldType string }) error {
+	return validateCatalogJSONOutputCoverage(command, envelope, version, "not_applicable", fields)
+}
+
+func validateCatalogJSONOutputCoverage(command helpCommandProjection, envelope string, version int, coverage string, fields []struct{ name, fieldType string }) error {
 	output := command.Contract.Output
 	if output.Authority != "catalog" || strings.Join(output.Formats, ",") != "json" || output.DefaultFormat != "json" ||
-		output.Delivery != "complete" || output.CollectionCoverage != "not_applicable" || output.JSONEnvelope != envelope ||
+		output.Delivery != "complete" || output.CollectionCoverage != coverage || output.JSONEnvelope != envelope ||
 		output.JSONSchemaVersion != version || output.PlanSchema != nil || output.JSONShape != "" || output.JSONRendering != "" ||
 		output.JSONFraming != "" || len(output.PlanResultModes) != 0 || len(output.Fields) != len(fields) {
 		return fmt.Errorf("catalog JSON output contract is invalid")
@@ -2775,6 +2825,51 @@ func validateInputs(got, wanted []helpInputProjection) error {
 	return nil
 }
 
+var wrapperInstallHelpFaultCodes = []string{
+	"bundle_file_not_found", "bundle_file_permission_denied", "unsafe_bundle_file", "bundle_file_too_large", "bundle_file_read_failed",
+	"invalid_bundle_file", "legacy_tailoring_schema", "bundle_digest_mismatch", "invalid_wrapper_binding", "invalid_bundle_trust_store",
+	"bundle_not_adopted", "bundle_source_drift", "source_executable_not_found", "source_identity_unavailable", "unsafe_source_executable",
+	"source_identity_changed", "invalid_source_identity", "invalid_processor_executable", "unsafe_processor_executable", "processor_identity_unavailable",
+	"processor_identity_changed", "invalid_processor_identity", "bundle_processor_drift", "wrapper_runtime_not_supported", "wrapper_runtime_unavailable",
+	"internal_error", "invalid_arguments", "wrapper_artifact_render_failed", "wrapper_artifact_platform_not_supported", "invalid_wrapper_artifact",
+	"wrapper_artifact_store_contract", "wrapper_artifact_store_unsafe", "wrapper_artifact_capacity_exceeded", "wrapper_artifact_not_found",
+	"wrapper_artifact_collision", "wrapper_artifact_tampered", "wrapper_artifact_mutation_uncertain", "invalid_mutation_contract",
+	"missing_mutation_action", "missing_mutation_policy", "mutation_rejected", "unclassified_mutation_outcome", "output_contract_exceeded",
+	"output_encoding_failed", "mutation_output_write_failed", "operation_canceled",
+}
+
+var wrapperStatusHelpFaultCodes = []string{
+	"invalid_arguments", "wrapper_artifact_platform_not_supported", "invalid_wrapper_artifact", "wrapper_artifact_store_contract",
+	"wrapper_artifact_store_unsafe", "wrapper_artifact_capacity_exceeded", "wrapper_artifact_not_found", "wrapper_artifact_collision",
+	"wrapper_artifact_tampered", "wrapper_artifact_status_unavailable", "output_contract_exceeded", "output_encoding_failed",
+	"internal_error", "output_write_failed", "operation_canceled",
+}
+
+var wrapperRemoveHelpFaultCodes = []string{
+	"invalid_arguments", "wrapper_artifact_platform_not_supported", "invalid_wrapper_artifact", "wrapper_artifact_store_contract",
+	"wrapper_artifact_store_unsafe", "wrapper_artifact_capacity_exceeded", "wrapper_artifact_not_found", "wrapper_artifact_collision",
+	"wrapper_artifact_tampered", "wrapper_artifact_mutation_uncertain", "invalid_mutation_contract", "missing_mutation_action",
+	"missing_mutation_policy", "mutation_rejected", "unclassified_mutation_outcome", "output_contract_exceeded", "output_encoding_failed",
+	"internal_error", "mutation_output_write_failed", "operation_canceled",
+}
+
+func validateHelpFaultCodes(got []helpFaultDeclaration, wanted []string) error {
+	if len(got) != len(wanted) {
+		return fmt.Errorf("fault code inventory length is invalid")
+	}
+	for index := range wanted {
+		if got[index].Code != wanted[index] || got[index].Kind == "" || len(got[index].NextActions) == 0 {
+			return fmt.Errorf("fault code inventory entry %d is invalid", index)
+		}
+		for _, action := range got[index].NextActions {
+			if action.Command == "" || action.Reason == "" {
+				return fmt.Errorf("fault code inventory recovery %d is invalid", index)
+			}
+		}
+	}
+	return nil
+}
+
 func verifyPackagedHelp(ctx context.Context, runner journeyRunner) (packagedHelpEvidence, error) {
 	root, err := runner.success(ctx, "success", "help", "--format", "agent")
 	if err != nil {
@@ -2782,7 +2877,7 @@ func verifyPackagedHelp(ctx context.Context, runner journeyRunner) (packagedHelp
 	}
 	wanted := []string{
 		"source inspect", "processor inspect", "spec init", "spec validate", "bundle build", "bundle status",
-		"bundle trust", "bundle preview", "bundle execute", "wrapper render", "wrapper run",
+		"bundle trust", "bundle preview", "bundle execute", "wrapper render", "wrapper run", "wrapper install", "wrapper status", "wrapper remove",
 	}
 	if err := validateRootHelp(root.stdout, wanted); err != nil {
 		return packagedHelpEvidence{}, fmt.Errorf("packaged root help contract is invalid")
@@ -2809,6 +2904,12 @@ func verifyPackagedHelp(ctx context.Context, runner journeyRunner) (packagedHelp
 			faultErr = validateHelpFaultMatrix(command.Contract.Errors, wrapperRenderHelpFaults)
 		case "wrapper run":
 			faultErr = validateHelpFaultMatrix(command.Contract.Errors, wrapperRunHelpFaults)
+		case "wrapper install":
+			faultErr = validateHelpFaultCodes(command.Contract.Errors, wrapperInstallHelpFaultCodes)
+		case "wrapper status":
+			faultErr = validateHelpFaultCodes(command.Contract.Errors, wrapperStatusHelpFaultCodes)
+		case "wrapper remove":
+			faultErr = validateHelpFaultCodes(command.Contract.Errors, wrapperRemoveHelpFaultCodes)
 		}
 		if faultErr != nil {
 			return packagedHelpEvidence{}, fmt.Errorf("packaged scoped help fault contract is invalid for %s: %w", path, faultErr)
@@ -2992,6 +3093,62 @@ func validateScopedHelp(path string, value []byte) (helpCommandProjection, error
 		for _, marker := range []string{"complete closure emitted by wrapper render", "exact bundle to remain adopted", "transformed_json", "source_stream_passthrough", "original_preserving_optimizer", "preserved_before_processor", "preserved_after_processor", "optimized", "source and processor each start at most once", "processor fault never falls back", "without a shell"} {
 			if !strings.Contains(prerequisites, marker) {
 				return helpCommandProjection{}, fmt.Errorf("wrapper run admission marker is missing")
+			}
+		}
+	case "wrapper install":
+		mutation := command.Contract.Mutation
+		fixed := command.Contract.FixedTarget
+		if command.Usage != "atr wrapper install --bundle <absolute-path>" || command.Effect != "create" || command.Role != "act" ||
+			validateInputs(command.Contract.Inputs, []helpInputProjection{typedInput("--bundle", "flag", "text", "single", true)}) != nil ||
+			validateCatalogJSONOutput(command, "installation", 1, []struct{ name, fieldType string }{
+				{name: "command", fieldType: "string"}, {name: "path", fieldType: "string"}, {name: "bin_path", fieldType: "string"},
+				{name: "already_installed", fieldType: "boolean"}, {name: "source_process_attempts", fieldType: "integer"},
+				{name: "processor_process_attempts", fieldType: "integer"},
+			}) != nil || fixed == nil || fixed.Kind != "wrapper-shim-store" || fixed.ID != "selected" || fixed.Scope != "tool_local" ||
+			mutation == nil || mutation.TargetKind != "wrapper-shim-store" || mutation.TargetInputs == nil || len(mutation.TargetInputs) != 0 || mutation.TargetIDInput != "" ||
+			mutation.Impact.Cardinality != "one" || mutation.Impact.Notification != "no" || mutation.Impact.AccessChange != "yes" || mutation.Impact.Destructive != "no" ||
+			command.ProducesRefs == nil || len(command.ProducesRefs) != 0 || command.ConsumesRefs == nil || len(command.ConsumesRefs) != 0 {
+			return helpCommandProjection{}, fmt.Errorf("wrapper install contract is incomplete")
+		}
+		for _, marker := range []string{"Linux or macOS", "starts neither source nor processor", "never edits PATH", "startup files", "coding-agent settings"} {
+			if !strings.Contains(prerequisites, marker) {
+				return helpCommandProjection{}, fmt.Errorf("wrapper install admission marker is missing")
+			}
+		}
+	case "wrapper status":
+		if command.Usage != "atr wrapper status" || command.Effect != "read" || command.Role != "discover" ||
+			command.Contract.Inputs == nil || len(command.Contract.Inputs) != 0 ||
+			validateCatalogJSONOutputCoverage(command, "artifacts", 1, "exhaustive", []struct{ name, fieldType string }{
+				{name: "reference", fieldType: "string"}, {name: "command", fieldType: "string"}, {name: "state", fieldType: "string"},
+				{name: "path", fieldType: "string"}, {name: "material_sha256", fieldType: "string"},
+			}) != nil || command.Contract.FixedTarget != nil || command.Contract.Mutation != nil ||
+			len(command.ProducesRefs) != 1 || command.ProducesRefs[0].Kind != "wrapper-shim-artifact" || command.ProducesRefs[0].Field != "reference" ||
+			command.ConsumesRefs == nil || len(command.ConsumesRefs) != 0 || len(command.Contract.Output.Fields) != 5 ||
+			command.Contract.Output.Fields[0].ReferenceKind != "wrapper-shim-artifact" {
+			return helpCommandProjection{}, fmt.Errorf("wrapper status contract is incomplete")
+		}
+		for _, marker := range []string{"Linux or macOS", "starts no source or processor process", "foreign", "symlinked", "special", "tampered"} {
+			if !strings.Contains(prerequisites, marker) {
+				return helpCommandProjection{}, fmt.Errorf("wrapper status admission marker is missing")
+			}
+		}
+	case "wrapper remove":
+		mutation := command.Contract.Mutation
+		if command.Usage != "atr wrapper remove --artifact <reference>" || command.Effect != "write" || command.Role != "act" ||
+			validateInputs(command.Contract.Inputs, []helpInputProjection{typedInput("--artifact", "flag", "text", "single", true)}) != nil ||
+			validateCatalogJSONOutput(command, "removal", 1, []struct{ name, fieldType string }{
+				{name: "command", fieldType: "string"}, {name: "path", fieldType: "string"}, {name: "removed", fieldType: "boolean"},
+				{name: "source_process_attempts", fieldType: "integer"}, {name: "processor_process_attempts", fieldType: "integer"},
+			}) != nil || command.Contract.FixedTarget != nil || mutation == nil || mutation.TargetKind != "wrapper-shim-artifact" ||
+			len(mutation.TargetInputs) != 1 || mutation.TargetInputs[0] != "--artifact" || mutation.TargetIDInput != "--artifact" ||
+			mutation.Impact.Cardinality != "one" || mutation.Impact.Notification != "no" || mutation.Impact.AccessChange != "yes" || mutation.Impact.Destructive != "yes" ||
+			command.ProducesRefs == nil || len(command.ProducesRefs) != 0 || len(command.ConsumesRefs) != 1 ||
+			command.ConsumesRefs[0].Kind != "wrapper-shim-artifact" || command.ConsumesRefs[0].Argument != "--artifact" {
+			return helpCommandProjection{}, fmt.Errorf("wrapper remove contract is incomplete")
+		}
+		for _, marker := range []string{"exact opaque reference", "immutable manifest", "symlinked", "special", "tampered", "unknown", "never deleted"} {
+			if !strings.Contains(prerequisites, marker) {
+				return helpCommandProjection{}, fmt.Errorf("wrapper remove admission marker is missing")
 			}
 		}
 	default:
@@ -3307,6 +3464,10 @@ func validateAttemptSequence(value []byte, goos string) error {
 					"--search=space value;$(touch atsura-artifact-injection)",
 					"--label=first", "--label=Unicode 雪", "--repo=-dash",
 				},
+			},
+			fixtureAttemptRecord{
+				SchemaVersion: 1, Kind: "runtime", Mode: "success",
+				Argv: []string{"pr", "list", "--limit=30", "--json=number,title,state"},
 			},
 		)
 	case "windows":

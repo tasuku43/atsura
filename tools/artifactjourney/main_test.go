@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -484,6 +485,7 @@ func TestAttemptsFaultsAndCanariesAreStrict(t *testing.T) {
 		{SchemaVersion: 1, Kind: "runtime", Mode: "success", Argv: []string{
 			"pr", "list", "--search=space value;$(touch atsura-artifact-injection)", "--label=first", "--label=Unicode 雪", "--repo=-dash",
 		}},
+		{SchemaVersion: 1, Kind: "runtime", Mode: "success", Argv: []string{"pr", "list", "--limit=30", "--json=number,title,state"}},
 	}
 	posixRecords := append(append([]fixtureAttemptRecord{}, baseRecords...), wrapperRecords...)
 	encodeRecords := func(records []fixtureAttemptRecord) []byte {
@@ -655,6 +657,168 @@ func TestBundleRuntimeHelpFaultMatricesAreExact(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+func TestWrapperLifecycleHelpFaultCodeInventoriesAreExact(t *testing.T) {
+	for name, codes := range map[string][]string{
+		"install": wrapperInstallHelpFaultCodes,
+		"status":  wrapperStatusHelpFaultCodes,
+		"remove":  wrapperRemoveHelpFaultCodes,
+	} {
+		t.Run(name, func(t *testing.T) {
+			faults := make([]helpFaultDeclaration, len(codes))
+			for index, code := range codes {
+				faults[index] = helpFaultDeclaration{
+					Code: code, Kind: "internal",
+					NextActions: []helpNextAction{{Command: "help wrapper " + name, Reason: "Synthetic exact inventory."}},
+				}
+			}
+			if err := validateHelpFaultCodes(faults, codes); err != nil {
+				t.Fatal(err)
+			}
+			for _, mutate := range []func([]helpFaultDeclaration) []helpFaultDeclaration{
+				func(value []helpFaultDeclaration) []helpFaultDeclaration { return value[:len(value)-1] },
+				func(value []helpFaultDeclaration) []helpFaultDeclaration {
+					value[0], value[1] = value[1], value[0]
+					return value
+				},
+				func(value []helpFaultDeclaration) []helpFaultDeclaration {
+					value[0].NextActions = nil
+					return value
+				},
+			} {
+				changed := mutate(cloneHelpFaults(faults))
+				if err := validateHelpFaultCodes(changed, codes); err == nil {
+					t.Fatal("changed lifecycle help fault inventory was accepted")
+				}
+			}
+		})
+	}
+}
+
+func TestWrapperLifecycleDecodersRequireExplicitCanonicalFields(t *testing.T) {
+	root := t.TempDir()
+	binPath := filepath.Join(root, "bin")
+	commandPath := filepath.Join(binPath, "gh")
+	install := []byte(fmt.Sprintf(`{"schema_version":1,"installation":{"command":"gh","path":%q,"bin_path":%q,"already_installed":false,"source_process_attempts":0,"processor_process_attempts":0}}`, commandPath, binPath))
+	decodedInstall, err := decodeWrapperInstall(install)
+	if err != nil || decodedInstall.AlreadyInstalled || decodedInstall.Path != commandPath || decodedInstall.BinPath != binPath {
+		t.Fatalf("install decode = %+v, %v", decodedInstall, err)
+	}
+	for _, invalid := range [][]byte{
+		bytes.Replace(install, []byte(`"already_installed":false,`), nil, 1),
+		bytes.Replace(install, []byte(`"source_process_attempts":0,`), nil, 1),
+		bytes.Replace(install, []byte(`"command":"gh"`), []byte(`"command":"gh","unknown":true`), 1),
+		append(append([]byte{}, install...), []byte(` {}`)...),
+	} {
+		if _, err := decodeWrapperInstall(invalid); err == nil {
+			t.Fatalf("invalid install JSON was accepted: %s", invalid)
+		}
+	}
+
+	material := strings.Repeat("a", 64)
+	reference := "wsh1_" + material
+	status := []byte(fmt.Sprintf(`{"schema_version":1,"artifacts":[{"reference":%q,"command":"gh","state":"owned_active","path":%q,"material_sha256":%q}]}`, reference, commandPath, material))
+	decodedStatus, err := decodeWrapperStatus(status)
+	if err != nil || len(decodedStatus) != 1 || decodedStatus[0].Reference != reference {
+		t.Fatalf("status decode = %+v, %v", decodedStatus, err)
+	}
+	for _, invalid := range [][]byte{
+		bytes.Replace(status, []byte(reference), []byte("wsh1_bad"), 1),
+		bytes.Replace(status, []byte(material), []byte(strings.Repeat("b", 64)), 1),
+		bytes.Replace(status, []byte(`"artifacts":`), []byte(`"other":`), 1),
+	} {
+		if _, err := decodeWrapperStatus(invalid); err == nil {
+			t.Fatalf("invalid status JSON was accepted: %s", invalid)
+		}
+	}
+
+	remove := []byte(fmt.Sprintf(`{"schema_version":1,"removal":{"command":"gh","path":%q,"removed":true,"source_process_attempts":0,"processor_process_attempts":0}}`, commandPath))
+	decodedRemove, err := decodeWrapperRemove(remove)
+	if err != nil || !decodedRemove.Removed || decodedRemove.Path != commandPath {
+		t.Fatalf("remove decode = %+v, %v", decodedRemove, err)
+	}
+	for _, invalid := range [][]byte{
+		bytes.Replace(remove, []byte(`"removed":true,`), nil, 1),
+		bytes.Replace(remove, []byte(`"processor_process_attempts":0`), []byte(`"other":0`), 1),
+	} {
+		if _, err := decodeWrapperRemove(invalid); err == nil {
+			t.Fatalf("invalid remove JSON was accepted: %s", invalid)
+		}
+	}
+}
+
+func TestManagedFilesystemSnapshotIsBoundedAndDoesNotFollowLinks(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "store")
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	regular := filepath.Join(root, "regular")
+	if err := os.WriteFile(regular, []byte("one"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	first, err := snapshotManagedFilesystem(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(regular, []byte("two"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second, err := snapshotManagedFilesystem(root)
+	if err != nil || first.digest == second.digest {
+		t.Fatalf("regular-file change snapshot = %q, %q, %v", first.digest, second.digest, err)
+	}
+	if runtime.GOOS == "windows" {
+		return
+	}
+	sentinel := filepath.Join(t.TempDir(), "sentinel")
+	if err := os.WriteFile(sentinel, []byte("before"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(sentinel, link); err != nil {
+		t.Fatal(err)
+	}
+	linked, err := snapshotManagedFilesystem(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sentinel, []byte("after"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	linkedAfter, err := snapshotManagedFilesystem(root)
+	if err != nil || linked.digest != linkedAfter.digest {
+		t.Fatalf("snapshot followed symlink target: %q, %q, %v", linked.digest, linkedAfter.digest, err)
+	}
+	if err := createSpecialLifecycleFile(filepath.Join(root, "special")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := snapshotManagedFilesystem(root); err != nil {
+		t.Fatalf("special-file snapshot failed: %v", err)
+	}
+}
+
+func TestExpectedManagedStoreRootUsesOnlyIsolatedPlatformConfiguration(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "fixture")
+	environment := []string{
+		"HOME=" + filepath.Join(base, "home"),
+		"XDG_CONFIG_HOME=" + filepath.Join(base, "xdg"),
+		"APPDATA=" + filepath.Join(base, "appdata"),
+	}
+	wanted := map[string]string{
+		"linux":   filepath.Join(base, "xdg", "atsura", "wrapper-shims", "v1"),
+		"darwin":  filepath.Join(base, "home", "Library", "Application Support", "atsura", "wrapper-shims", "v1"),
+		"windows": filepath.Join(base, "appdata", "atsura", "wrapper-shims", "v1"),
+	}
+	for goos, expected := range wanted {
+		actual, err := expectedManagedStoreRoot(environment, goos)
+		if err != nil || actual != expected || !pathWithin(base, actual) {
+			t.Fatalf("store root %s = %q, %v", goos, actual, err)
+		}
+	}
+	if _, err := expectedManagedStoreRoot(environment, "plan9"); err == nil {
+		t.Fatal("unsupported store platform was accepted")
 	}
 }
 
