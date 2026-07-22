@@ -20,11 +20,14 @@ RTK v0.43.0 artifact. Linux and macOS have the host-neutral POSIX renderer.
 Windows retains existing-command runtime evidence and exact structured
 unsupported wrapper rendering, with no POSIX activation or optimizer claim.
 
-Implementation acceptance and release-quality evidence are separate. The
-optimizer-aware installed-artifact schema 5 and aggregate schema 2 are
-implemented. They do not by themselves establish a release-quality optimizer
-or platform claim: that claim belongs only to the workflow result for one
-exact revision after all five required native rows and their aggregate pass.
+Implementation acceptance and release-quality evidence are separate.
+Installed-artifact schema 6 and aggregate schema 2 are implemented. Schema 6
+retains the optimizer-aware schema-5 record and adds bounded static tailored-
+help evidence for wrapper contract 2. They do not by themselves establish a
+release-quality optimizer, tailored-help, or platform claim: that claim belongs
+only to the workflow result for one exact revision after all five required
+native rows and their aggregate pass. This document does not claim that the
+schema-6 matrix has passed for the current revision.
 
 The current first-release packaging decisions are:
 
@@ -161,12 +164,17 @@ The release workflow follows this order:
    fixtures and no provider credentials. Linux and macOS activate generated
    ordinary-command functions for the three GitHub cases, one exact identity-
    wrapped no-argument Go `test`, and the finite RTK-backed optimizer cases.
+   On each POSIX row the transformed-PR wrapper also serves exact root,
+   namespace, and command `--help` while its bound `atr` is non-executable,
+   then proves the hidden and unknown help-shaped fallthrough faults without a
+   source or processor attempt.
    Each optimizer row receives one separately verified official RTK v0.43.0
    archive and materializes the optimizer only through explicit processor
    inspection. Each candidate archive is opened once for a bounded read; its
    digest and extracted bytes derive from that same immutable in-memory value.
    Windows receives no RTK artifact and verifies exact structured unsupported
-   rendering without claiming an optimizer.
+   rendering plus an explicit empty unsupported tailored-help proof without
+   claiming POSIX activation or an optimizer.
 5. Aggregate exactly five bounded native evidence documents with their matching
    candidate Atsura archives. Recompute every candidate digest and verify each
    applicable row's recorded processor provenance against the code-pinned
@@ -180,7 +188,7 @@ The release workflow follows this order:
    aggregate succeed.
 9. For a stable tag, render the checksum-pinned Homebrew Formula and open a Formula update pull request.
 
-Steps 4 and 5 are implemented by evidence schema 5, aggregate schema 2, and the
+Steps 4 and 5 are implemented by evidence schema 6, aggregate schema 2, and the
 native workflow. Their presence is not an attestation for a moving worktree.
 Publication remains blocked until every required native row and its aggregate
 succeed for the exact candidate revision.
@@ -350,7 +358,8 @@ environment/toolchain closure, successor ADR, and native matrix evidence.
 The host-neutral wrapper claim is additionally limited to all of the following:
 
 - `wrapper render --bundle <absolute-path> [--format text|json]` on Linux or
-  macOS, with a portable non-reserved POSIX requested executable name;
+  macOS, with a portable POSIX requested executable name outside the maintained
+  reserved/fixed and implementation-specific function-name set;
 - one complete included surface selected by the shared finite compatibility
   registry: either GitHub CLI `issue list` / `pr list` under contract 2, or
   exact Go `test` under contract 2 with either the identity wrapper or the
@@ -362,7 +371,11 @@ The host-neutral wrapper claim is additionally limited to all of the following:
   `original_preserving_optimizer` for the exact RTK-backed Go tuple;
 - fixed Atsura-generated function source containing the exact bundle digest and
   current absolute `atr` path/hash/size, root structured errors, the public
-  `wrapper run` contract version 1, an explicit `--`, and lossless `"$@"`;
+  `wrapper run` contract version 2, bounded bundle-derived root/namespace/exact
+  final-`--help` material, an explicit `--`, and lossless non-help `"$@"`;
+- static tailored-help success starts no bound `atr`, source, or processor and
+  names the full bundle digest; it describes the exact rendered artifact rather
+  than current executability, readiness, authorization, or attestation;
 - honest runtime validation of that closure, followed by the same fresh-plan
   application and exact source process boundary as `bundle execute`, plus the
   separately identity-bound processor boundary only for the optimizer mode;
@@ -460,21 +473,36 @@ both source-specific platform alternatives without treating unsupported POSIX
 activation as a skipped success.
 
 Historical evidence schema 4 cannot support the accepted optimizer or current
-Go contract 2 release claim. Current schema 5 retains the base GitHub and Go
-identity facts while binding Go contract 2, processor-observation schema 1,
-the exact processor artifact and executable identity, fixed RTK invocation,
-schema-3 bundle and schema-5 plan digests, exact caller/source/processor argv,
-formats, process modes, v2 isolation and bounds, source-fixture attempt counts,
+Go contract 2 release claim. Schema 5 retains the base GitHub and Go identity
+facts while binding Go contract 2, processor-observation schema 1, the exact
+processor artifact and executable identity, fixed RTK invocation, schema-3
+bundle and schema-5 plan digests, exact caller/source/processor argv, formats,
+process modes, v2 isolation and bounds, source-fixture attempt counts,
 processor-inspection evidence, result disposition and status, and bounded leak
-checks. The four POSIX rows must record `optimized` and reachable
+checks. It is optimizer-aware but predates static tailored help.
+
+Current schema 6 retains the complete schema-5 proof and adds one bounded
+`tailored_help` object. Each POSIX row binds the transformed-PR bundle's full
+digest, rendered-wrapper digest, and wrapper contract 2. It records exact
+`["--help"]`, `["pr","--help"]`, and `["pr","list","--help"]`
+selectors with output and empty-stderr digests while the exact extracted `atr`
+is temporarily non-
+executable. It then restores that runtime and records hidden `issue list` as
+`command_not_in_surface` and an unknown selector as `invalid_invocation`, both
+with zero source and processor attempts. Windows records
+`platform_not_supported`, empty help-view and fallthrough inventories, no help
+binding digests or wrapper contract, and zero attempts.
+
+The four POSIX rows must also record `optimized` and reachable
 `preserved_before_processor`; Windows records no optimizer case or processor
 evidence. Without an accepted external observer, installed evidence does not
 claim processor-launch counts; controlled application and infrastructure tests
-own that truth. Schema 5 and aggregate schema 2 implement the proof mechanism;
-the workflow result for one exact candidate revision owns whether the required
-five-target evidence exists. Schema 5 keeps the identity case in the outer
-`go_source` wrapper fields and records the optimizer's separate bundle, plan,
-rendered-wrapper digest, cases, and faults in the nested `optimizer` object.
+own that truth. Schema 6 and unchanged aggregate schema 2 implement the proof
+mechanism; the workflow result for one exact candidate revision owns whether
+the required five-target evidence exists. The inherited schema-5 optimizer
+shape keeps the identity case in the outer `go_source` wrapper fields and
+records the optimizer's separate bundle, plan, rendered-wrapper digest, cases,
+and faults in the nested `optimizer` object.
 
 The credential-free in-process production-composition fixture supplies the
 complete phase evidence that a portable exact-archive journey cannot safely
@@ -511,10 +539,11 @@ package patterns, `--`, and test-binary arguments remain outside the first
 runtime. The same launcher selecting Go 1.27 later is not detected by contract
 2. Ambient Go configuration and toolchain selection remain source-owned. The
 pass-only `go test -json` / RTK `go-test` optimizer is now the one accepted
-external-processor implementation tuple. Current evidence schema 5 and
-aggregate schema 2 can carry that claim, but only a successful five-target
-native run for one exact candidate revision can advance the implementation to
-a release-quality platform claim.
+external-processor implementation tuple. Current evidence schema 6 and
+aggregate schema 2 can carry that optimizer claim together with the contract-2
+tailored-help claim, but only a successful five-target native run for one exact
+candidate revision can advance the implementation to a release-quality
+platform claim.
 
 Matrix artifacts use stable, target-unique names and explicit replacement of
 the prior same-name artifact. Candidate archives, native journey evidence, and
@@ -526,11 +555,11 @@ Current bounded observation: on 2026-07-22 the Darwin/arm64 exact packaged
 journey passed for revision `b4ade8c`, including ordinary-command wrapper
 activation. This is one implementation observation, not evidence for the later
 documentation commits, schema-5 source-stream or optimizer plans, the current
-Go contract, the current schema-5/aggregate-schema-2 evidence mechanism, the
-identity or append-argv-only GitHub cases, the Go inspection/wrapper case, the
-other four native rows, the aggregate, publication, or a release-quality matrix
-claim. The exact revision selected for any tag must replay all required rows
-again.
+Go contract, wrapper contract 2 static help, the current schema-6/aggregate-
+schema-2 evidence mechanism, the identity or append-argv-only GitHub cases, the
+Go inspection/wrapper case, the other four native rows, the aggregate,
+publication, or a release-quality matrix claim. The exact revision selected
+for any tag must replay all required rows again.
 
 No public release has yet made the wrapper claim. A future candidate that
 passes the complete gates may claim only the fixed Linux/macOS POSIX

@@ -24,6 +24,7 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/processorprocess"
 	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
 	"github.com/tasuku43/atsura/internal/domain/tailoringplan"
+	"github.com/tasuku43/atsura/internal/domain/wrapperbinding"
 	"github.com/tasuku43/atsura/internal/infra/trustfile"
 	"github.com/tasuku43/atsura/tools/internal/processormanifest"
 )
@@ -82,7 +83,35 @@ type artifactJourneyEvidence struct {
 	FixtureAttempts             int                   `json:"fixture_attempts"`
 	CredentialEnvironmentAbsent bool                  `json:"credential_environment_absent"`
 	SecretCanariesAbsent        bool                  `json:"secret_canaries_absent"`
+	TailoredHelp                tailoredHelpEvidence  `json:"tailored_help"`
 	GoSource                    goSourceEvidence      `json:"go_source"`
+}
+
+type tailoredHelpEvidence struct {
+	Outcome                           string                      `json:"outcome"`
+	BundleDigest                      string                      `json:"bundle_digest"`
+	WrapperSourceSHA256               string                      `json:"wrapper_source_sha256"`
+	WrapperContractVersion            int                         `json:"wrapper_contract_version"`
+	Views                             []tailoredHelpViewEvidence  `json:"views"`
+	FallthroughFaults                 []tailoredHelpFaultEvidence `json:"fallthrough_faults"`
+	RuntimeNonExecutableDuringSuccess bool                        `json:"runtime_non_executable_during_success"`
+	SourceProcessAttempts             int                         `json:"source_process_attempts"`
+	ProcessorProcessAttempts          int                         `json:"processor_process_attempts"`
+}
+
+type tailoredHelpViewEvidence struct {
+	Name         string   `json:"name"`
+	Argv         []string `json:"argv"`
+	StdoutSHA256 string   `json:"stdout_sha256"`
+	StderrSHA256 string   `json:"stderr_sha256"`
+}
+
+type tailoredHelpFaultEvidence struct {
+	Name                     string   `json:"name"`
+	Argv                     []string `json:"argv"`
+	Code                     string   `json:"code"`
+	SourceProcessAttempts    int      `json:"source_process_attempts"`
+	ProcessorProcessAttempts int      `json:"processor_process_attempts"`
 }
 
 type goSourceEvidence struct {
@@ -500,7 +529,7 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 		return evidenceDocument{}, fmt.Errorf("fixture attempt sequence is invalid")
 	}
 
-	return evidenceDocument{SchemaVersion: 5, ArtifactJourney: artifactJourneyEvidence{
+	return evidenceDocument{SchemaVersion: 6, ArtifactJourney: artifactJourneyEvidence{
 		Target: configuration.goos + "/" + configuration.goarch, ObservedHost: runtime.GOOS + "/" + runtime.GOARCH,
 		ArchiveName: filepath.Base(archivePath), ArchiveSHA256: digest,
 		Version: strings.TrimPrefix(configuration.tag, "v"), Revision: configuration.revision, HelpContractsVerified: len(helpEvidence.outputs),
@@ -512,7 +541,8 @@ func verifyArtifactJourney(ctx context.Context, configuration options) (evidence
 		SourceInspectionAttempts: 4, ZeroAttemptRejections: zeroAttemptRejections,
 		PostStartFaults: faultCodes, FixtureAttempts: wantedAttempts,
 		CredentialEnvironmentAbsent: true, SecretCanariesAbsent: true,
-		GoSource: goEvidence,
+		TailoredHelp: wrapperEvidence.tailoredHelp,
+		GoSource:     goEvidence,
 	}}, nil
 }
 
@@ -529,6 +559,7 @@ type preparedCommandJourney struct {
 type packagedWrapperEvidence struct {
 	outcome               string
 	cases                 []wrapperCaseEvidence
+	tailoredHelp          tailoredHelpEvidence
 	sourceProcessAttempts int
 	zeroAttemptRejections int
 	boundaries            [][]byte
@@ -598,6 +629,10 @@ func verifyPackagedWrappers(
 		}
 		return packagedWrapperEvidence{
 			outcome: "platform_not_supported", cases: []wrapperCaseEvidence{}, zeroAttemptRejections: 1,
+			tailoredHelp: tailoredHelpEvidence{
+				Outcome: "platform_not_supported", Views: []tailoredHelpViewEvidence{},
+				FallthroughFaults: []tailoredHelpFaultEvidence{},
+			},
 			boundaries: [][]byte{failure.stdout, failure.stderr},
 		}, nil
 	}
@@ -653,7 +688,7 @@ func verifyPackagedWrappers(
 			badDigest := differentDigest(document.Wrapper.Bundle.Digest)
 			rejectionArgs := []string{
 				"--error-format=json", "wrapper", "run",
-				"--contract-version=1",
+				fmt.Sprintf("--contract-version=%d", wrapperbinding.ContractVersion),
 				"--bundle=" + document.Wrapper.Bundle.Locator,
 				"--bundle-digest=" + badDigest,
 				"--runtime-path=" + document.Wrapper.Runtime.ResolvedPath,
@@ -676,6 +711,17 @@ func verifyPackagedWrappers(
 		if err := writePrivate(wrapperPath, textRender.stdout); err != nil {
 			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d caller-owned fixture write failed", index)
 		}
+		if index == 0 {
+			tailoredHelp, boundaries, helpErr := verifyPackagedTailoredHelp(
+				ctx, runner, help, executablePath, wrapperPath, input.journey.bundleDigest,
+				sourceDigest, attemptLog, existingAttempts,
+			)
+			if helpErr != nil {
+				return packagedWrapperEvidence{}, helpErr
+			}
+			result.tailoredHelp = tailoredHelp
+			result.boundaries = append(result.boundaries, boundaries...)
+		}
 		invocation, invokeErr := runPOSIXCaller(ctx, runner, "gh", wrapperPath, input.callerArgs, input.wantExitCode)
 		if invokeErr != nil {
 			return packagedWrapperEvidence{}, fmt.Errorf("wrapper case %d caller-owned invocation failed", index)
@@ -696,6 +742,149 @@ func verifyPackagedWrappers(
 		result.boundaries = append(result.boundaries, invocation.stdout, invocation.stderr)
 	}
 	return result, nil
+}
+
+func verifyPackagedTailoredHelp(
+	ctx context.Context,
+	runner journeyRunner,
+	help packagedHelpEvidence,
+	executablePath, wrapperPath, bundleDigest, wrapperSourceDigest, attemptLog string,
+	existingAttempts int,
+) (tailoredHelpEvidence, [][]byte, error) {
+	if !digestValue(bundleDigest) || !digestValue(wrapperSourceDigest) {
+		return tailoredHelpEvidence{}, nil, fmt.Errorf("tailored help binding identity is invalid")
+	}
+	tests := []struct {
+		name string
+		argv []string
+	}{
+		{name: "root", argv: []string{"--help"}},
+		{name: "namespace", argv: []string{"pr", "--help"}},
+		{name: "exact_command", argv: []string{"pr", "list", "--help"}},
+	}
+	views := make([]tailoredHelpViewEvidence, 0, len(tests))
+	boundaries := make([][]byte, 0, len(tests)*2+4)
+	err := withNonExecutableRuntime(executablePath, func() error {
+		for _, test := range tests {
+			wanted, err := expectedTailoredHelp(bundleDigest, test.name)
+			if err != nil {
+				return err
+			}
+			outcome, err := runPOSIXCaller(ctx, runner, "gh", wrapperPath, test.argv, 0)
+			if err != nil || !bytes.Equal(outcome.stdout, wanted) || len(outcome.stderr) != 0 {
+				return fmt.Errorf("tailored help %s view is invalid", test.name)
+			}
+			if err := requireAttempts(attemptLog, existingAttempts); err != nil {
+				return fmt.Errorf("tailored help %s view started the source fixture", test.name)
+			}
+			views = append(views, tailoredHelpViewEvidence{
+				Name: test.name, Argv: append([]string{}, test.argv...),
+				StdoutSHA256: digestBytes(outcome.stdout), StderrSHA256: digestBytes(outcome.stderr),
+			})
+			boundaries = append(boundaries, outcome.stdout, outcome.stderr)
+		}
+		return nil
+	})
+	if err != nil {
+		return tailoredHelpEvidence{}, nil, fmt.Errorf("non-executable-runtime tailored help failed: %w", err)
+	}
+
+	faultTests := []struct {
+		name, code, kind string
+		argv             []string
+		exit             int
+	}{
+		{name: "hidden_command", code: "command_not_in_surface", kind: "not_found", argv: []string{"issue", "list", "--help"}, exit: 6},
+		{name: "unknown_selector", code: "invalid_invocation", kind: "invalid_input", argv: []string{"unknown", "--help"}, exit: 2},
+	}
+	faults := make([]tailoredHelpFaultEvidence, 0, len(faultTests))
+	for _, test := range faultTests {
+		declaration, err := help.fault("wrapper run", test.code)
+		if err != nil || declaration.Kind != test.kind || declaration.Retryable {
+			return tailoredHelpEvidence{}, nil, fmt.Errorf("tailored help %s fault contract is invalid", test.name)
+		}
+		outcome, err := runPOSIXCaller(ctx, runner, "gh", wrapperPath, test.argv, test.exit)
+		if err != nil || len(outcome.stdout) != 0 || validateFault(outcome.stderr, declaration) != nil {
+			return tailoredHelpEvidence{}, nil, fmt.Errorf("tailored help %s fallthrough is invalid", test.name)
+		}
+		if err := requireAttempts(attemptLog, existingAttempts); err != nil {
+			return tailoredHelpEvidence{}, nil, fmt.Errorf("tailored help %s fallthrough started the source fixture", test.name)
+		}
+		faults = append(faults, tailoredHelpFaultEvidence{
+			Name: test.name, Argv: append([]string{}, test.argv...), Code: test.code,
+			SourceProcessAttempts: 0, ProcessorProcessAttempts: 0,
+		})
+		boundaries = append(boundaries, outcome.stdout, outcome.stderr)
+	}
+	return tailoredHelpEvidence{
+		Outcome: "compiled_views_verified", BundleDigest: bundleDigest,
+		WrapperSourceSHA256: wrapperSourceDigest, WrapperContractVersion: wrapperbinding.ContractVersion,
+		Views: views, FallthroughFaults: faults, RuntimeNonExecutableDuringSuccess: true,
+		SourceProcessAttempts: 0, ProcessorProcessAttempts: 0,
+	}, boundaries, nil
+}
+
+func expectedTailoredHelp(bundleDigest, view string) ([]byte, error) {
+	if !digestValue(bundleDigest) {
+		return nil, fmt.Errorf("tailored help bundle digest is invalid")
+	}
+	lines := []string{
+		"Atsura tailored help",
+		"Bundle digest: " + bundleDigest,
+	}
+	switch view {
+	case "root", "namespace":
+		lines = append(lines, "Commands:", "  pr list")
+	case "exact_command":
+		lines = append(lines,
+			"Command: pr list",
+			"Source summary: List pull requests",
+			"Tailoring reason: Return one reviewed compact result.",
+			"Options:",
+			"  --limit=<value> (value required)",
+		)
+	default:
+		return nil, fmt.Errorf("tailored help view is unsupported")
+	}
+	return []byte(strings.Join(lines, "\n") + "\n"), nil
+}
+
+func withNonExecutableRuntime(path string, action func() error) error {
+	if action == nil {
+		return fmt.Errorf("non-executable runtime action is required")
+	}
+	root, name, err := openParentRoot(path)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	before, err := root.Lstat(name)
+	if err != nil || before.Mode()&os.ModeSymlink != 0 || !before.Mode().IsRegular() || before.Mode().Perm()&0o111 == 0 {
+		return fmt.Errorf("runtime executable mode is invalid")
+	}
+	originalMode := before.Mode().Perm()
+	if err := root.Chmod(name, originalMode&^0o111); err != nil {
+		return fmt.Errorf("runtime executable mode could not be disabled")
+	}
+	restore := func(actionErr error) error {
+		current, currentErr := root.Lstat(name)
+		if currentErr != nil || !os.SameFile(before, current) || !current.Mode().IsRegular() {
+			return errors.Join(actionErr, fmt.Errorf("runtime identity changed before mode restoration"))
+		}
+		if err := root.Chmod(name, originalMode); err != nil {
+			return errors.Join(actionErr, fmt.Errorf("runtime executable mode could not be restored"))
+		}
+		restored, err := root.Lstat(name)
+		if err != nil || !os.SameFile(before, restored) || !restored.Mode().IsRegular() || restored.Mode().Perm() != originalMode {
+			return errors.Join(actionErr, fmt.Errorf("runtime executable mode restoration is invalid"))
+		}
+		return actionErr
+	}
+	disabled, err := root.Lstat(name)
+	if err != nil || !os.SameFile(before, disabled) || !disabled.Mode().IsRegular() || disabled.Mode().Perm()&0o111 != 0 {
+		return restore(fmt.Errorf("runtime non-executable identity is invalid"))
+	}
+	return restore(action())
 }
 
 func verifyGoSourceJourney(
@@ -1295,7 +1484,7 @@ func validateGoTestJSONL(value []byte, wantedAction string) error {
 }
 
 func validateWrapperRenderEvidence(document wrapperRenderDocument, journey preparedCommandJourney, ordinaryCommand, executablePath, runtimeDigest string, runtimeSize int64, sourceDigest string) error {
-	if document.SchemaVersion != 2 || document.Wrapper.Command != ordinaryCommand || document.Wrapper.Contract.Version != 1 || document.Wrapper.Contract.Shell != "posix" {
+	if document.SchemaVersion != 2 || document.Wrapper.Command != ordinaryCommand || document.Wrapper.Contract.Version != wrapperbinding.ContractVersion || document.Wrapper.Contract.Shell != "posix" {
 		return fmt.Errorf("contract identity mismatch")
 	}
 	if document.Wrapper.Bundle.Locator != journey.bundlePath() || document.Wrapper.Bundle.Digest != journey.bundleDigest {
@@ -2408,14 +2597,16 @@ func validateScopedHelp(path string, value []byte) (helpCommandProjection, error
 		}) != nil || validateWrapperRenderOutput(command) != nil {
 			return helpCommandProjection{}, fmt.Errorf("wrapper render contract is incomplete")
 		}
-		for _, marker := range []string{"Linux or macOS", "source, processor, plus Atsura executable identities", "portable non-reserved POSIX Name", "complete included surface", "exact processor tuple", "caller-owned"} {
+		for _, marker := range []string{"Linux or macOS", "source, processor, plus Atsura executable identities", "portable POSIX Name", "fixed-utility", "complete included surface", "exact processor tuple", "caller-owned"} {
 			if !strings.Contains(prerequisites, marker) {
 				return helpCommandProjection{}, fmt.Errorf("wrapper render admission marker is missing")
 			}
 		}
 	case "wrapper run":
-		if command.Usage != "atr wrapper run --contract-version=1 --bundle=<absolute-path> --bundle-digest=<sha256> --runtime-path=<absolute-path> --runtime-sha256=<sha256> --runtime-size=<bytes> -- [argv]" || validateInputs(command.Contract.Inputs, []helpInputProjection{
-			typedInput("--contract-version", "flag", "integer", "single", true, "1"),
+		contractVersion := fmt.Sprintf("%d", wrapperbinding.ContractVersion)
+		wantedUsage := "atr wrapper run --contract-version=" + contractVersion + " --bundle=<absolute-path> --bundle-digest=<sha256> --runtime-path=<absolute-path> --runtime-sha256=<sha256> --runtime-size=<bytes> -- [argv]"
+		if command.Usage != wantedUsage || validateInputs(command.Contract.Inputs, []helpInputProjection{
+			typedInput("--contract-version", "flag", "integer", "single", true, contractVersion),
 			typedInput("--bundle", "flag", "text", "single", true),
 			typedInput("--bundle-digest", "flag", "text", "single", true),
 			typedInput("--runtime-path", "flag", "text", "single", true),

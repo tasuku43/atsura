@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -735,6 +736,68 @@ func TestWrapperResultDigestsMatchOrderedEvidenceContract(t *testing.T) {
 				t.Fatalf("stderr digest=%s want=%s", got, test.stderrHash)
 			}
 		})
+	}
+}
+
+func TestExpectedTailoredHelpViewsAreExact(t *testing.T) {
+	digest := strings.Repeat("a", 64)
+	header := "Atsura tailored help\nBundle digest: " + digest + "\n"
+	tests := []struct {
+		name string
+		want string
+	}{
+		{name: "root", want: header + "Commands:\n  pr list\n"},
+		{name: "namespace", want: header + "Commands:\n  pr list\n"},
+		{name: "exact_command", want: header + "Command: pr list\nSource summary: List pull requests\n" +
+			"Tailoring reason: Return one reviewed compact result.\nOptions:\n  --limit=<value> (value required)\n"},
+	}
+	for _, test := range tests {
+		got, err := expectedTailoredHelp(digest, test.name)
+		if err != nil || string(got) != test.want {
+			t.Fatalf("expectedTailoredHelp(%q) = %q, %v", test.name, got, err)
+		}
+	}
+	if _, err := expectedTailoredHelp(digest, "other"); err == nil {
+		t.Fatal("unsupported tailored help view was accepted")
+	}
+}
+
+func TestWithNonExecutableRuntimeRestoresOriginalMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX executable bits are not available")
+	}
+	path := filepath.Join(t.TempDir(), "atr")
+	if err := os.WriteFile(path, []byte("candidate"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	const originalMode = 0o751
+	if err := os.Chmod(path, originalMode); err != nil {
+		t.Fatal(err)
+	}
+	wantedErr := errors.New("action failed")
+	for _, actionErr := range []error{nil, wantedErr} {
+		actionCalled := false
+		err := withNonExecutableRuntime(path, func() error {
+			actionCalled = true
+			info, statErr := os.Stat(path)
+			if statErr != nil {
+				t.Fatalf("runtime mode read failed: %v", statErr)
+			}
+			if info.Mode().Perm()&0o111 != 0 {
+				t.Fatalf("runtime remained executable: mode=%v", info.Mode())
+			}
+			return actionErr
+		})
+		if !actionCalled || !errors.Is(err, actionErr) {
+			t.Fatalf("action result = called %v, error %v", actionCalled, err)
+		}
+		info, statErr := os.Stat(path)
+		if statErr != nil {
+			t.Fatalf("restored mode read failed: %v", statErr)
+		}
+		if info.Mode().Perm() != originalMode {
+			t.Fatalf("restored mode=%v", info.Mode())
+		}
 	}
 }
 

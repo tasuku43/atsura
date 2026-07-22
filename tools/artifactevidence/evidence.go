@@ -15,6 +15,7 @@ import (
 
 	"github.com/tasuku43/atsura/internal/domain/processorprocess"
 	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
+	"github.com/tasuku43/atsura/internal/domain/wrapperbinding"
 	"github.com/tasuku43/atsura/tools/internal/processormanifest"
 )
 
@@ -115,7 +116,35 @@ type artifactJourneyEvidence struct {
 	FixtureAttempts             int                   `json:"fixture_attempts"`
 	CredentialEnvironmentAbsent bool                  `json:"credential_environment_absent"`
 	SecretCanariesAbsent        bool                  `json:"secret_canaries_absent"`
+	TailoredHelp                tailoredHelpEvidence  `json:"tailored_help"`
 	GoSource                    goSourceEvidence      `json:"go_source"`
+}
+
+type tailoredHelpEvidence struct {
+	Outcome                           string                      `json:"outcome"`
+	BundleDigest                      string                      `json:"bundle_digest"`
+	WrapperSourceSHA256               string                      `json:"wrapper_source_sha256"`
+	WrapperContractVersion            int                         `json:"wrapper_contract_version"`
+	Views                             []tailoredHelpViewEvidence  `json:"views"`
+	FallthroughFaults                 []tailoredHelpFaultEvidence `json:"fallthrough_faults"`
+	RuntimeNonExecutableDuringSuccess bool                        `json:"runtime_non_executable_during_success"`
+	SourceProcessAttempts             int                         `json:"source_process_attempts"`
+	ProcessorProcessAttempts          int                         `json:"processor_process_attempts"`
+}
+
+type tailoredHelpViewEvidence struct {
+	Name         string   `json:"name"`
+	Argv         []string `json:"argv"`
+	StdoutSHA256 string   `json:"stdout_sha256"`
+	StderrSHA256 string   `json:"stderr_sha256"`
+}
+
+type tailoredHelpFaultEvidence struct {
+	Name                     string   `json:"name"`
+	Argv                     []string `json:"argv"`
+	Code                     string   `json:"code"`
+	SourceProcessAttempts    int      `json:"source_process_attempts"`
+	ProcessorProcessAttempts int      `json:"processor_process_attempts"`
 }
 
 // goSourceEvidence is the bounded second-source proof. It deliberately uses
@@ -488,7 +517,7 @@ func requireJSONEOF(decoder *json.Decoder) error {
 
 func validateEvidence(document evidenceDocument, target, archiveName, version, revision string) error {
 	journey := document.ArtifactJourney
-	if document.SchemaVersion != 5 {
+	if document.SchemaVersion != 6 {
 		return fmt.Errorf("evidence schema version is invalid")
 	}
 	if journey.Target != target || journey.ObservedHost != target || journey.ArchiveName != archiveName || journey.Version != version || journey.Revision != revision {
@@ -525,10 +554,94 @@ func validateEvidence(document evidenceDocument, target, archiveName, version, r
 	if !journey.CredentialEnvironmentAbsent || !journey.SecretCanariesAbsent {
 		return fmt.Errorf("evidence safety assertions are invalid")
 	}
+	if err := validateTailoredHelp(journey.TailoredHelp, journey, target); err != nil {
+		return err
+	}
 	if err := validateGoSourceEvidence(journey.GoSource, target); err != nil {
 		return err
 	}
 	return nil
+}
+
+func validateTailoredHelp(evidence tailoredHelpEvidence, journey artifactJourneyEvidence, target string) error {
+	if target == "windows/amd64" {
+		if evidence.Outcome != "platform_not_supported" || evidence.BundleDigest != "" || evidence.WrapperSourceSHA256 != "" ||
+			evidence.WrapperContractVersion != 0 || evidence.Views == nil || len(evidence.Views) != 0 ||
+			evidence.FallthroughFaults == nil || len(evidence.FallthroughFaults) != 0 ||
+			evidence.RuntimeNonExecutableDuringSuccess || evidence.SourceProcessAttempts != 0 || evidence.ProcessorProcessAttempts != 0 {
+			return fmt.Errorf("Windows tailored help evidence is invalid")
+		}
+		return nil
+	}
+	if evidence.Outcome != "compiled_views_verified" || evidence.BundleDigest != journey.BundleDigest ||
+		len(journey.WrapperCases) == 0 || evidence.WrapperSourceSHA256 != journey.WrapperCases[0].WrapperSourceSHA256 ||
+		evidence.WrapperContractVersion != wrapperbinding.ContractVersion || !evidence.RuntimeNonExecutableDuringSuccess ||
+		evidence.SourceProcessAttempts != 0 || evidence.ProcessorProcessAttempts != 0 {
+		return fmt.Errorf("POSIX tailored help binding evidence is invalid")
+	}
+	wantedViews := []struct {
+		name string
+		argv []string
+	}{
+		{name: "root", argv: []string{"--help"}},
+		{name: "namespace", argv: []string{"pr", "--help"}},
+		{name: "exact_command", argv: []string{"pr", "list", "--help"}},
+	}
+	if evidence.Views == nil || len(evidence.Views) != len(wantedViews) {
+		return fmt.Errorf("POSIX tailored help view inventory is invalid")
+	}
+	for index, wanted := range wantedViews {
+		view := evidence.Views[index]
+		output, err := expectedTailoredHelpOutput(evidence.BundleDigest, wanted.name)
+		if err != nil || view.Name != wanted.name || !equalStrings(view.Argv, wanted.argv) ||
+			view.StdoutSHA256 != digestEvidenceBytes(output) || view.StderrSHA256 != emptySHA256 {
+			return fmt.Errorf("POSIX tailored help view %d is invalid", index)
+		}
+	}
+	wantedFaults := []struct {
+		name, code string
+		argv       []string
+	}{
+		{name: "hidden_command", code: "command_not_in_surface", argv: []string{"issue", "list", "--help"}},
+		{name: "unknown_selector", code: "invalid_invocation", argv: []string{"unknown", "--help"}},
+	}
+	if evidence.FallthroughFaults == nil || len(evidence.FallthroughFaults) != len(wantedFaults) {
+		return fmt.Errorf("POSIX tailored help fault inventory is invalid")
+	}
+	for index, wanted := range wantedFaults {
+		fault := evidence.FallthroughFaults[index]
+		if fault.Name != wanted.name || fault.Code != wanted.code || !equalStrings(fault.Argv, wanted.argv) ||
+			fault.SourceProcessAttempts != 0 || fault.ProcessorProcessAttempts != 0 {
+			return fmt.Errorf("POSIX tailored help fault %d is invalid", index)
+		}
+	}
+	return nil
+}
+
+func expectedTailoredHelpOutput(bundleDigest, view string) ([]byte, error) {
+	if !lowercaseHex(bundleDigest, digestLength) || bundleDigest == emptySHA256 {
+		return nil, fmt.Errorf("tailored help bundle digest is invalid")
+	}
+	lines := []string{"Atsura tailored help", "Bundle digest: " + bundleDigest}
+	switch view {
+	case "root", "namespace":
+		lines = append(lines, "Commands:", "  pr list")
+	case "exact_command":
+		lines = append(lines,
+			"Command: pr list",
+			"Source summary: List pull requests",
+			"Tailoring reason: Return one reviewed compact result.",
+			"Options:",
+			"  --limit=<value> (value required)",
+		)
+	default:
+		return nil, fmt.Errorf("tailored help view is unsupported")
+	}
+	return []byte(strings.Join(lines, "\n") + "\n"), nil
+}
+
+func digestEvidenceBytes(value []byte) string {
+	return fmt.Sprintf("%x", sha256.Sum256(value))
 }
 
 func validateGoSourceEvidence(evidence goSourceEvidence, target string) error {

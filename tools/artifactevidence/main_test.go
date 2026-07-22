@@ -14,6 +14,7 @@ import (
 
 	"github.com/tasuku43/atsura/internal/domain/processorprocess"
 	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
+	"github.com/tasuku43/atsura/internal/domain/wrapperbinding"
 	"github.com/tasuku43/atsura/tools/internal/processormanifest"
 )
 
@@ -39,6 +40,13 @@ func TestRunAggregatesCanonicalNativeEvidence(t *testing.T) {
 		strings.Contains(output.String(), "bundle_digest") || strings.Contains(output.String(), "plan_digest") ||
 		strings.Contains(output.String(), "commands_verified") {
 		t.Fatalf("aggregate leaked non-contract evidence: %s", output.String())
+	}
+}
+
+func TestSchemaSixEvidenceRemainsWithinJourneyBound(t *testing.T) {
+	value := marshalEvidence(t, validEvidence("linux/amd64", targetContracts[0].archiveName(testTag), strings.Repeat("0", digestLength)))
+	if len(value)+1 > maxEvidenceFileBytes {
+		t.Fatalf("schema-6 evidence bytes=%d, limit=%d", len(value)+1, maxEvidenceFileBytes)
 	}
 }
 
@@ -215,7 +223,7 @@ func TestDecodeEvidenceRejectsUnknownDuplicateAndTrailingJSON(t *testing.T) {
 		unknown,
 		duplicate,
 		append(append([]byte{}, valid...), []byte(` {}`)...),
-		[]byte(`{"schema_version":5,"artifact_journey":`),
+		[]byte(`{"schema_version":6,"artifact_journey":`),
 	} {
 		if _, err := decodeEvidence(value); err == nil {
 			t.Fatalf("invalid JSON was accepted: %s", value)
@@ -230,7 +238,7 @@ func TestValidateEvidenceRejectsInvalidContracts(t *testing.T) {
 		name   string
 		mutate func(*evidenceDocument)
 	}{
-		{"schema", func(value *evidenceDocument) { value.SchemaVersion = 2 }},
+		{"schema", func(value *evidenceDocument) { value.SchemaVersion = 5 }},
 		{"target", func(value *evidenceDocument) { value.ArtifactJourney.Target = "linux/arm64" }},
 		{"observed host", func(value *evidenceDocument) { value.ArtifactJourney.ObservedHost = "linux/arm64" }},
 		{"archive name", func(value *evidenceDocument) { value.ArtifactJourney.ArchiveName = "other.tar.gz" }},
@@ -269,6 +277,49 @@ func TestValidateEvidenceRejectsInvalidContracts(t *testing.T) {
 		{"wrapper source status", func(value *evidenceDocument) { value.ArtifactJourney.WrapperCases[2].SourceExitCode = 0 }},
 		{"wrapper case attempts", func(value *evidenceDocument) { value.ArtifactJourney.WrapperCases[0].SourceProcessAttempts++ }},
 		{"wrapper source attempts", func(value *evidenceDocument) { value.ArtifactJourney.WrapperSourceAttempts++ }},
+		{"tailored help outcome", func(value *evidenceDocument) { value.ArtifactJourney.TailoredHelp.Outcome = "other" }},
+		{"tailored help bundle binding", func(value *evidenceDocument) {
+			value.ArtifactJourney.TailoredHelp.BundleDigest = strings.Repeat("f", digestLength)
+		}},
+		{"tailored help wrapper binding", func(value *evidenceDocument) {
+			value.ArtifactJourney.TailoredHelp.WrapperSourceSHA256 = strings.Repeat("f", digestLength)
+		}},
+		{"tailored help contract", func(value *evidenceDocument) { value.ArtifactJourney.TailoredHelp.WrapperContractVersion++ }},
+		{"tailored help views absent", func(value *evidenceDocument) { value.ArtifactJourney.TailoredHelp.Views = nil }},
+		{"tailored help view missing", func(value *evidenceDocument) {
+			value.ArtifactJourney.TailoredHelp.Views = value.ArtifactJourney.TailoredHelp.Views[:2]
+		}},
+		{"tailored help view order", func(value *evidenceDocument) {
+			value.ArtifactJourney.TailoredHelp.Views[0], value.ArtifactJourney.TailoredHelp.Views[1] =
+				value.ArtifactJourney.TailoredHelp.Views[1], value.ArtifactJourney.TailoredHelp.Views[0]
+		}},
+		{"tailored help view argv", func(value *evidenceDocument) {
+			value.ArtifactJourney.TailoredHelp.Views[1].Argv = []string{"pr", "list", "--help"}
+		}},
+		{"tailored help stdout digest", func(value *evidenceDocument) {
+			value.ArtifactJourney.TailoredHelp.Views[0].StdoutSHA256 = strings.Repeat("f", digestLength)
+		}},
+		{"tailored help stderr digest", func(value *evidenceDocument) {
+			value.ArtifactJourney.TailoredHelp.Views[0].StderrSHA256 = strings.Repeat("f", digestLength)
+		}},
+		{"tailored help runtime proof", func(value *evidenceDocument) {
+			value.ArtifactJourney.TailoredHelp.RuntimeNonExecutableDuringSuccess = false
+		}},
+		{"tailored help source attempts", func(value *evidenceDocument) { value.ArtifactJourney.TailoredHelp.SourceProcessAttempts++ }},
+		{"tailored help processor attempts", func(value *evidenceDocument) { value.ArtifactJourney.TailoredHelp.ProcessorProcessAttempts++ }},
+		{"tailored help faults absent", func(value *evidenceDocument) { value.ArtifactJourney.TailoredHelp.FallthroughFaults = nil }},
+		{"tailored help fault missing", func(value *evidenceDocument) {
+			value.ArtifactJourney.TailoredHelp.FallthroughFaults = value.ArtifactJourney.TailoredHelp.FallthroughFaults[:1]
+		}},
+		{"tailored help fault code", func(value *evidenceDocument) {
+			value.ArtifactJourney.TailoredHelp.FallthroughFaults[0].Code = "invalid_invocation"
+		}},
+		{"tailored help fault source attempts", func(value *evidenceDocument) {
+			value.ArtifactJourney.TailoredHelp.FallthroughFaults[0].SourceProcessAttempts++
+		}},
+		{"tailored help fault processor attempts", func(value *evidenceDocument) {
+			value.ArtifactJourney.TailoredHelp.FallthroughFaults[0].ProcessorProcessAttempts++
+		}},
 		{"help count", func(value *evidenceDocument) { value.ArtifactJourney.HelpContractsVerified-- }},
 		{"inspection count", func(value *evidenceDocument) { value.ArtifactJourney.SourceInspectionAttempts-- }},
 		{"rejection count", func(value *evidenceDocument) { value.ArtifactJourney.ZeroAttemptRejections-- }},
@@ -476,6 +527,24 @@ func TestValidateEvidenceRejectsInvalidContracts(t *testing.T) {
 	}
 }
 
+func TestExpectedTailoredHelpOutputDigestsAreExact(t *testing.T) {
+	digest := strings.Repeat("a", digestLength)
+	tests := []struct {
+		name string
+		want string
+	}{
+		{name: "root", want: "48b1a4ba341fe7c3830bb8aa97bebd89f2ff76d0a90265074bd9ab220d33d998"},
+		{name: "namespace", want: "48b1a4ba341fe7c3830bb8aa97bebd89f2ff76d0a90265074bd9ab220d33d998"},
+		{name: "exact_command", want: "71991e9c7e08dc14e35499fe8f1d52d4446a956abe3b4c8410ba19e0e0646c09"},
+	}
+	for _, test := range tests {
+		output, err := expectedTailoredHelpOutput(digest, test.name)
+		if err != nil || digestEvidenceBytes(output) != test.want {
+			t.Fatalf("tailored help %s digest=%s err=%v", test.name, digestEvidenceBytes(output), err)
+		}
+	}
+}
+
 func TestValidateEvidenceRequiresStructuredUnsupportedWindowsWrapperCases(t *testing.T) {
 	contract := targetContracts[len(targetContracts)-1]
 	archiveName := contract.archiveName(testTag)
@@ -491,6 +560,26 @@ func TestValidateEvidenceRequiresStructuredUnsupportedWindowsWrapperCases(t *tes
 		func(value *evidenceDocument) { value.ArtifactJourney.WrapperOutcome = "ordinary_command_verified" },
 		func(value *evidenceDocument) { value.ArtifactJourney.WrapperSourceAttempts = 1 },
 		func(value *evidenceDocument) { value.ArtifactJourney.FixtureAttempts = wantedPOSIXAttempts },
+		func(value *evidenceDocument) { value.ArtifactJourney.TailoredHelp.Outcome = "compiled_views_verified" },
+		func(value *evidenceDocument) {
+			value.ArtifactJourney.TailoredHelp.BundleDigest = strings.Repeat("a", digestLength)
+		},
+		func(value *evidenceDocument) {
+			value.ArtifactJourney.TailoredHelp.WrapperSourceSHA256 = strings.Repeat("b", digestLength)
+		},
+		func(value *evidenceDocument) {
+			value.ArtifactJourney.TailoredHelp.WrapperContractVersion = wrapperbinding.ContractVersion
+		},
+		func(value *evidenceDocument) { value.ArtifactJourney.TailoredHelp.Views = nil },
+		func(value *evidenceDocument) {
+			value.ArtifactJourney.TailoredHelp.Views = []tailoredHelpViewEvidence{{Name: "root"}}
+		},
+		func(value *evidenceDocument) { value.ArtifactJourney.TailoredHelp.FallthroughFaults = nil },
+		func(value *evidenceDocument) {
+			value.ArtifactJourney.TailoredHelp.RuntimeNonExecutableDuringSuccess = true
+		},
+		func(value *evidenceDocument) { value.ArtifactJourney.TailoredHelp.SourceProcessAttempts = 1 },
+		func(value *evidenceDocument) { value.ArtifactJourney.TailoredHelp.ProcessorProcessAttempts = 1 },
 		func(value *evidenceDocument) { value.ArtifactJourney.GoSource.WrapperCases = nil },
 		func(value *evidenceDocument) {
 			value.ArtifactJourney.GoSource.WrapperOutcome = "ordinary_command_verified"
@@ -555,7 +644,7 @@ func writeValidEvidenceSet(t *testing.T, directory, archives string) []string {
 
 func validEvidence(target, archiveName, archiveDigest string) evidenceDocument {
 	result := evidenceDocument{
-		SchemaVersion: 5,
+		SchemaVersion: 6,
 		ArtifactJourney: artifactJourneyEvidence{
 			Target: target, ObservedHost: target, ArchiveName: archiveName, ArchiveSHA256: archiveDigest,
 			Version: testVersion, Revision: testRevision,
@@ -587,6 +676,10 @@ func validEvidence(target, archiveName, archiveDigest string) evidenceDocument {
 			Outcome: "platform_not_supported", Cases: []optimizerCaseEvidence{}, Faults: []optimizerFaultEvidence{},
 			SourceProcessAttempts: 0, ZeroAttemptRejections: 1,
 		}
+		result.ArtifactJourney.TailoredHelp = tailoredHelpEvidence{
+			Outcome: "platform_not_supported", Views: []tailoredHelpViewEvidence{},
+			FallthroughFaults: []tailoredHelpFaultEvidence{},
+		}
 	} else {
 		result.ArtifactJourney.WrapperOutcome = "ordinary_command_verified"
 		result.ArtifactJourney.WrapperCases = []wrapperCaseEvidence{
@@ -611,6 +704,7 @@ func validEvidence(target, archiveName, archiveDigest string) evidenceDocument {
 		}
 		result.ArtifactJourney.WrapperSourceAttempts = wantedPOSIXWrappers
 		result.ArtifactJourney.FixtureAttempts = wantedPOSIXAttempts
+		result.ArtifactJourney.TailoredHelp = validTailoredHelpEvidence(result.ArtifactJourney)
 		identityBundleDigest := result.ArtifactJourney.GoSource.BundleDigest
 		identityPlanDigest := result.ArtifactJourney.GoSource.PlanDigest
 		identityWrapperDigest := strings.Repeat("2", digestLength)
@@ -645,6 +739,33 @@ func validEvidence(target, archiveName, archiveDigest string) evidenceDocument {
 		}
 	}
 	return result
+}
+
+func validTailoredHelpEvidence(journey artifactJourneyEvidence) tailoredHelpEvidence {
+	views := []tailoredHelpViewEvidence{
+		{Name: "root", Argv: []string{"--help"}},
+		{Name: "namespace", Argv: []string{"pr", "--help"}},
+		{Name: "exact_command", Argv: []string{"pr", "list", "--help"}},
+	}
+	for index := range views {
+		output, err := expectedTailoredHelpOutput(journey.BundleDigest, views[index].Name)
+		if err != nil {
+			panic(err)
+		}
+		views[index].StdoutSHA256 = digestEvidenceBytes(output)
+		views[index].StderrSHA256 = emptySHA256
+	}
+	return tailoredHelpEvidence{
+		Outcome: "compiled_views_verified", BundleDigest: journey.BundleDigest,
+		WrapperSourceSHA256:    journey.WrapperCases[0].WrapperSourceSHA256,
+		WrapperContractVersion: wrapperbinding.ContractVersion,
+		Views:                  views,
+		FallthroughFaults: []tailoredHelpFaultEvidence{
+			{Name: "hidden_command", Argv: []string{"issue", "list", "--help"}, Code: "command_not_in_surface"},
+			{Name: "unknown_selector", Argv: []string{"unknown", "--help"}, Code: "invalid_invocation"},
+		},
+		RuntimeNonExecutableDuringSuccess: true,
+	}
 }
 
 func validOptimizerExecution() *optimizerExecutionEvidence {
