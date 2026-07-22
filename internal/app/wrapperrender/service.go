@@ -11,6 +11,7 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/bundletrust"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
+	"github.com/tasuku43/atsura/internal/domain/processorprocess"
 	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
 	"github.com/tasuku43/atsura/internal/domain/wrapperbinding"
@@ -43,6 +44,21 @@ type CompatibilityPort interface {
 	VerifySurface(tailoringbundle.Bundle) error
 }
 
+type ProcessorIdentityPort interface {
+	Identify(context.Context, string) (processorprocess.Identity, error)
+}
+
+// ProcessorCompatibilityPort proves the exact source/processor tuple only
+// when a bundle declares an external output processor.
+type ProcessorCompatibilityPort interface {
+	VerifySurface(tailoringbundle.Bundle) error
+}
+
+type ProcessorPorts struct {
+	Identity      ProcessorIdentityPort
+	Compatibility ProcessorCompatibilityPort
+}
+
 // RendererPort accepts only the validated product binding and returns bounded
 // deterministic material. Shell syntax remains infrastructure-owned.
 type RendererPort interface {
@@ -50,9 +66,10 @@ type RendererPort interface {
 }
 
 type Result struct {
-	Binding               wrapperbinding.Binding
-	Material              wrapperbinding.RenderedMaterial
-	SourceProcessAttempts int
+	Binding                  wrapperbinding.Binding
+	Material                 wrapperbinding.RenderedMaterial
+	SourceProcessAttempts    int
+	ProcessorProcessAttempts int
 }
 
 type Service struct {
@@ -63,15 +80,23 @@ type Service struct {
 	current       CurrentExecutablePort
 	compatibility CompatibilityPort
 	renderer      RendererPort
+	processors    ProcessorPorts
+	invalid       bool
 }
 
 // New creates the read-only wrapper renderer. platform is the composition
 // root's GOOS observation; only the first slice's POSIX targets are admitted.
-func New(platform string, bundles BundlePort, adoption AdoptionPort, identity IdentityPort, current CurrentExecutablePort, compatibility CompatibilityPort, renderer RendererPort) *Service {
-	return &Service{
+func New(platform string, bundles BundlePort, adoption AdoptionPort, identity IdentityPort, current CurrentExecutablePort, compatibility CompatibilityPort, renderer RendererPort, processors ...ProcessorPorts) *Service {
+	service := &Service{
 		platform: platform, bundles: bundles, adoption: adoption, identity: identity,
 		current: current, compatibility: compatibility, renderer: renderer,
 	}
+	if len(processors) > 1 {
+		service.invalid = true
+	} else if len(processors) == 1 {
+		service.processors = processors[0]
+	}
+	return service
 }
 
 // Render strictly loads one exact adopted bundle once, revalidates source and
@@ -150,6 +175,23 @@ func (s *Service) Render(ctx context.Context, intent operation.Intent, bundleLoc
 			helpAction(),
 		)
 	}
+	if len(bundle.Processors) > 0 {
+		if portcheck.IsNil(s.processors.Identity) || portcheck.IsNil(s.processors.Compatibility) {
+			return Result{}, fault.New(fault.KindUnsupported, "wrapper_runtime_not_supported", "This runtime has no complete external processor compatibility boundary.", false, helpAction())
+		}
+		for _, binding := range bundle.Processors {
+			identity, err := s.processors.Identity.Identify(ctx, binding.Observation.Identity.ResolvedPath)
+			if err != nil {
+				return Result{}, classifyProcessorIdentity(err)
+			}
+			if identity != binding.Observation.Identity {
+				return Result{}, fault.New(fault.KindRejected, "bundle_processor_drift", "A bundle processor identity is no longer current.", false, statusAction())
+			}
+		}
+		if err := s.processors.Compatibility.VerifySurface(bundle); err != nil {
+			return Result{}, fault.New(fault.KindUnsupported, "wrapper_runtime_not_supported", "The external processor tuple is not admitted by this wrapper runtime.", false, helpAction())
+		}
+	}
 
 	runtimeLocator, err := s.current.CurrentExecutable(ctx)
 	if err != nil {
@@ -201,17 +243,27 @@ func (s *Service) Render(ctx context.Context, intent operation.Intent, bundleLoc
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
-	return Result{Binding: binding, Material: material.Clone(), SourceProcessAttempts: 0}, nil
+	return Result{Binding: binding, Material: material.Clone(), SourceProcessAttempts: 0, ProcessorProcessAttempts: 0}, nil
 }
 
 func (s *Service) configured() bool {
-	return s != nil &&
+	return s != nil && !s.invalid &&
 		!portcheck.IsNil(s.bundles) &&
 		!portcheck.IsNil(s.adoption) &&
 		!portcheck.IsNil(s.identity) &&
 		!portcheck.IsNil(s.current) &&
 		!portcheck.IsNil(s.compatibility) &&
 		!portcheck.IsNil(s.renderer)
+}
+
+func classifyProcessorIdentity(err error) error {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	if public, ok := fault.PublicCopy(err); ok {
+		return fault.New(public.Kind, public.Code, public.Message, public.Retryable, statusAction())
+	}
+	return fault.Wrap(fault.KindUnavailable, "processor_identity_unavailable", "A bundle processor identity could not be assessed.", false, err, statusAction())
 }
 
 func preserveLoad(err error) error {

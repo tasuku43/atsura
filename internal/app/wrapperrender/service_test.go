@@ -11,6 +11,7 @@ import (
 	"github.com/tasuku43/atsura/internal/domain/bundletrust"
 	"github.com/tasuku43/atsura/internal/domain/fault"
 	"github.com/tasuku43/atsura/internal/domain/operation"
+	"github.com/tasuku43/atsura/internal/domain/processorprocess"
 	"github.com/tasuku43/atsura/internal/domain/sourcecatalog"
 	"github.com/tasuku43/atsura/internal/domain/sourceprocess"
 	"github.com/tasuku43/atsura/internal/domain/tailoringbundle"
@@ -71,6 +72,94 @@ func renderBundle(t *testing.T, requestedExecutable string) (tailoringbundle.Bun
 	return bundle, digest
 }
 
+func renderProcessorBundle(t *testing.T) (tailoringbundle.Bundle, string) {
+	t.Helper()
+	sourcePath := filepath.Join(t.TempDir(), "source", "go")
+	processorPath := filepath.Join(t.TempDir(), "processor", "rtk")
+	catalog := sourcecatalog.Sort(sourcecatalog.Catalog{
+		SchemaVersion: sourcecatalog.SchemaVersion,
+		Adapter:       sourcecatalog.Adapter{Kind: "atsura.source.synthetic", ContractVersion: 1},
+		Source: sourcecatalog.Source{
+			RequestedExecutable: "go",
+			ResolvedPath:        sourcePath,
+			SHA256:              strings.Repeat("a", 64),
+			Size:                14_500_192,
+			Version:             "go1.26.5",
+		},
+		Probe: sourcecatalog.Probe{IDs: []string{"command_help", "version"}, Attempts: 2},
+		Commands: []sourcecatalog.Command{{
+			Path:       []string{"test"},
+			Summary:    "Run package tests",
+			Provenance: sourcecatalog.ProvenanceVerifiedBuiltin,
+			Options:    []sourcecatalog.Option{},
+			StructuredOutput: []sourcecatalog.StructuredOutput{{
+				Format:       "go_test_jsonl",
+				SelectorFlag: "-json",
+				Fields:       []string{"Action", "Elapsed", "FailedBuild", "Output", "Package", "Test", "Time"},
+			}},
+		}},
+	})
+	catalogDigest, err := catalog.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	specification := tailoringbundle.SortSpecification(tailoringbundle.Specification{
+		SchemaVersion: tailoringbundle.SpecificationSchemaVersion,
+		CatalogDigest: catalogDigest,
+		Surface:       tailoringbundle.Surface{Default: tailoringbundle.SurfaceDefaultExclude},
+		Commands: []tailoringbundle.CommandEntry{{
+			Command:  []string{"test"},
+			Presence: tailoringbundle.PresenceInclude,
+			Reason:   "Return a compact reviewed test result.",
+			Options:  &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultInherit, Include: []string{}, Exclude: []string{}},
+			Wrapper: &tailoringbundle.Wrapper{
+				Kind:   tailoringbundle.WrapperTransform,
+				Before: []tailoringbundle.StageAction{},
+				Invoke: tailoringbundle.Invocation{AppendArgs: []string{"-json"}},
+				Output: &tailoringbundle.Output{
+					Kind: tailoringbundle.OutputKindOptimizer,
+					Optimizer: &tailoringbundle.Optimizer{
+						Input: "go_test_jsonl", Contract: "atsura.output.rtk_go_test_pass.v1", AllowOriginalOutput: true,
+					},
+				},
+				After: []tailoringbundle.StageAction{},
+			},
+		}},
+	})
+	processor := tailoringbundle.ProcessorBinding{
+		Contract: "atsura.output.rtk_go_test_pass.v1",
+		Observation: processorprocess.Observation{
+			SchemaVersion: processorprocess.ObservationSchemaVersion,
+			Adapter:       processorprocess.Adapter{Kind: "atsura.processor.rtk", ContractVersion: 1},
+			Platform:      processorprocess.Platform{OS: "darwin", Arch: "arm64"},
+			Identity: processorprocess.Identity{
+				ResolvedPath: processorPath,
+				SHA256:       strings.Repeat("b", 64),
+				Size:         7_763_408,
+			},
+			Version: "0.43.0",
+			Probe: processorprocess.Probe{
+				Argv: []string{"--version"}, EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV1, Attempts: 1,
+			},
+		},
+		InputFormat: "go_test_jsonl", OutputFormat: "go_test_pass_summary", AllowOriginalOutput: true,
+		Execution: tailoringbundle.ProcessorExecution{
+			Args: []string{"pipe", "--filter=go-test"}, StdinMode: "stage_input", WorkingDirectoryMode: "isolated",
+			EnvironmentContract: processorprocess.EnvironmentRTKIsolatedV1, MaxAttempts: 1, TimeoutMillis: 5_000,
+			StdoutLimitBytes: processorprocess.MaxStdoutBytes, StderrLimitBytes: processorprocess.MaxStderrBytes,
+		},
+	}
+	bundle, err := tailoringbundle.Compile(catalog, specification, processor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, err := bundle.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bundle, digest
+}
+
 type renderBundlePort struct {
 	bundle tailoringbundle.Bundle
 	digest string
@@ -108,10 +197,14 @@ type renderCurrentPort struct {
 	locator string
 	err     error
 	calls   int
+	events  *[]string
 }
 
 func (p *renderCurrentPort) CurrentExecutable(context.Context) (string, error) {
 	p.calls++
+	if p.events != nil {
+		*p.events = append(*p.events, "runtime_current")
+	}
 	return p.locator, p.err
 }
 
@@ -132,12 +225,47 @@ type renderMaterialPort struct {
 	err      error
 	calls    int
 	binding  wrapperbinding.Binding
+	events   *[]string
 }
 
 func (p *renderMaterialPort) Render(binding wrapperbinding.Binding) (wrapperbinding.RenderedMaterial, error) {
 	p.calls++
 	p.binding = binding
+	if p.events != nil {
+		*p.events = append(*p.events, "runtime_render")
+	}
 	return p.material, p.err
+}
+
+type renderProcessorIdentityPort struct {
+	identities map[string]processorprocess.Identity
+	errors     map[string]error
+	calls      []string
+	events     *[]string
+}
+
+func (p *renderProcessorIdentityPort) Identify(_ context.Context, locator string) (processorprocess.Identity, error) {
+	p.calls = append(p.calls, locator)
+	if p.events != nil {
+		*p.events = append(*p.events, "processor_identity")
+	}
+	return p.identities[locator], p.errors[locator]
+}
+
+type renderProcessorCompatibilityPort struct {
+	err    error
+	calls  int
+	bundle tailoringbundle.Bundle
+	events *[]string
+}
+
+func (p *renderProcessorCompatibilityPort) VerifySurface(bundle tailoringbundle.Bundle) error {
+	p.calls++
+	p.bundle = bundle
+	if p.events != nil {
+		*p.events = append(*p.events, "processor_compatibility")
+	}
+	return p.err
 }
 
 type renderFixture struct {
@@ -151,6 +279,9 @@ type renderFixture struct {
 	current       *renderCurrentPort
 	compatibility *renderCompatibilityPort
 	renderer      *renderMaterialPort
+	processorID   *renderProcessorIdentityPort
+	processorComp *renderProcessorCompatibilityPort
+	events        []string
 }
 
 func newRenderFixture(t *testing.T, requestedExecutable string) *renderFixture {
@@ -180,13 +311,48 @@ func newRenderFixture(t *testing.T, requestedExecutable string) *renderFixture {
 	return fixture
 }
 
+func newProcessorRenderFixture(t *testing.T) *renderFixture {
+	t.Helper()
+	fixture := newRenderFixture(t, "go")
+	bundle, digest := renderProcessorBundle(t)
+	fixture.bundle = bundle
+	fixture.digest = digest
+	fixture.bundles.bundle = bundle
+	fixture.bundles.digest = digest
+	fixture.identity.identities[bundle.Catalog.Source.ResolvedPath] = sourceprocess.Identity{
+		ResolvedPath: bundle.Catalog.Source.ResolvedPath,
+		SHA256:       bundle.Catalog.Source.SHA256,
+		Size:         bundle.Catalog.Source.Size,
+	}
+	processorIdentity := bundle.Processors[0].Observation.Identity
+	fixture.processorID = &renderProcessorIdentityPort{
+		identities: map[string]processorprocess.Identity{processorIdentity.ResolvedPath: processorIdentity},
+		errors:     map[string]error{},
+		events:     &fixture.events,
+	}
+	fixture.processorComp = &renderProcessorCompatibilityPort{events: &fixture.events}
+	fixture.current.events = &fixture.events
+	fixture.renderer.events = &fixture.events
+	fixture.service = New(
+		"darwin",
+		fixture.bundles,
+		fixture.adoption,
+		fixture.identity,
+		fixture.current,
+		fixture.compatibility,
+		fixture.renderer,
+		ProcessorPorts{Identity: fixture.processorID, Compatibility: fixture.processorComp},
+	)
+	return fixture
+}
+
 func TestRenderProducesExactBindingAndDeterministicMaterialWithoutSourceAttempt(t *testing.T) {
 	fixture := newRenderFixture(t, "gh")
 	result, err := fixture.service.Render(context.Background(), renderIntent(), fixture.bundlePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.SourceProcessAttempts != 0 || len(fixture.bundles.calls) != 1 || len(fixture.adoption.calls) != 1 || fixture.compatibility.calls != 1 || fixture.current.calls != 1 || fixture.renderer.calls != 1 {
+	if result.SourceProcessAttempts != 0 || result.ProcessorProcessAttempts != 0 || len(fixture.bundles.calls) != 1 || len(fixture.adoption.calls) != 1 || fixture.compatibility.calls != 1 || fixture.current.calls != 1 || fixture.renderer.calls != 1 {
 		t.Fatalf("unexpected call/attempt evidence: result=%+v fixture=%+v", result, fixture)
 	}
 	wantIdentityCalls := []string{fixture.bundle.Catalog.Source.ResolvedPath, fixture.current.locator}
@@ -202,6 +368,101 @@ func TestRenderProducesExactBindingAndDeterministicMaterialWithoutSourceAttempt(
 	result.Material.Source[0] = 'x'
 	if fixture.renderer.material.Source[0] != 'g' {
 		t.Fatal("result shared the renderer's source buffer")
+	}
+}
+
+func TestRenderProcessorBoundBundleVerifiesExactIdentityAndCompatibilityBeforeRuntimeRender(t *testing.T) {
+	fixture := newProcessorRenderFixture(t)
+	result, err := fixture.service.Render(context.Background(), renderIntent(), fixture.bundlePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantedProcessorPath := fixture.bundle.Processors[0].Observation.Identity.ResolvedPath
+	if !reflect.DeepEqual(fixture.processorID.calls, []string{wantedProcessorPath}) {
+		t.Fatalf("processor identity calls = %v, want exact path %q", fixture.processorID.calls, wantedProcessorPath)
+	}
+	if fixture.processorComp.calls != 1 || !reflect.DeepEqual(fixture.processorComp.bundle, fixture.bundle) {
+		t.Fatal("processor compatibility did not receive the exact bundle once")
+	}
+	wantEvents := []string{"processor_identity", "processor_compatibility", "runtime_current", "runtime_render"}
+	if !reflect.DeepEqual(fixture.events, wantEvents) {
+		t.Fatalf("boundary order = %v, want %v", fixture.events, wantEvents)
+	}
+	if result.SourceProcessAttempts != 0 || result.ProcessorProcessAttempts != 0 {
+		t.Fatalf("render started a process: %+v", result)
+	}
+}
+
+func TestRenderProcessorBoundBundleFailsClosedBeforeRuntimeRender(t *testing.T) {
+	want := errors.New("synthetic processor boundary failure")
+	tests := []struct {
+		name              string
+		mutate            func(*renderFixture)
+		wantCode          string
+		wantIdentity      int
+		wantCompatibility int
+		wantAction        fault.NextAction
+	}{
+		{
+			name: "missing processor ports",
+			mutate: func(f *renderFixture) {
+				f.service = New("darwin", f.bundles, f.adoption, f.identity, f.current, f.compatibility, f.renderer)
+			},
+			wantCode:   "wrapper_runtime_not_supported",
+			wantAction: helpAction(),
+		},
+		{
+			name: "processor drift",
+			mutate: func(f *renderFixture) {
+				path := f.bundle.Processors[0].Observation.Identity.ResolvedPath
+				identity := f.processorID.identities[path]
+				identity.SHA256 = strings.Repeat("c", 64)
+				f.processorID.identities[path] = identity
+			},
+			wantCode:     "bundle_processor_drift",
+			wantIdentity: 1,
+			wantAction:   statusAction(),
+		},
+		{
+			name: "processor identity unavailable",
+			mutate: func(f *renderFixture) {
+				path := f.bundle.Processors[0].Observation.Identity.ResolvedPath
+				f.processorID.errors[path] = want
+			},
+			wantCode:     "processor_identity_unavailable",
+			wantIdentity: 1,
+			wantAction:   statusAction(),
+		},
+		{
+			name: "processor compatibility rejected",
+			mutate: func(f *renderFixture) {
+				f.processorComp.err = want
+			},
+			wantCode:          "wrapper_runtime_not_supported",
+			wantIdentity:      1,
+			wantCompatibility: 1,
+			wantAction:        helpAction(),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newProcessorRenderFixture(t)
+			test.mutate(fixture)
+			result, err := fixture.service.Render(context.Background(), renderIntent(), fixture.bundlePath)
+			public := assertRenderFault(t, err, test.wantCode)
+			if len(public.NextActions) != 1 || public.NextActions[0] != test.wantAction {
+				t.Fatalf("recovery = %+v, want %+v", public.NextActions, test.wantAction)
+			}
+			if len(fixture.processorID.calls) != test.wantIdentity || fixture.processorComp.calls != test.wantCompatibility {
+				t.Fatalf("processor calls = identity %d, compatibility %d; want %d, %d", len(fixture.processorID.calls), fixture.processorComp.calls, test.wantIdentity, test.wantCompatibility)
+			}
+			if fixture.current.calls != 0 || fixture.renderer.calls != 0 {
+				t.Fatalf("failed processor validation reached runtime: current=%d renderer=%d", fixture.current.calls, fixture.renderer.calls)
+			}
+			if result.SourceProcessAttempts != 0 || result.ProcessorProcessAttempts != 0 || len(result.Material.Source) != 0 {
+				t.Fatalf("failed render returned material or attempts: %+v", result)
+			}
+		})
 	}
 }
 
@@ -238,7 +499,7 @@ func TestRenderRejectsBeforeLaterBoundaries(t *testing.T) {
 			if test.wantCode == "wrapper_runtime_not_supported" && (len(public.NextActions) != 1 || public.NextActions[0] != helpAction()) {
 				t.Fatalf("runtime recovery=%+v want=%+v", public.NextActions, helpAction())
 			}
-			if result.SourceProcessAttempts != 0 || len(result.Material.Source) != 0 {
+			if result.SourceProcessAttempts != 0 || result.ProcessorProcessAttempts != 0 || len(result.Material.Source) != 0 {
 				t.Fatalf("failed render returned material or attempts: %+v", result)
 			}
 			got := [6]int{len(fixture.bundles.calls), len(fixture.adoption.calls), len(fixture.identity.calls), fixture.compatibility.calls, fixture.current.calls, fixture.renderer.calls}
