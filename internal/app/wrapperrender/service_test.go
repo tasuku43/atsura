@@ -72,6 +72,72 @@ func renderBundle(t *testing.T, requestedExecutable string) (tailoringbundle.Bun
 	return bundle, digest
 }
 
+func renderMultiCommandBundle(t *testing.T) (tailoringbundle.Bundle, string) {
+	t.Helper()
+	sourcePath := filepath.Join(t.TempDir(), "source", "gh")
+	catalog := sourcecatalog.Sort(sourcecatalog.Catalog{
+		SchemaVersion: sourcecatalog.SchemaVersion,
+		Adapter:       sourcecatalog.Adapter{Kind: "atsura.source.synthetic", ContractVersion: 1},
+		Source: sourcecatalog.Source{
+			RequestedExecutable: "gh",
+			ResolvedPath:        sourcePath,
+			SHA256:              strings.Repeat("a", 64),
+			Size:                2048,
+			Version:             "2.72.0",
+		},
+		Probe: sourcecatalog.Probe{IDs: []string{"command_help"}, Attempts: 1},
+		Commands: []sourcecatalog.Command{
+			{
+				Path: []string{"issue", "list"}, Summary: "List issues", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin,
+				Options: []sourcecatalog.Option{{Name: "--limit", TakesValue: true}},
+			},
+			{
+				Path: []string{"pr", "list"}, Summary: "List pull requests", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin,
+				Options:          []sourcecatalog.Option{{Name: "--json", TakesValue: true}, {Name: "--limit", TakesValue: true}},
+				StructuredOutput: []sourcecatalog.StructuredOutput{{Format: "json", SelectorFlag: "--json", Fields: []string{"number", "title"}}},
+			},
+		},
+	})
+	catalogDigest, err := catalog.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	specification := tailoringbundle.SortSpecification(tailoringbundle.Specification{
+		SchemaVersion: tailoringbundle.SpecificationSchemaVersion,
+		CatalogDigest: catalogDigest,
+		Surface:       tailoringbundle.Surface{Default: tailoringbundle.SurfaceDefaultExclude},
+		Commands: []tailoringbundle.CommandEntry{
+			{
+				Command: []string{"issue", "list"}, Presence: tailoringbundle.PresenceInclude, Reason: "Keep the reviewed source result.",
+				Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultExclude, Include: []string{"--limit"}, Exclude: []string{}},
+				Wrapper: &tailoringbundle.Wrapper{
+					Kind: tailoringbundle.WrapperIdentity, Before: []tailoringbundle.StageAction{},
+					Invoke: tailoringbundle.Invocation{AppendArgs: []string{}}, After: []tailoringbundle.StageAction{},
+				},
+			},
+			{
+				Command: []string{"pr", "list"}, Presence: tailoringbundle.PresenceInclude, Reason: "Return a compact reviewed result.",
+				Options: &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultExclude, Include: []string{"--limit"}, Exclude: []string{}},
+				Wrapper: &tailoringbundle.Wrapper{
+					Kind: tailoringbundle.WrapperTransform, Before: []tailoringbundle.StageAction{},
+					Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--json=number,title"}},
+					Output: &tailoringbundle.Output{Kind: tailoringbundle.OutputKindProjection, Projection: &tailoringbundle.Projection{Input: "json", Select: []string{"number", "title"}, Rename: []tailoringbundle.Rename{}, Render: "compact_json"}},
+					After:  []tailoringbundle.StageAction{},
+				},
+			},
+		},
+	})
+	bundle, err := tailoringbundle.Compile(catalog, specification)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, err := bundle.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bundle, digest
+}
+
 func renderProcessorBundle(t *testing.T) (tailoringbundle.Bundle, string) {
 	t.Helper()
 	sourcePath := filepath.Join(t.TempDir(), "source", "go")
@@ -212,11 +278,15 @@ type renderCompatibilityPort struct {
 	err    error
 	calls  int
 	bundle tailoringbundle.Bundle
+	verify func(tailoringbundle.Bundle) error
 }
 
 func (p *renderCompatibilityPort) VerifySurface(bundle tailoringbundle.Bundle) error {
 	p.calls++
 	p.bundle = bundle
+	if p.verify != nil {
+		return p.verify(bundle)
+	}
 	return p.err
 }
 
@@ -373,6 +443,88 @@ func TestRenderProducesExactBindingAndDeterministicMaterialWithoutSourceAttempt(
 	result.Material.Source[0] = 'x'
 	if fixture.renderer.material.Source[0] != 'g' {
 		t.Fatal("result shared the renderer's source buffer")
+	}
+}
+
+func TestRenderAdmitsOneCompleteTwoCommandBundleAndRendersOneWrapper(t *testing.T) {
+	fixture := newRenderFixture(t, "gh")
+	bundle, digest := renderMultiCommandBundle(t)
+	fixture.bundle = bundle
+	fixture.digest = digest
+	fixture.bundles.bundle = bundle
+	fixture.bundles.digest = digest
+	fixture.identity.identities[bundle.Catalog.Source.ResolvedPath] = sourceprocess.Identity{
+		ResolvedPath: bundle.Catalog.Source.ResolvedPath,
+		SHA256:       bundle.Catalog.Source.SHA256,
+		Size:         bundle.Catalog.Source.Size,
+	}
+	fixture.compatibility.verify = func(got tailoringbundle.Bundle) error {
+		if !reflect.DeepEqual(got, bundle) {
+			t.Fatal("compatibility admission did not receive the complete bundle")
+		}
+		if len(got.Surface) != 2 {
+			t.Fatalf("admitted surface entries = %d, want 2", len(got.Surface))
+		}
+		return nil
+	}
+
+	result, err := fixture.service.Render(context.Background(), renderIntent(), fixture.bundlePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fixture.compatibility.calls != 1 || fixture.renderer.calls != 1 {
+		t.Fatalf("boundary calls = compatibility %d, renderer %d; want 1, 1", fixture.compatibility.calls, fixture.renderer.calls)
+	}
+	if !reflect.DeepEqual(fixture.compatibility.bundle, bundle) || !fixture.renderer.binding.Equal(result.Binding) {
+		t.Fatal("admission and renderer did not share one complete bundle authority")
+	}
+	wantHelpPaths := [][]string{{"issue", "list"}, {"pr", "list"}}
+	gotHelpPaths := make([][]string, 0, len(result.Binding.Help.Commands))
+	for _, command := range result.Binding.Help.Commands {
+		gotHelpPaths = append(gotHelpPaths, command.Path)
+	}
+	if !reflect.DeepEqual(gotHelpPaths, wantHelpPaths) {
+		t.Fatalf("rendered binding help paths = %v, want %v", gotHelpPaths, wantHelpPaths)
+	}
+	if result.SourceProcessAttempts != 0 || result.ProcessorProcessAttempts != 0 {
+		t.Fatalf("render started a process: %+v", result)
+	}
+}
+
+func TestRenderRejectsCompleteBundleWhenLaterSurfaceEntryIsUnsupported(t *testing.T) {
+	fixture := newRenderFixture(t, "gh")
+	bundle, digest := renderMultiCommandBundle(t)
+	fixture.bundle = bundle
+	fixture.digest = digest
+	fixture.bundles.bundle = bundle
+	fixture.bundles.digest = digest
+	fixture.identity.identities[bundle.Catalog.Source.ResolvedPath] = sourceprocess.Identity{
+		ResolvedPath: bundle.Catalog.Source.ResolvedPath,
+		SHA256:       bundle.Catalog.Source.SHA256,
+		Size:         bundle.Catalog.Source.Size,
+	}
+	var inspected [][]string
+	fixture.compatibility.verify = func(got tailoringbundle.Bundle) error {
+		for _, entry := range got.Surface {
+			inspected = append(inspected, append([]string(nil), entry.Command...))
+			if reflect.DeepEqual(entry.Command, []string{"pr", "list"}) {
+				return errors.New("later surface entry is outside the maintained contract")
+			}
+		}
+		return nil
+	}
+
+	result, err := fixture.service.Render(context.Background(), renderIntent(), fixture.bundlePath)
+	assertRenderFault(t, err, "wrapper_runtime_not_supported")
+	wantInspected := [][]string{{"issue", "list"}, {"pr", "list"}}
+	if !reflect.DeepEqual(inspected, wantInspected) {
+		t.Fatalf("inspected entries = %v, want %v", inspected, wantInspected)
+	}
+	if fixture.compatibility.calls != 1 || fixture.renderer.calls != 0 || fixture.current.calls != 0 {
+		t.Fatalf("boundary calls = compatibility %d, current %d, renderer %d; want 1, 0, 0", fixture.compatibility.calls, fixture.current.calls, fixture.renderer.calls)
+	}
+	if result.SourceProcessAttempts != 0 || result.ProcessorProcessAttempts != 0 || len(result.Material.Source) != 0 {
+		t.Fatalf("rejected complete surface returned material or attempts: %+v", result)
 	}
 }
 

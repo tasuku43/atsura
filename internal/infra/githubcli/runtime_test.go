@@ -340,26 +340,96 @@ func TestVerifySurfaceAdmitsOneCompleteSourceStreamSurface(t *testing.T) {
 	}
 }
 
-func TestVerifySurfaceRejectsMixedAndPartialSurfaces(t *testing.T) {
+func TestVerifySurfaceAdmitsMixedTwoCommandSurface(t *testing.T) {
 	baseOptions := []sourcecatalog.Option{{Name: "--json", TakesValue: true}, {Name: "--limit", TakesValue: true}}
 	baseSurface := tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultExclude, Include: []string{"--limit"}, Exclude: []string{}}
-
-	t.Run("mixed commands", func(t *testing.T) {
-		bundle := runtimeSurfaceBundle(t, []string{"pr", "list"}, baseOptions, baseSurface, admittedSurfaceWrapper())
-		catalog := bundle.Catalog
-		catalog.Commands = append(catalog.Commands, sourcecatalog.Command{
-			Path: []string{"issue", "list"}, Summary: "List issues", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin,
-			Options:          baseOptions,
-			StructuredOutput: []sourcecatalog.StructuredOutput{{Format: "json", SelectorFlag: "--json", Fields: []string{"number", "title"}}},
-		})
-		secondSurface := baseSurface
-		secondWrapper := admittedSurfaceWrapper()
-		bundle = compileRuntimeSurface(t, catalog, []tailoringbundle.CommandEntry{
-			{Command: []string{"issue", "list"}, Presence: tailoringbundle.PresenceInclude, Reason: "Needed.", Options: &secondSurface, Wrapper: &secondWrapper},
-			{Command: []string{"pr", "list"}, Presence: tailoringbundle.PresenceInclude, Reason: "Needed.", Options: &baseSurface, Wrapper: ptrWrapper(admittedSurfaceWrapper())},
-		})
-		assertRuntimeAdmission(t, VerifySurface(bundle), ErrRuntimeUnsupported, ErrRuntimeWrapperOutput)
+	bundle := runtimeSurfaceBundle(t, []string{"pr", "list"}, baseOptions, baseSurface, admittedSurfaceWrapper())
+	catalog := bundle.Catalog
+	catalog.Commands = append(catalog.Commands, sourcecatalog.Command{
+		Path: []string{"issue", "list"}, Summary: "List issues", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin,
+		Options:          baseOptions,
+		StructuredOutput: []sourcecatalog.StructuredOutput{{Format: "json", SelectorFlag: "--json", Fields: []string{"number", "title"}}},
 	})
+	issueSurface := baseSurface
+	issueWrapper := tailoringbundle.Wrapper{
+		Kind:   tailoringbundle.WrapperTransform,
+		Before: []tailoringbundle.StageAction{},
+		Invoke: tailoringbundle.Invocation{AppendArgs: []string{"--limit=1"}},
+		After:  []tailoringbundle.StageAction{},
+	}
+	prSurface := baseSurface
+	bundle = compileRuntimeSurface(t, catalog, []tailoringbundle.CommandEntry{
+		{Command: []string{"issue", "list"}, Presence: tailoringbundle.PresenceInclude, Reason: "Return bounded source output.", Options: &issueSurface, Wrapper: &issueWrapper},
+		{Command: []string{"pr", "list"}, Presence: tailoringbundle.PresenceInclude, Reason: "Return selected fields.", Options: &prSurface, Wrapper: ptrWrapper(admittedSurfaceWrapper())},
+	})
+	if err := NewRuntimeVerifier().VerifySurface(bundle); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestVerifySurfaceRejectsInvalidEntryAtEveryPosition(t *testing.T) {
+	baseOptions := []sourcecatalog.Option{{Name: "--json", TakesValue: true}, {Name: "--limit", TakesValue: true}}
+	baseSurface := tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultExclude, Include: []string{"--limit"}, Exclude: []string{}}
+	tests := []struct {
+		name            string
+		invalidPath     []string
+		invalidPosition int
+	}{
+		{name: "first", invalidPath: []string{"account", "list"}, invalidPosition: 0},
+		{name: "middle", invalidPath: []string{"notification", "list"}, invalidPosition: 1},
+		{name: "last", invalidPath: []string{"release", "list"}, invalidPosition: 2},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			catalog := sourcecatalog.Catalog{
+				SchemaVersion: sourcecatalog.SchemaVersion,
+				Adapter:       sourcecatalog.Adapter{Kind: AdapterKind, ContractVersion: ContractVersion},
+				Source: sourcecatalog.Source{
+					RequestedExecutable: "gh", ResolvedPath: "/opt/bin/gh", SHA256: strings.Repeat("a", 64), Size: 2048, Version: "2.72.0",
+				},
+				Probe: sourcecatalog.Probe{IDs: []string{"help_reference", "issue_list_help", "pr_list_help", "version"}, Attempts: 4},
+			}
+			paths := [][]string{{"issue", "list"}, {"pr", "list"}, test.invalidPath}
+			entries := make([]tailoringbundle.CommandEntry, 0, len(paths))
+			for _, path := range paths {
+				catalog.Commands = append(catalog.Commands, sourcecatalog.Command{
+					Path: path, Summary: "List records", Provenance: sourcecatalog.ProvenanceVerifiedBuiltin,
+					Options:          baseOptions,
+					StructuredOutput: []sourcecatalog.StructuredOutput{{Format: "json", SelectorFlag: "--json", Fields: []string{"number", "title"}}},
+				})
+				surface := baseSurface
+				wrapper := admittedSurfaceWrapper()
+				entries = append(entries, tailoringbundle.CommandEntry{
+					Command: path, Presence: tailoringbundle.PresenceInclude, Reason: "Return selected fields.", Options: &surface, Wrapper: &wrapper,
+				})
+			}
+			bundle := compileRuntimeSurface(t, catalog, entries)
+			if got := strings.Join(bundle.Surface[test.invalidPosition].Command, " "); got != strings.Join(test.invalidPath, " ") {
+				t.Fatalf("surface[%d] = %q, want invalid entry %q", test.invalidPosition, got, strings.Join(test.invalidPath, " "))
+			}
+			assertRuntimeAdmission(t, VerifySurface(bundle), ErrRuntimeUnsupported, ErrRuntimeCommand)
+		})
+	}
+}
+
+func TestVerifySurfaceRejectsEmptySurface(t *testing.T) {
+	bundle := runtimeSurfaceBundle(
+		t,
+		[]string{"pr", "list"},
+		[]sourcecatalog.Option{{Name: "--json", TakesValue: true}},
+		tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultExclude, Include: []string{}, Exclude: []string{}},
+		admittedSurfaceWrapper(),
+	)
+	bundle = compileRuntimeSurface(t, bundle.Catalog, []tailoringbundle.CommandEntry{})
+	if len(bundle.Surface) != 0 {
+		t.Fatalf("surface entries = %d, want 0", len(bundle.Surface))
+	}
+	assertRuntimeAdmission(t, VerifySurface(bundle), ErrRuntimeUnsupported, ErrRuntimeWrapperOutput)
+}
+
+func TestVerifySurfaceRejectsPartialSurfaces(t *testing.T) {
+	baseOptions := []sourcecatalog.Option{{Name: "--json", TakesValue: true}, {Name: "--limit", TakesValue: true}}
+	baseSurface := tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultExclude, Include: []string{"--limit"}, Exclude: []string{}}
 
 	tests := []struct {
 		name     string

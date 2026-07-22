@@ -128,11 +128,11 @@ func VerifyRuntime(plan tailoringplan.Plan) error {
 	return nil
 }
 
-// VerifySurface proves that the complete included bundle surface can enter the
-// maintained wrapper runtime. The initial materialization contract exposes
-// exactly one command using either the admitted JSON transform or an identity /
-// append-argv-only source-stream wrapper. Mixed or partially admitted surfaces
-// are rejected before wrapper bytes are produced.
+// VerifySurface proves that the complete non-empty included bundle surface can
+// enter the maintained wrapper runtime. Every entry must independently use an
+// admitted command, option surface, and either the JSON transform or an
+// identity / append-argv-only source-stream wrapper. Partially admitted
+// surfaces are rejected before wrapper bytes are produced.
 func VerifySurface(bundle tailoringbundle.Bundle) error {
 	if err := bundle.Validate(); err != nil {
 		return admissionError(ErrRuntimeUnsupported, ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
@@ -140,10 +140,18 @@ func VerifySurface(bundle tailoringbundle.Bundle) error {
 	if err := verifySourceContract(bundle.Catalog.Adapter.Kind, bundle.Catalog.Adapter.ContractVersion, bundle.Catalog.Source.Version); err != nil {
 		return err
 	}
-	if len(bundle.Surface) != 1 {
+	if len(bundle.Surface) == 0 {
 		return admissionError(ErrRuntimeUnsupported, ErrRuntimeWrapperOutput, runtimeadmission.CategoryWrapperOutput)
 	}
-	entry := bundle.Surface[0]
+	for _, entry := range bundle.Surface {
+		if err := verifySurfaceEntry(bundle.Catalog, entry); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func verifySurfaceEntry(catalog sourcecatalog.Catalog, entry tailoringbundle.SurfaceEntry) error {
 	path := strings.Join(entry.Command, " ")
 	contract, ok := runtimeArgContracts[path]
 	if !ok {
@@ -168,7 +176,7 @@ func VerifySurface(bundle tailoringbundle.Bundle) error {
 		return admissionError(ErrRuntimeSelector, ErrRuntimeSelectorConflict, runtimeadmission.CategorySelectorConflict)
 	}
 
-	command, found := catalogCommand(bundle.Catalog, entry.Command)
+	command, found := catalogCommand(catalog, entry.Command)
 	if !found {
 		return admissionError(ErrRuntimeUnsupported, ErrRuntimeCommand, runtimeadmission.CategoryCommand)
 	}

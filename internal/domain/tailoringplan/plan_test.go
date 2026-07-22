@@ -170,6 +170,63 @@ func TestBuildDerivesSourceStreamResultForAppendOnlyWrapper(t *testing.T) {
 	}
 }
 
+func TestBuildSelectsIndependentPlansFromOneMultiCommandBundle(t *testing.T) {
+	bundle, digest := planBundle(
+		t,
+		tailoringbundle.SurfaceDefaultExclude,
+		identityEntry("item", "delete"),
+		transformEntry(),
+	)
+
+	deletePlan, err := Build(digest, bundle, currentIdentity(), Attempt{
+		Executable: "fixture",
+		Args:       []string{"item", "delete", "--force"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	listPlan, err := Build(digest, bundle, currentIdentity(), Attempt{
+		Executable: "fixture",
+		Args:       []string{"item", "list"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if deletePlan.BundleDigest != digest || listPlan.BundleDigest != digest {
+		t.Fatalf("bundle digests = %q %q, want %q", deletePlan.BundleDigest, listPlan.BundleDigest, digest)
+	}
+	if !reflect.DeepEqual(deletePlan.MatchedCommand, []string{"item", "delete"}) ||
+		deletePlan.SpecificationEntry == nil ||
+		!reflect.DeepEqual(deletePlan.SpecificationEntry.Command, []string{"item", "delete"}) ||
+		deletePlan.WrapperKind != tailoringbundle.WrapperIdentity ||
+		deletePlan.ResultMode != ResultModeSourceStreamPassthrough ||
+		deletePlan.Stages.Output != nil ||
+		len(deletePlan.Stages.Invoke.AppendedArgs) != 0 {
+		t.Fatalf("delete plan = %+v", deletePlan)
+	}
+	if !reflect.DeepEqual(listPlan.MatchedCommand, []string{"item", "list"}) ||
+		listPlan.SpecificationEntry == nil ||
+		!reflect.DeepEqual(listPlan.SpecificationEntry.Command, []string{"item", "list"}) ||
+		listPlan.WrapperKind != tailoringbundle.WrapperTransform ||
+		listPlan.ResultMode != ResultModeTransformedJSON ||
+		listPlan.Stages.Output == nil ||
+		!reflect.DeepEqual(listPlan.Stages.Invoke.AppendedArgs, []string{"--json=id,name"}) {
+		t.Fatalf("list plan = %+v", listPlan)
+	}
+	deleteDigest, err := deletePlan.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	listDigest, err := listPlan.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleteDigest == listDigest {
+		t.Fatalf("command-specific plan digests unexpectedly match: %q", deleteDigest)
+	}
+}
+
 func TestBuildEnforcesOptionSurfaceAndDeterministicForms(t *testing.T) {
 	entry := identityEntry("item", "list")
 	entry.Options = &tailoringbundle.OptionSurface{Default: tailoringbundle.SurfaceDefaultExclude, Include: []string{"--json"}, Exclude: []string{}}
