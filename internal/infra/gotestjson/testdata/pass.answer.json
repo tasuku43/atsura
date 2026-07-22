@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "task": "go test",
+  "source_argv": ["go", "test", "-json"],
+  "package": "example.com/project/check",
+  "test_pass_count": 2,
+  "package_count": 1,
+  "summary": "Go test: 2 passed in 1 packages",
+  "omitted": ["elapsed", "event_order", "package_identity", "test_names", "test_output"]
+}

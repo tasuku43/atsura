@@ -3,11 +3,54 @@ package gotestjson
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/tasuku43/atsura/internal/infra/strictjson"
 )
 
 const fixtureTime = "2026-07-22T00:00:00.123456789Z"
+
+type presentationAnswer struct {
+	SchemaVersion int      `json:"schema_version"`
+	Task          string   `json:"task"`
+	SourceArgv    []string `json:"source_argv"`
+	Package       string   `json:"package"`
+	TestPassCount uint64   `json:"test_pass_count"`
+	PackageCount  int      `json:"package_count"`
+	Summary       string   `json:"summary"`
+	Omitted       []string `json:"omitted"`
+}
+
+func TestFrozenPresentationFixtureMatchesIndependentAnswerKey(t *testing.T) {
+	input, err := os.ReadFile("testdata/pass.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawAnswer, err := os.ReadFile("testdata/pass.answer.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var answer presentationAnswer
+	if err := strictjson.Decode(rawAnswer, &answer, 3); err != nil {
+		t.Fatal(err)
+	}
+	wantOmitted := []string{"elapsed", "event_order", "package_identity", "test_names", "test_output"}
+	if answer.SchemaVersion != 1 || answer.Task != "go test" ||
+		!reflect.DeepEqual(answer.SourceArgv, []string{"go", "test", "-json"}) ||
+		answer.PackageCount != 1 || !reflect.DeepEqual(answer.Omitted, wantOmitted) {
+		t.Fatalf("answer key = %+v", answer)
+	}
+	facts, eligible := Analyze(input)
+	if !eligible || facts.Package != answer.Package || facts.TestPassCount != answer.TestPassCount || facts.Summary != answer.Summary {
+		t.Fatalf("Analyze(frozen fixture) = %+v, %v; answer=%+v", facts, eligible, answer)
+	}
+	if len(facts.Summary) >= len(input) || strings.Contains(facts.Summary, "\n") {
+		t.Fatalf("summary is not a strictly smaller newline-free result: %q", facts.Summary)
+	}
+}
 
 func TestAnalyzeAcceptsRealGoShapedPassStreamWithoutChangingInput(t *testing.T) {
 	input := []byte("" +
