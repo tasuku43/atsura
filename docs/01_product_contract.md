@@ -10,7 +10,9 @@ identity and argv-only ordinary wrappers. ADR 0011 introduces Go as a second
 source and one finite application compatibility registry shared by plan
 application and whole-surface rendering. ADR 0012 advances the current Go
 source to contract 2 and admits the first exact external processor contract,
-`atsura.output.rtk_go_test_pass.v1`. One canonical vendor-neutral bundle
+`atsura.output.rtk_go_test_pass.v1`. ADR 0014 compiles the included surface
+into bounded ordinary-command help without turning help into a source
+execution plan. One canonical vendor-neutral bundle
 remains the authority.
 
 ## Product statement
@@ -433,7 +435,8 @@ current `atr` path/hash/size, `source_process_attempts: 0`, and
 starts the source CLI or processor.
 
 The renderer accepts only Linux or macOS, an absolute clean bundle locator, and
-a requested executable that is verbatim one portable non-reserved POSIX Name.
+a requested executable that is verbatim one portable POSIX Name outside the
+maintained reserved/fixed and implementation-specific function-name set.
 It does not derive a basename from a path. One finite application registry
 selects the whole-surface verifier by the bundle's exact adapter kind. The
 complete included surface must contain exactly one command admitted in full:
@@ -450,7 +453,7 @@ The fixed function invokes the exact absolute `atr` that rendered it:
 
 ```text
 atr wrapper run \
-  --contract-version=1 \
+  --contract-version=2 \
   --bundle=<absolute-path> \
   --bundle-digest=<sha256> \
   --runtime-path=<absolute-path> \
@@ -473,6 +476,8 @@ The wrapper binding identifies only product facts:
 - exact source executable identity;
 - generated wrapper contract and exact runtime identity;
 - ordinary command spelling; and
+- the bounded tailored-help projection derived from the exact included
+  surface; and
 - the bundle-bound physical source path that execution uses instead of
   resolving the ordinary wrapper name.
 
@@ -492,6 +497,42 @@ future persisted wrapper or executable shim would create Atsura-owned local
 state and must add normal create/write mutation contracts, bounded ownership,
 atomic replacement, drift reporting, read-only reconciliation, and a separate
 platform contract.
+
+The generated source removes any existing alias with the exact ordinary
+command name immediately before defining the function. This prevents alias
+expansion from renaming or bypassing the wrapper. It is an in-memory effect of
+the caller's explicit sourcing action, not an edit to shell startup or host
+configuration; a caller that needs the old alias must restore it after removing
+the function. Supported activation requires the standard POSIX `unalias`
+utility not to be shadowed by a caller function; activation integrity beyond
+that precondition remains caller-owned.
+
+### Ordinary tailored help
+
+Generated-wrapper contract 2 makes the rendered artifact self-describing. It
+recognizes only a final exact `--help` after zero or more included command-path
+segments. The root view lists every included exact command path; a namespace
+view lists only its included descendants; an exact-command view shows the
+bounded source summary, tailoring reason, and only the effective included long
+options with explicit value arity. When an exact command is also a namespace,
+one view contains both its exact-command facts and included descendants.
+
+The help model is derived from the canonical bundle during `wrapper render`.
+The fixed function prints it through constant-format, single-quoted POSIX data
+and includes the full bundle digest. It executes no raw source help and starts
+no bound `atr`, source, or processor process. POSIX may implement its formatting
+utility externally, so this is not a generic zero-OS-process claim. The output
+describes the exact rendered artifact, not current source readiness or
+authorization. Structural controls, format characters, and Unicode line
+separators are invalid upstream; printable prompt-like meaning remains visible
+untrusted text.
+
+`-h`, source-specific `help` subcommands, no-argument aliases, root/global
+options, positionals, and help-like values after `--` are not tailored-help
+grammar in this slice. A selector without a compiled view is forwarded
+unchanged to `wrapper run`; an excluded cataloged command therefore retains
+`command_not_in_surface`, an unknown shape retains `invalid_invocation`, and
+neither starts the source or falls back to source help.
 
 ### Wrapper result authority
 
@@ -567,7 +608,7 @@ atr bundle trust --bundle <bundle.json>
 atr bundle preview --bundle <bundle.json> -- <source-executable> <argv>
 atr bundle execute --bundle <bundle.json> -- <source-executable> <argv>
 atr wrapper render --bundle <absolute-bundle.json> [--format text|json]
-atr wrapper run --contract-version=1 --bundle=<absolute-bundle.json> \
+atr wrapper run --contract-version=2 --bundle=<absolute-bundle.json> \
   --bundle-digest=<sha256> --runtime-path=<absolute-atr> \
   --runtime-sha256=<sha256> --runtime-size=<bytes> -- <argv...>
 ```
@@ -633,8 +674,10 @@ refresh, and raw execution are not implemented by this direct evidence command;
 an optimizer is rejected before source start.
 
 `wrapper render` is the zero-source-attempt producer of the complete function
-and binding. Its fixed function forwards `"$@"` to `wrapper run` with root
-structured JSON errors. `wrapper run` first validates the closure against the
+and binding. Its contract-2 fixed function answers compiled root, namespace,
+and exact-command final-`--help` selectors without starting the bound `atr`,
+source, or processor; every other argv list is forwarded unchanged to
+`wrapper run` with root structured JSON errors. `wrapper run` first validates the closure against the
 honestly executing current `atr` identity and expected bundle digest, then
 reuses the shared fresh-plan application boundary. Success follows one of three
 plan result modes: compact JSON plus LF and empty stderr; exact bounded source

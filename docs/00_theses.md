@@ -12,7 +12,9 @@ finite identity and argv-only ordinary wrappers. ADR 0011 adds Go CLI as a
 second source contract and replaces direct single-adapter composition with one
 finite application compatibility registry. ADR 0012 admits the first exact
 external output-processor tuple: strict pass-only `go test -json` through an
-explicitly inspected RTK v0.43.0 artifact. The vendor-neutral,
+explicitly inspected RTK v0.43.0 artifact. ADR 0014 makes the ordinary wrapper
+self-discoverable by compiling bounded tailored help from the exact bundle
+into fixed wrapper material. The vendor-neutral,
 compiled-bundle architecture remains authoritative.
 
 ## North star
@@ -55,7 +57,10 @@ adopted bundle + explicit purpose binding
   -> `wrapper render` produces a deterministic host-neutral POSIX function
   -> caller-owned environment exposes it as the ordinary source command
   -> maintainer or coding agent invokes that ordinary command
-  -> fixed function calls `wrapper run` with its exact bundle/runtime closure
+  -> final `--help`: fixed bundle-derived tailored help without `atr`, source,
+     or processor execution
+  -> every other argv: fixed function calls `wrapper run` with its exact
+     bundle/runtime closure
   -> wrapper run rebuilds and applies the same fresh plan
 ```
 
@@ -89,7 +94,9 @@ options visible for an included command.
 
 The specification model must represent `inherit` or `exclude` as an explicit
 surface default, represent command membership separately from wrapper behavior,
-and return no execution plan for a command absent from the compiled surface.
+return no execution plan for a command absent from the compiled surface, and
+derive ordinary wrapper help only from included surface entries and their
+effective options.
 
 ## Thesis 2: YAML is a tailoring specification, not an authorization policy
 
@@ -350,9 +357,13 @@ revalidates its exact bundle, runtime, command, and source binding, constructs a
 fresh plan, and applies the same runtime used by the direct maintainer gateway.
 
 The first material form is a fixed POSIX function produced by `wrapper render`
-on Linux and macOS. It embeds the absolute current `atr` identity and exact
-bundle digest, invokes `wrapper run` with structured JSON errors, and forwards
-`"$@"` without `eval`, `sh -c`, or specification-authored source. Rendering is
+on Linux and macOS. Contract 2 embeds the absolute current `atr` identity,
+exact bundle digest, and one bounded help projection derived from the included
+surface. A final exact `--help` selector for the root, an included namespace,
+or an included command returns that fixed projection without starting `atr`,
+the source, or a processor. Every other argv list invokes `wrapper run` with
+structured JSON errors and is forwarded unchanged without `eval`, `sh -c`, or
+specification-authored source. Rendering is
 allowed only when the complete included surface is one maintained runtime-
 admitted command and result mode. The finite first contracts cover one JSON-
 transforming GitHub CLI command, finite GitHub CLI identity or append-argv-only
@@ -370,10 +381,13 @@ environment even if thin external glue makes the wrapper visible.
 
 The host-neutral wrapper binding contains only Atsura product facts: the exact
 adopted purpose bundle, source identity, wrapper contract, runtime identity,
-and ordinary command spelling. It contains no coding-agent host, hook, model,
-session, or host-permission field. A generated shell function's byte digest is
-reproducibility and review evidence; after caller-owned activation Atsura does
-not claim to attest the in-memory function bytes.
+ordinary command spelling, and bundle-derived tailored help. It contains no
+coding-agent host, hook, model, session, or host-permission field. A generated
+shell function's byte digest is reproducibility and review evidence; after
+caller-owned activation Atsura does not claim to attest the in-memory function
+bytes. Static help names its exact bundle digest and describes that rendered
+artifact; it does not claim that later source, processor, adoption, or runtime
+state is current.
 
 Runtime binding is cooperative drift detection, not executable attestation.
 The fixed function must start the bound `atr` path before honest runtime code
@@ -445,6 +459,15 @@ owned command-resolution mechanism, and invoke the ordinary source-command
 spelling to reach the same fresh plan and transform runtime as the direct
 gateway. A missing, drifted, or mismatched bundle, runtime, source, surface, or
 invocation starts no source process.**
+
+The ordinary tailored-help extension is:
+
+**From those same reviewed wrapper bytes, a maintainer or coding agent can use
+the ordinary root, included namespace, or included exact-command spelling with
+a final `--help` to discover only the bundle's included commands and effective
+long options. The fixed help path names the exact bundle, starts no bound
+`atr`, source, or processor process, does not execute or embed source help, and
+leaves every non-help invocation on the existing fresh-plan path.**
 
 The bounded source-stream extension is:
 

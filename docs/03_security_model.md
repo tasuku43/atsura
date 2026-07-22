@@ -122,10 +122,26 @@ authority.
 
 The current wrapper accepts argv, not a shell command string or agent-host
 payload. On Linux and macOS, `wrapper render` emits one fixed POSIX function and
-an optional schema-2 review envelope. The function forwards `"$@"` losslessly;
-the specification cannot inject shell source, and the template uses neither
+an optional schema-2 review envelope. Contract 2 compiles bounded root,
+namespace, and exact-command final-`--help` views from the bundle's included
+surface. Those fixed branches print only constant-format single-quoted data,
+name the exact bundle digest, and start no bound `atr`, source, or processor.
+The function body is a subshell: alias-safe POSIX special-builtin cleanup
+removes inherited `command` and `return` functions only in that isolated body
+and fails before runtime start if cleanup is unavailable. Escaped builtin
+lookup then bypasses caller-defined `test` and `printf` functions without
+modifying the caller's shell.
+The generated preamble removes an exact same-name alias before defining the
+wrapper; otherwise alias expansion can rename or bypass a function. This is an
+explicit in-memory effect of sourcing, not a persisted activation edit. The
+preamble assumes `unalias` has its standard POSIX meaning; a caller-defined
+`unalias` function is outside the supported activation environment and cannot
+be bypassed and preserved portably at top-level parse time.
+Every non-help argv list is forwarded losslessly to `wrapper run`; the
+specification cannot inject shell source, and the template uses neither
 `eval` nor `sh -c`. The source command spelling is derived verbatim from the
-bundle's requested executable, must be a portable non-reserved POSIX Name, and
+bundle's requested executable, must be a portable POSIX Name outside the
+maintained reserved/fixed and implementation-specific function-name set, and
 is never derived from a path or basename. `wrapper run` invokes only the exact
 physical source path already bound into the adopted bundle, so ambient command
 resolution cannot recurse into the wrapper. Windows returns a structured
@@ -140,6 +156,15 @@ fallback. Because the shell must start the bound runtime path before that code
 can fingerprint itself, this check detects cooperative drift; it is not
 attestation, a sandbox, or protection against malicious code that replaced the
 `atr` executable at that path.
+
+Static tailored help describes the exact reviewed wrapper artifact rather than
+current executability. It does not revalidate later adoption, source,
+processor, or runtime state and therefore must not claim readiness,
+authorization, containment, or attestation. Non-help execution retains every
+existing current-state check. An excluded or unknown help-shaped selector has
+no compiled branch and reaches existing fail-closed resolution without source
+help or a source attempt. POSIX may implement the formatting utility outside
+the shell process, so this is not a generic zero-subprocess guarantee.
 
 For generated shell material, the rendered-byte digest proves deterministic
 generation and lets reviewers and release fixtures compare exact output. Once
@@ -204,7 +229,8 @@ preview as authority.
 `wrapper render` additionally requires the complete included surface to be one
 maintained runtime-admitted command and result mode before exposing ordinary-
 command material. Its binding closes the exact bundle digest with the current
-`atr` path/hash/size and requested command spelling. `wrapper run` accepts only
+`atr` path/hash/size, requested command spelling, and a rederived bounded help
+projection. `wrapper run` accepts only
 that complete closure plus argv after the explicit `--` separator, derives the
 source spelling from the loaded bundle, and rebuilds the same plan. Success is
 one compact plan-declared JSON object or array plus LF, an explicitly adopted
@@ -506,28 +532,39 @@ from those executed by the journey.
 
 Historical bounded journey evidence schema 4 predates the optimizer and binds
 only Go adapter contract 1 and the identity-wrapper journey. It is insufficient
-to support a release-quality claim for the accepted contract. Current schema 5
-binds Go adapter contract 2, processor-observation schema 1, the
-exact `atsura.output.rtk_go_test_pass.v1` identity and invocation, processor
+to support a release-quality claim for the accepted contract. Schema 5 binds
+Go adapter contract 2, processor-observation schema 1, the exact
+`atsura.output.rtk_go_test_pass.v1` identity and invocation, processor
 path/hash/size/version, catalog/specification/bundle/plan digests, exact caller/
 source/processor argv, formats, process modes, v2 isolation and bounds, both
 source fixture attempt counts and processor-inspection evidence, result
-disposition, status, and the same bounded leak checks. It does not claim
-processor-launch counts without an accepted external observer; controlled
-application and infrastructure tests own that attempt truth. On Linux amd64,
-Linux arm64, Darwin amd64, and Darwin arm64, native replay must prove an
-`optimized` strict pass and the reachable
+disposition, status, and the same bounded leak checks. It predates static
+tailored help.
+
+Current schema 6 retains that optimizer-aware proof and adds one bounded
+`tailored_help` record. A POSIX row binds the complete bundle and rendered-
+wrapper digests plus wrapper contract 2, proves exact root, namespace, and
+command `--help` while the bound `atr` is non-executable, and proves hidden and
+unknown help-shaped selectors retain their declared fail-closed faults without
+source or processor attempts. A Windows row records an explicit unsupported
+outcome with empty help views and faults, no binding digests, and zero attempts.
+Aggregate schema 2 is unchanged.
+
+Installed evidence does not claim processor-launch counts without an accepted
+external observer; controlled application and infrastructure tests own that
+attempt truth. On Linux amd64, Linux arm64, Darwin amd64, and Darwin arm64,
+native replay must prove an `optimized` strict pass and the reachable
 `preserved_before_processor` path through the packaged wrapper. Windows must
 continue to prove structured unsupported behavior with zero source attempts,
 no processor evidence, and no optimizer claim. Controlled application and
 infrastructure tests, rather than the official-artifact journey, own synthetic
 `preserved_after_processor` and arbitrary processor-failure branches. No source
 or processor stream may enter the evidence document. These are required
-evidence conditions; this section does not assert that the optimizer-aware
-native matrix has passed. Schema 5 preserves the identity-wrapper
-baseline in the outer `go_source` fields and confines the optimizer's distinct
-bundle, plan, rendered-wrapper digest, cases, and faults to the nested
-`optimizer` object.
+evidence conditions; this section does not assert that the schema-6 native
+matrix has passed. The inherited schema-5 optimizer shape preserves the
+identity-wrapper baseline in the outer `go_source` fields and confines the
+optimizer's distinct bundle, plan, rendered-wrapper digest, cases, and faults
+to the nested `optimizer` object.
 
 The native Go fixture fixes `GOTOOLCHAIN=local`, disables download, and isolates
 module/cache roots so that one replay is deterministic. Those are harness-owned
