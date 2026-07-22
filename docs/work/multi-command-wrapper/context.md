@@ -10,8 +10,11 @@
   invocation and then selects only that exact surface entry's wrapper.
 - `githubcli.VerifyRuntime` already admits both `issue list` and `pr list` under
   the maintained GitHub CLI contract 2 grammar.
-- `githubcli.VerifySurface` rejects `len(bundle.Surface) != 1` before validating
-  the single entry. This is the active blocker to one multi-command wrapper.
+- `githubcli.VerifySurface` now rejects an empty surface and independently
+  validates every canonical entry before wrapper material can be rendered.
+- Installed-artifact evidence schema 7 records exact caller argv and proves the
+  first two ordinary cases share one bundle, rendered source, and actual sourced
+  file while retaining distinct preview-derived plans and result modes.
 - Go CLI admission intentionally remains a one-command `test` surface and is
   outside this GitHub-specific compatibility slice.
 
@@ -48,14 +51,14 @@
 None. This iteration changes only repository-owned compatibility and evidence
 contracts. It does not rely on a new claim about GitHub CLI or another tool.
 
-## Unknowns
+## Resolved unknowns
 
-- [ ] Whether evidence should add one dedicated `multi_command_wrapper` object
-      or evolve the existing wrapper-case inventory without obscuring the fact
-      that two calls share one exact bundle and rendered digest.
-- [ ] Whether mixed admitted result modes need an additional bundle-level
-      invariant beyond independent entry validation. Resolve through domain and
-      runtime truth tables before changing production code.
+- [x] Evidence evolves the existing ordered `wrapper_cases` inventory rather
+      than adding a parallel object. Schema 7 adds exact `caller_argv`; the first
+      two cases must share bundle and wrapper identities and use distinct plans.
+- [x] Mixed admitted result modes need no new bundle schema invariant. Complete-
+      surface admission validates every entry, and each fresh invocation plan
+      remains the exclusive authority for its selected command.
 
 ## Thesis evidence
 
@@ -76,14 +79,28 @@ contracts. It does not rely on a new claim about GitHub CLI or another tool.
 
 ## Reproduction or observation
 
-The blocker is deterministic and requires no source process:
+Focused race tests and the exact installed-artifact replay pass:
 
 ```sh
-go test ./internal/infra/githubcli -run TestVerifySurfaceRejectsMixedAndPartialSurfaces
+go test -race -count=1 ./internal/app/wrapperrender \
+  ./internal/domain/tailoringbundle ./internal/domain/tailoringplan \
+  ./internal/infra/githubcli ./tools/artifactjourney \
+  ./tools/artifactevidence ./tools/sourcefixture
+
+bash scripts/package-release.sh v0.0.0-rc.1 \
+  a79a637d3067c86c72e77862ad06382f679d9d5c darwin arm64 <temp-dir>
+bash scripts/test-release-artifact.sh v0.0.0-rc.1 \
+  a79a637d3067c86c72e77862ad06382f679d9d5c darwin arm64 <archive>
 ```
 
-The current mixed-command fixture is expected to be rejected solely because
-the surface contains two otherwise admitted entries.
+The native Darwin/arm64 row emitted schema 7 with shared bundle digest
+`c07e18d653ad53e4897371a9cce0177ecb504c6575c827459cd5c4e1a85e8602`,
+shared rendered-source digest
+`a11ecb790aa747d2e729234012e4b25fdd76d6599b65d8106c2b464c98419308`,
+distinct PR/issue plan digests, three ordinary source attempts, 13 fixture
+attempts, and zero source or processor attempts for all five help views and two
+fallthrough faults. The temporary archive and raw row were removed after the
+bounded replay. Cross-platform workflow evidence remains pending.
 
 ## Security and public-boundary notes
 

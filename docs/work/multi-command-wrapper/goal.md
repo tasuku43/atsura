@@ -8,7 +8,7 @@
 - Successor: None
 - Owner: Atsura maintainers
 - Target: Next release-quality implementation iteration
-- Related ADRs: ADR 0010, ADR 0014, proposed ADR 0015
+- Related ADRs: ADR 0010, ADR 0014, and accepted ADR 0015
 
 ## Outcome
 
@@ -22,9 +22,9 @@ unsupported entry rejects the whole render without a source attempt.
 ## Why now
 
 The canonical catalog, specification, bundle, plan, and contract-2 help model
-already represent a bounded multi-command surface. Runtime compatibility
-currently rejects every surface whose included-entry count is not exactly one,
-so Atsura's purpose-specific CLI hypothesis is still demonstrated only as
+already represented a bounded multi-command surface. Before this slice, runtime
+compatibility rejected every surface whose included-entry count was not exactly
+one, so Atsura's purpose-specific CLI hypothesis was demonstrated only as
 separate one-command wrappers. Removing that local limit through all-entry
 validation is the smallest step from a command demo to one useful tailored CLI.
 
@@ -39,23 +39,23 @@ validation is the smallest step from a command demo to one useful tailored CLI.
 
 ## Acceptance criteria
 
-- [ ] One valid two-command bundle renders one deterministic POSIX function
+- [x] One valid two-command bundle renders one deterministic POSIX function
       whose root and namespace help expose exactly both included paths.
-- [ ] From the same rendered function, ordinary `gh pr list` closes the existing
+- [x] From the same rendered function, ordinary `gh pr list` closes the existing
       transformed-JSON outcome and ordinary `gh issue list` closes the existing
       source-stream outcome, with one source attempt per call.
-- [ ] Surface admission validates every included command, option surface,
+- [x] Surface admission validates every included command, option surface,
       wrapper, selector, and argv addition; any invalid later entry rejects the
       entire render before bytes, adoption changes, or source/processor starts.
-- [ ] Hidden cataloged and unknown paths remain fail-closed with zero source and
+- [x] Hidden cataloged and unknown paths remain fail-closed with zero source and
       processor attempts; no command inherits another entry's wrapper behavior.
-- [ ] Specification schema 4, bundle schema 3, plan schema 5, wrapper contract 2,
+- [x] Specification schema 4, bundle schema 3, plan schema 5, wrapper contract 2,
       and aggregate evidence schema 2 remain unchanged. Installed-artifact
       evidence advances only if its document shape changes.
 - [ ] Linux and Darwin native artifacts prove the same two-command wrapper;
       Windows proves the unchanged structured unsupported result; all five
       native rows and their aggregate pass for one exact revision.
-- [ ] `task check`, `task security`, `task public:check`, and
+- [x] `task check`, `task security`, `task public:check`, and
       `task release:check` pass without weakening a check.
 
 ## Governing documents
